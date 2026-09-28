@@ -16,6 +16,9 @@ on:
         description: Also move the `latest` tag to this build
         type: boolean
         default: true
+  push:
+    branches:
+      - feat/publish-docker-images
 
 permissions:
   contents: read
@@ -67,7 +70,7 @@ jobs:
           platforms: linux/${{ matrix.platform.arch }}
           # Attestations would add manifests that imagetools can't fold into the arch list.
           provenance: false
-          outputs: type=image,name=ghcr.io/kinora-dev/kinora-${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/kinora-${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
         run: |
@@ -104,9 +107,9 @@ jobs:
 
       - name: Tag the multi-arch manifest
         env:
-          IMAGE: ghcr.io/kinora-dev/kinora-${{ matrix.image }}
-          VERSION: ${{ inputs.version }}
-          MOVE_LATEST: ${{ inputs.latest }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/kinora-${{ matrix.image }}
+          VERSION: ${{ inputs.version || '0.1.14' }}
+          MOVE_LATEST: ${{ inputs.latest || 'false' }}
         run: |
           set -euo pipefail
           tags=(-t "$IMAGE:$VERSION")
