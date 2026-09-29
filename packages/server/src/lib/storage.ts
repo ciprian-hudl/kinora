@@ -61,7 +61,11 @@ export function s3Storage(config: S3Config): Storage {
   const client = new S3Client({
     endpoint: config.endpoint,
     region: config.region,
-    credentials: { accessKeyId: config.accessKey, secretAccessKey: config.secretKey },
+    // Omit credentials when unset so the AWS SDK default chain (e.g. an ECS
+    // task role) is used instead of signing with empty static keys.
+    ...(config.accessKey && config.secretKey
+      ? { credentials: { accessKeyId: config.accessKey, secretAccessKey: config.secretKey } }
+      : {}),
     // Most S3-compatible providers (MinIO, Hetzner) need path-style URLs.
     forcePathStyle: true,
   })
