@@ -123,8 +123,8 @@ export interface S3Config {
   endpoint: string
   region: string
   bucket: string
-  accessKey: string
-  secretKey: string
+  accessKey?: string
+  secretKey?: string
 }
 
 function resolveS3(): S3Config | null {
@@ -135,7 +135,9 @@ function resolveS3(): S3Config | null {
     S3_ACCESS_KEY_ID: accessKey,
     S3_SECRET_ACCESS_KEY: secretKey,
   } = env
-  if (!endpoint || !region || !bucket || !accessKey || !secretKey)
+  // Keys are optional: when unset, the client falls back to the AWS default
+  // credential chain (e.g. an ECS task role).
+  if (!endpoint || !region || !bucket)
     return null
   return { endpoint, region, bucket, accessKey, secretKey }
 }
