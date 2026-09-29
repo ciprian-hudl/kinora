@@ -108,7 +108,7 @@ jobs:
       - name: Tag the multi-arch manifest
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/kinora-${{ matrix.image }}
-          VERSION: ${{ inputs.version || '0.1.14' }}
+          VERSION: ${{ inputs.version || '0.1.15' }}
           MOVE_LATEST: ${{ inputs.latest || 'false' }}
         run: |
           set -euo pipefail
