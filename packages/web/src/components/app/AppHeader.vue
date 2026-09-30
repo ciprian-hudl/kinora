@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Avatar, AvatarFallback, AvatarImage } from '@kinora/ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@kinora/ui/dropdown-menu'
-import { Check, ChevronsUpDown, Gauge, LogOut, MessageSquarePlus, MonitorDown, Settings, SlidersHorizontal } from '@lucide/vue'
+import { Check, ChevronsUpDown, Gauge, LifeBuoy, LogOut, MessageSquarePlus, MonitorDown, Settings, SlidersHorizontal } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useServerConfig } from '@/composables/queries'
@@ -18,6 +18,7 @@ const feedbackEnabled = computed(() => serverConfig.value?.feedbackEnabled ?? fa
 const feedbackOpen = ref(false)
 
 const isAdmin = computed(() => (serverConfig.value?.adminEnabled ?? false) && user.value?.role === 'admin')
+const SUPPORT_HREF = 'mailto:hi@kinora.dev?subject=kinora%20support'
 
 const { orgs, org, setActive } = useOrg()
 const activeOrgId = computed(() => org.value?.id)
@@ -119,6 +120,12 @@ async function signOut(): Promise<void> {
               <a href="https://github.com/Kinora-dev/kinora/releases/latest" target="_blank" rel="noopener noreferrer">
                 <MonitorDown class="size-4" />
                 Desktop app
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem as-child>
+              <a :href="SUPPORT_HREF">
+                <LifeBuoy class="size-4" />
+                Support
               </a>
             </DropdownMenuItem>
             <DropdownMenuItem v-if="feedbackEnabled" @click="feedbackOpen = true">

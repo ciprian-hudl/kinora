@@ -82,6 +82,8 @@ const TIER_LABELS: Record<string, string> = {
 }
 
 const CONTACT_HREF = 'https://kinora.dev/contact'
+const SUPPORT_EMAIL = 'hi@kinora.dev'
+const SUPPORT_HREF = `mailto:${SUPPORT_EMAIL}?subject=kinora%20support`
 
 const isPaid = computed(() => ['team', 'pro', 'enterprise'].includes(billing.value?.tier ?? ''))
 
@@ -157,7 +159,7 @@ const PLAN_ROWS: { label: string, values: [string | boolean, string | boolean, s
   { label: 'Artifact storage', values: ['2 GB', '50 GB', '250 GB'] },
   { label: 'Regression alerts', values: [false, true, true] },
   { label: 'Seats', values: ['Unlimited', 'Unlimited', 'Unlimited'] },
-  { label: 'Support', values: ['Community', 'Email', 'Priority'] },
+  { label: 'Support', values: ['Community', 'Email', 'Priority email'] },
 ]
 
 const showCompare = ref(false)
@@ -281,6 +283,16 @@ function fmtDate(d: Date | string | null | undefined): string {
             Storage limit reached - traces and videos are rejected until older runs expire.
           </p>
         </div>
+
+        <p v-if="billing.tier === 'pro'" class="font-mono text-[11px] text-muted-foreground">
+          Need help? Email <a :href="SUPPORT_HREF" class="text-signal underline-offset-4 hover:underline">{{ SUPPORT_EMAIL }}</a> - Pro requests get priority support.
+        </p>
+        <p v-else-if="billing.tier === 'team'" class="font-mono text-[11px] text-muted-foreground">
+          Need help? Email <a :href="SUPPORT_HREF" class="text-signal underline-offset-4 hover:underline">{{ SUPPORT_EMAIL }}</a> for Team support.
+        </p>
+        <p v-else-if="billing.tier === 'enterprise'" class="font-mono text-[11px] text-muted-foreground">
+          Need help? Email <a :href="SUPPORT_HREF" class="text-signal underline-offset-4 hover:underline">{{ SUPPORT_EMAIL }}</a> or use your dedicated support channel.
+        </p>
 
         <div v-if="upgradeOptions.length && isOwner" class="flex flex-wrap gap-2">
           <Button

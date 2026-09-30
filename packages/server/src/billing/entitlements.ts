@@ -58,7 +58,10 @@ export function becameActivePaid(prev: { tier: Tier, status: string | null } | n
 export function planActivatedText(name: string | null, tier: 'team' | 'pro', link: string): string {
   const l = LIMITS[tier]
   const label = tier === 'team' ? 'Team' : 'Pro'
-  return `Hi${name ? ` ${name}` : ''},\n\nYour kinora ${label} plan is active. You now have:\n\n- ${l.includedResults.toLocaleString('en-US')} test results / month\n- ${l.retentionDays}-day history\n- Unlimited projects\n- Regression alerts (Slack, email, webhook)\n\nOpen your dashboard: ${link}\n\nManage billing anytime under Settings -> Workspace.`
+  const support = tier === 'pro'
+    ? 'Priority email support at hi@kinora.dev'
+    : 'Email support at hi@kinora.dev'
+  return `Hi${name ? ` ${name}` : ''},\n\nYour kinora ${label} plan is active. You now have:\n\n- ${l.includedResults.toLocaleString('en-US')} test results / month\n- ${l.retentionDays}-day history\n- Unlimited projects\n- Regression alerts (Slack, email, webhook)\n- ${support}\n\nOpen your dashboard: ${link}\n\nManage billing anytime under Settings -> Workspace.`
 }
 
 // Retention window shrank (downgrade): data past the new window becomes purge-eligible

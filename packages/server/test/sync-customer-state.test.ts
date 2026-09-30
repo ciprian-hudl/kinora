@@ -120,11 +120,14 @@ describe('planActivatedText', () => {
     expect(text).toContain('Team plan is active')
     expect(text).toContain('10,000 test results')
     expect(text).toContain('90-day history')
+    expect(text).toContain('Email support at hi@kinora.dev')
     expect(text).toContain('https://app.kinora.dev')
   })
 
   it('omits the name when absent', () => {
-    expect(planActivatedText(null, 'pro', 'x')).toContain('Hi,')
+    const text = planActivatedText(null, 'pro', 'x')
+    expect(text).toContain('Hi,')
+    expect(text).toContain('Priority email support at hi@kinora.dev')
   })
 })
 
