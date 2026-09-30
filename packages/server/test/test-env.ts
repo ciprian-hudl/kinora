@@ -13,6 +13,7 @@ export const TEST_ENV: Record<keyof Env, string> = {
   POSTGRES_HOST: process.env.POSTGRES_HOST ?? 'localhost',
   POSTGRES_PORT: process.env.POSTGRES_PORT ?? '5436',
   POSTGRES_DB: 'kinora_test',
+  POSTGRES_SSL: 'false',
   STORAGE_DIR: '.data/test-artifacts',
   GOOGLE_CLIENT_ID: 'test',
   GOOGLE_CLIENT_SECRET: 'test',
