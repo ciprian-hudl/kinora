@@ -41,6 +41,10 @@ FROM nginx:1.27-alpine AS runtime
 # demo pass NGINX_CONF=selfhost/nginx.conf to bake the reverse-proxy config instead.
 ARG NGINX_CONF=packages/web/nginx.conf
 COPY ${NGINX_CONF} /etc/nginx/conf.d/default.conf
+# Colocated single-task deploys (ECS Fargate awsvpc: siblings share localhost and the compose
+# service name "server" doesn't resolve) override this to 127.0.0.1.
+ARG NGINX_UPSTREAM_HOST=server
+RUN sed -i "s#http://server:3000#http://${NGINX_UPSTREAM_HOST}:3000#g" /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/packages/web/dist /usr/share/nginx/html
 COPY --from=build /repo/packages/trace-viewer/dist /usr/share/nginx/html/trace
 EXPOSE 80
