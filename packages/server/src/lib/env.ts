@@ -18,6 +18,7 @@ const envSchema = z.object({
   POSTGRES_HOST: z.string(),
   POSTGRES_PORT: z.coerce.number(),
   POSTGRES_DB: z.string(),
+  POSTGRES_SSL: z.stringbool().default(false),
   GOOGLE_CLIENT_ID: z.string().default(''),
   GOOGLE_CLIENT_SECRET: z.string().default(''),
   GITHUB_CLIENT_ID: z.string().default(''),
