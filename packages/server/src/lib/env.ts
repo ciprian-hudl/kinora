@@ -18,10 +18,17 @@ const envSchema = z.object({
   POSTGRES_HOST: z.string(),
   POSTGRES_PORT: z.coerce.number(),
   POSTGRES_DB: z.string(),
+  POSTGRES_SSL: z.stringbool().default(false),
   GOOGLE_CLIENT_ID: z.string().default(''),
   GOOGLE_CLIENT_SECRET: z.string().default(''),
   GITHUB_CLIENT_ID: z.string().default(''),
   GITHUB_CLIENT_SECRET: z.string().default(''),
+  OKTA_ISSUER: z.string().default(''),
+  OKTA_CLIENT_ID: z.string().default(''),
+  OKTA_CLIENT_SECRET: z.string().default(''),
+  // Workspace every new user joins, so an SSO-backed team shares one set of projects.
+  DEFAULT_ORG_SLUG: z.string().default(''),
+  PASSWORD_LOGIN: z.stringbool().default(true),
   KINORA_CLOUD: z.stringbool().default(false),
   // Public demo instance: auto-session as the seeded demo user + read-only (no mutations/ingest/auth writes).
   KINORA_DEMO: z.stringbool().default(false),
@@ -118,13 +125,16 @@ export const retentionPolicy = resolveRetention()
 // Social login is enabled per provider only when both its id and secret are set.
 export const googleOauthEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)
 export const githubOauthEnabled = Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET)
+export const oktaEnabled = Boolean(env.OKTA_ISSUER && env.OKTA_CLIENT_ID && env.OKTA_CLIENT_SECRET)
+// Password login can only be turned off when SSO is available, so nobody is locked out.
+export const passwordLoginEnabled = env.PASSWORD_LOGIN || !oktaEnabled
 
 export interface S3Config {
   endpoint: string
   region: string
   bucket: string
-  accessKey: string
-  secretKey: string
+  accessKey?: string
+  secretKey?: string
 }
 
 function resolveS3(): S3Config | null {
@@ -135,7 +145,9 @@ function resolveS3(): S3Config | null {
     S3_ACCESS_KEY_ID: accessKey,
     S3_SECRET_ACCESS_KEY: secretKey,
   } = env
-  if (!endpoint || !region || !bucket || !accessKey || !secretKey)
+  // Keys are optional: when unset, the client falls back to the AWS default
+  // credential chain (e.g. an ECS task role).
+  if (!endpoint || !region || !bucket)
     return null
   return { endpoint, region, bucket, accessKey, secretKey }
 }

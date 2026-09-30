@@ -3,12 +3,13 @@ import { apiKey } from '@better-auth/api-key'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin, bearer, deviceAuthorization, lastLoginMethod, organization } from 'better-auth/plugins'
+import { genericOAuth, okta } from 'better-auth/plugins/generic-oauth'
 import { and, eq } from 'drizzle-orm'
 import { polarAuthPlugin, polarClient } from '../billing/polar'
 import { db } from '../db'
 import { member, organization as organizationTable } from '../db/schemas/index'
 import { purgeUserOwnedData } from './account'
-import { demo, env, githubOauthEnabled, googleOauthEnabled } from './env'
+import { demo, env, githubOauthEnabled, googleOauthEnabled, oktaEnabled, passwordLoginEnabled } from './env'
 import { logger } from './logger'
 import { mailerEnabled, sendMail } from './mailer'
 import { getTrustedOrigins } from './utils'
@@ -19,12 +20,33 @@ function slugify(input: string): string {
 
 const polarPlugin = polarAuthPlugin()
 
+// Adds the user to DEFAULT_ORG_SLUG (if configured) and returns its id, so everyone lands in one shared workspace.
+async function joinDefaultOrganization(userId: string): Promise<string | null> {
+  if (!env.DEFAULT_ORG_SLUG)
+    return null
+  const shared = await db.query.organization.findFirst({
+    where: eq(organizationTable.slug, env.DEFAULT_ORG_SLUG),
+    columns: { id: true },
+  })
+  if (!shared) {
+    logger.warn({ slug: env.DEFAULT_ORG_SLUG }, 'DEFAULT_ORG_SLUG does not match an organization')
+    return null
+  }
+  const existing = await db.query.member.findFirst({
+    where: and(eq(member.organizationId, shared.id), eq(member.userId, userId)),
+    columns: { id: true },
+  })
+  if (!existing)
+    await db.insert(member).values({ id: randomUUID(), organizationId: shared.id, userId, role: 'member' })
+  return shared.id
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: 'pg' }),
   baseURL: env.BASE_URL,
   trustedOrigins: getTrustedOrigins(),
   emailAndPassword: {
-    enabled: true,
+    enabled: passwordLoginEnabled,
     sendResetPassword: async ({ user, url }) => {
       sendMail({
         to: user.email,
@@ -47,6 +69,8 @@ export const auth = betterAuth({
     ...(googleOauthEnabled ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : {}),
     ...(githubOauthEnabled ? { github: { clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET } } : {}),
   },
+  // Okta asserts the email, so an existing password account links on first SSO sign-in instead of erroring.
+  ...(oktaEnabled ? { account: { accountLinking: { trustedProviders: ['okta'] } } } : {}),
   user: {
     deleteUser: {
       enabled: true,
@@ -109,11 +133,12 @@ export const auth = betterAuth({
       create: {
         // Default the session to the org the user owns (a user may also be a member of others).
         before: async (session) => {
+          const sharedOrgId = await joinDefaultOrganization(session.userId)
           const owned = await db.query.member.findFirst({
             where: and(eq(member.userId, session.userId), eq(member.role, 'owner')),
             columns: { organizationId: true },
           })
-          return { data: { ...session, activeOrganizationId: owned?.organizationId ?? null } }
+          return { data: { ...session, activeOrganizationId: sharedOrgId ?? owned?.organizationId ?? null } }
         },
       },
     },
@@ -146,6 +171,9 @@ export const auth = betterAuth({
       },
     }),
     admin(),
+    ...(oktaEnabled
+      ? [genericOAuth({ config: [okta({ issuer: env.OKTA_ISSUER, clientId: env.OKTA_CLIENT_ID, clientSecret: env.OKTA_CLIENT_SECRET, pkce: true })] })]
+      : []),
     ...(polarPlugin ? [polarPlugin] : []),
   ],
 })

@@ -31,6 +31,7 @@ const config: Knex.Config = {
     user: env.POSTGRES_USER,
     database: env.POSTGRES_DB,
     charset: 'utf8mb4',
+    ssl: env.POSTGRES_SSL ? { rejectUnauthorized: false } : false,
   },
   migrations: {
     directory: migrationsDirectory,

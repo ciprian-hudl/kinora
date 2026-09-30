@@ -92,4 +92,8 @@ Open http://localhost:5173 and sign in with the seeded credentials (`demo@kinora
 
 ## License
 
-Fair source. The deployable product (`server`, `web`, `desktop`) is [FSL-1.1-MIT](LICENSE), the client libraries you embed (`reporter`, `cli`, `mcp`, `core`, `ui`) and the trace viewer are MIT. The trace engine under `packages/trace-viewer/src/core` and `src/sw` is vendored from [microsoft/playwright](https://github.com/microsoft/playwright) (Apache-2.0).
+Run the whole stack with one `docker compose` (Postgres + server + dashboard, single origin, local-FS artifacts, no S3). The images are prebuilt for amd64 and arm64 (`ghcr.io/kinora-dev/kinora-server`, `ghcr.io/kinora-dev/kinora-web`), so there is nothing to clone or compile: two files and `docker compose up -d`. See [`selfhost/README.md`](selfhost/README.md) for the quickstart, configuration, sending tests, custom domains, upgrades, and backups.
+
+## Licensing
+
+kinora is fair source, the deployable product (`server`, `web`, `desktop`) is **FSL-1.1-MIT**, the client libraries (`reporter`, `cli`, `mcp`, `core`, `ui`) and the trace viewer are **MIT**. The trace engine under `packages/trace-viewer/src/core` and `src/sw` is vendored from [microsoft/playwright](https://github.com/microsoft/playwright) (Apache-2.0).
