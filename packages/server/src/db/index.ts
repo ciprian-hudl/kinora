@@ -10,6 +10,8 @@ export const db = drizzle({
     database: env.POSTGRES_DB,
     password: env.POSTGRES_PASSWORD,
     port: env.POSTGRES_PORT,
+    // Managed Postgres (e.g. RDS) can require SSL; the provider-managed cert isn't in the trust store.
+    ssl: env.POSTGRES_SSL ? { rejectUnauthorized: false } : undefined,
     // Bound the pool: cap connections, fail fast when the pool is exhausted instead of hanging,
     // and let Postgres abort a runaway query so it can't pin a connection forever.
     max: 10,
