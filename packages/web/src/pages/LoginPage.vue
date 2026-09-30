@@ -5,11 +5,12 @@ import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@kinor
 import { Input } from '@kinora/ui/input'
 import { toTypedSchema } from '@vee-validate/zod'
 import { useForm } from 'vee-validate'
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { z } from 'zod'
 import AuthLayout from '@/components/auth/AuthLayout.vue'
 import SocialButtons from '@/components/auth/SocialButtons.vue'
+import { useServerConfig } from '@/composables/queries'
 import { authClient } from '@/lib/auth'
 import { session } from '@/lib/session'
 
@@ -17,6 +18,32 @@ const router = useRouter()
 const route = useRoute()
 const serverError = ref('')
 const lastMethod = authClient.getLastUsedLoginMethod()
+
+const { state: serverConfig } = useServerConfig()
+// Okta is the only way in: skip the form and go straight to Okta (an existing Okta session makes this silent).
+const oktaOnly = computed(() => {
+  const c = serverConfig.value
+  return !!c?.oktaEnabled && !c.passwordLoginEnabled && !c.googleOauthEnabled && !c.githubOauthEnabled
+})
+// A failed SSO round trip comes back with ?error; show it instead of redirecting in a loop.
+const ssoError = computed(() => typeof route.query.error === 'string' ? route.query.error : '')
+
+async function signInWithOkta(): Promise<void> {
+  const r = route.query.redirect
+  const callbackURL = typeof r === 'string' && r.startsWith('/') ? `${window.location.origin}${r}` : window.location.origin
+  const { error } = await authClient.signIn.social({
+    provider: 'okta',
+    callbackURL,
+    errorCallbackURL: `${window.location.origin}/login`,
+  })
+  if (error)
+    serverError.value = error.message ?? 'Could not sign in with Okta'
+}
+
+watch(oktaOnly, (only) => {
+  if (only && !ssoError.value)
+    signInWithOkta()
+}, { immediate: true })
 
 // Honor ?redirect= (e.g. an invite link); internal paths only.
 function destination(): string | { name: string } {
@@ -53,7 +80,21 @@ const labelClass = 'font-mono text-[11px] tracking-wider text-muted-foreground u
 </script>
 
 <template>
-  <AuthLayout tag="Sign in to continue">
+  <AuthLayout v-if="oktaOnly" tag="Sign in to continue">
+    <div class="space-y-4 text-center">
+      <p v-if="ssoError || serverError" class="rounded-md border border-fail/30 bg-fail/10 px-3 py-2 text-xs text-fail">
+        {{ serverError || 'Okta sign-in failed. Make sure you are assigned to kinora in Okta.' }}
+      </p>
+      <p v-else class="font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
+        Redirecting to Okta…
+      </p>
+      <Button v-if="ssoError || serverError" type="button" class="w-full bg-signal text-white hover:bg-signal/90" @click="signInWithOkta">
+        Try again
+      </Button>
+    </div>
+  </AuthLayout>
+
+  <AuthLayout v-else tag="Sign in to continue">
     <SocialButtons />
 
     <form class="space-y-4" @submit="onSubmit">
