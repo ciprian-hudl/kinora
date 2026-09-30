@@ -39,8 +39,11 @@ jobs:
             args: ''
           - name: web
             dockerfile: packages/web/Dockerfile
-            # Self-host is single-origin: bake the reverse-proxy config, leave the server URL unset.
-            args: NGINX_CONF=selfhost/nginx.conf
+            # Self-host single-origin reverse-proxy config; on Fargate (awsvpc) the sibling server
+            # is reached over localhost, not the compose service name.
+            args: |
+              NGINX_CONF=selfhost/nginx.conf
+              NGINX_UPSTREAM_HOST=127.0.0.1
         platform:
           - arch: amd64
             runner: ubuntu-latest
@@ -108,7 +111,7 @@ jobs:
       - name: Tag the multi-arch manifest
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/kinora-${{ matrix.image }}
-          VERSION: ${{ inputs.version || '0.1.16' }}
+          VERSION: ${{ inputs.version || '0.1.17' }}
           MOVE_LATEST: ${{ inputs.latest || 'false' }}
         run: |
           set -euo pipefail
