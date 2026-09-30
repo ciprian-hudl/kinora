@@ -52,7 +52,8 @@ function flatten(m: TraceModel): ActionItem[] {
 async function registerServiceWorker(): Promise<void> {
   if (!navigator.serviceWorker)
     throw new Error('Service workers unavailable. Serve over https or localhost.')
-  await navigator.serviceWorker.register('sw.bundle.js')
+  const registration = await navigator.serviceWorker.register('sw.bundle.js', { updateViaCache: 'none' })
+  await registration.update()
   if (!navigator.serviceWorker.controller)
     await new Promise<void>((resolve) => { navigator.serviceWorker.oncontrollerchange = () => resolve() })
   setInterval(() => {
