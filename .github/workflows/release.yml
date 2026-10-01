@@ -1,0 +1,236 @@
+name: Release
+
+# Manual global release: bump package.json and packages/desktop/package.json to the same
+# new version, then run this workflow. It publishes the desktop assets to a draft
+# GitHub Release and the self-host Docker images to GHCR with the same version.
+on:
+  workflow_dispatch:
+    inputs:
+      latest:
+        description: Also move the Docker `latest` tag to this build
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate release version
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ROOT_VERSION="$(node -p "require('./package.json').version")"
+          DESKTOP_VERSION="$(node -p "require('./packages/desktop/package.json').version")"
+
+          if [ "$ROOT_VERSION" != "$DESKTOP_VERSION" ]; then
+            echo "Root package.json version ($ROOT_VERSION) must match packages/desktop/package.json ($DESKTOP_VERSION)." >&2
+            exit 1
+          fi
+
+          if ! [[ "$ROOT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release version must be plain semver x.y.z, got: $ROOT_VERSION" >&2
+            exit 1
+          fi
+
+          LATEST_VERSION="$(gh release list --exclude-drafts --exclude-pre-releases --limit 100 --json tagName --jq '.[].tagName' \
+            | sed -n 's/^v//p' \
+            | sort -V \
+            | tail -1)"
+
+          node - "$ROOT_VERSION" "$LATEST_VERSION" <<'NODE'
+          const current = process.argv[2]
+          const latest = process.argv[3]
+          const parse = (version) => version.split('.').map(Number)
+
+          if (!latest)
+            process.exit(0)
+
+          const [currentMajor, currentMinor, currentPatch] = parse(current)
+          const [latestMajor, latestMinor, latestPatch] = parse(latest)
+          const diff = currentMajor - latestMajor || currentMinor - latestMinor || currentPatch - latestPatch
+
+          if (diff <= 0) {
+            console.error(`Release version ${current} must be greater than the latest published release ${latest}.`)
+            process.exit(1)
+          }
+          NODE
+
+          echo "version=$ROOT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$ROOT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Release version: $ROOT_VERSION"
+
+  draft:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Ensure draft release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --title "$TAG" --notes "kinora $TAG"
+
+  desktop:
+    needs: [validate, draft]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build trace viewer + desktop
+        shell: bash
+        run: |
+          pnpm --filter @kinora/trace-viewer build
+          pnpm --filter @kinora/desktop build
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_DESKTOP_PROJECT }}
+          # Bundled trace viewer reports to the desktop project (public DSN, same as config.ts).
+          VITE_KINORA_SENTRY_DSN: https://c310f2e5a017909d63b1977ea90149a9@o1155685.ingest.us.sentry.io/4511622840451072
+
+      - name: Package, sign, notarize, publish
+        working-directory: packages/desktop
+        run: pnpm exec electron-builder --${{ matrix.platform }} --publish always
+        env:
+          # mac-only signing/notarization; empty elsewhere so electron-builder ships
+          # win/linux unsigned (no code-signing cert yet).
+          CSC_LINK: ${{ matrix.platform == 'mac' && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'mac' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.platform == 'mac' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'mac' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'mac' && secrets.APPLE_TEAM_ID || '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker-build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: server
+            dockerfile: packages/server/Dockerfile
+            args: ''
+          - name: web
+            dockerfile: packages/web/Dockerfile
+            # Self-host is single-origin: bake the reverse-proxy config, leave the server URL unset.
+            args: NGINX_CONF=selfhost/nginx.conf
+        platform:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pushed by digest only: the tags are applied by the manifest job below.
+      - name: Build ${{ matrix.image.name }} (${{ matrix.platform.arch }})
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.image.dockerfile }}
+          build-args: ${{ matrix.image.args }}
+          platforms: linux/${{ matrix.platform.arch }}
+          # Attestations would add manifests that imagetools can't fold into the arch list.
+          provenance: false
+          outputs: type=image,name=ghcr.io/kinora-dev/kinora-${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ matrix.image.name }}-${{ matrix.platform.arch }}"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digest-${{ matrix.image.name }}-${{ matrix.platform.arch }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  docker-manifest:
+    needs: [validate, desktop, docker-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        image: [server, web]
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: digest-${{ matrix.image }}-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag the multi-arch manifest
+        env:
+          IMAGE: ghcr.io/kinora-dev/kinora-${{ matrix.image }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          MOVE_LATEST: ${{ inputs.latest }}
+        run: |
+          set -euo pipefail
+          tags=(-t "$IMAGE:$VERSION")
+          if [ "$MOVE_LATEST" = 'true' ]; then
+            tags+=(-t "$IMAGE:latest")
+          fi
+          sources=()
+          for digest in /tmp/digests/*; do
+            sources+=("$IMAGE@$(cat "$digest")")
+          done
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+          docker buildx imagetools inspect "$IMAGE:$VERSION"
