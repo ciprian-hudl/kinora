@@ -1,8 +1,9 @@
 name: Release
 
-# Manual global release: bump package.json and packages/desktop/package.json to the same
-# new version, then run this workflow. It publishes the desktop assets to a draft
-# GitHub Release and the self-host Docker images to GHCR with the same version.
+# Automatic global release: bump package.json and packages/desktop/package.json to the
+# same new version, then push a commit with subject `release: x.y.z`. After CI passes
+# on main, this publishes the desktop assets to a draft GitHub Release and the
+# self-host Docker images to GHCR with the same version.
 on:
   workflow_dispatch:
     inputs:
@@ -10,6 +11,11 @@ on:
         description: Also move the Docker `latest` tag to this build
         type: boolean
         default: true
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
 
 permissions:
   contents: write
@@ -21,12 +27,16 @@ concurrency:
 
 jobs:
   validate:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     outputs:
+      should_release: ${{ steps.version.outputs.should_release }}
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Validate release version
         id: version
@@ -36,6 +46,23 @@ jobs:
           set -euo pipefail
           ROOT_VERSION="$(node -p "require('./package.json').version")"
           DESKTOP_VERSION="$(node -p "require('./packages/desktop/package.json').version")"
+
+          if [ "$GITHUB_EVENT_NAME" = 'workflow_run' ]; then
+            SUBJECT="$(git log -1 --pretty=%s)"
+            echo "Commit subject: $SUBJECT"
+
+            if [[ ! "$SUBJECT" =~ ^release:\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "Commit subject does not match ^release: x.y.z, skipping release."
+              exit 0
+            fi
+
+            COMMIT_VERSION="${BASH_REMATCH[1]}"
+            if [ "$ROOT_VERSION" != "$COMMIT_VERSION" ]; then
+              echo "Commit subject version ($COMMIT_VERSION) must match package.json version ($ROOT_VERSION)." >&2
+              exit 1
+            fi
+          fi
 
           if [ "$ROOT_VERSION" != "$DESKTOP_VERSION" ]; then
             echo "Root package.json version ($ROOT_VERSION) must match packages/desktop/package.json ($DESKTOP_VERSION)." >&2
@@ -70,15 +97,19 @@ jobs:
           }
           NODE
 
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
           echo "version=$ROOT_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$ROOT_VERSION" >> "$GITHUB_OUTPUT"
           echo "Release version: $ROOT_VERSION"
 
   draft:
     needs: validate
+    if: ${{ needs.validate.outputs.should_release == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Ensure draft release exists
         env:
@@ -91,6 +122,7 @@ jobs:
 
   desktop:
     needs: [validate, draft]
+    if: ${{ needs.validate.outputs.should_release == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -105,6 +137,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
@@ -182,6 +216,7 @@ jobs:
 
   docker-build:
     needs: validate
+    if: ${{ needs.validate.outputs.should_release == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -202,6 +237,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -237,6 +274,7 @@ jobs:
 
   docker-manifest:
     needs: [validate, desktop, docker-build]
+    if: ${{ needs.validate.outputs.should_release == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -265,7 +303,11 @@ jobs:
         run: |
           set -euo pipefail
           tags=(-t "$IMAGE:$VERSION")
-          if [ "$MOVE_LATEST" = 'true' ]; then
+          move_latest='true'
+          if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ]; then
+            move_latest="$MOVE_LATEST"
+          fi
+          if [ "$move_latest" = 'true' ]; then
             tags+=(-t "$IMAGE:latest")
           fi
           sources=()
