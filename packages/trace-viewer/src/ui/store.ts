@@ -19,9 +19,11 @@ export interface SnapshotInfo {
 }
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
+type LoadErrorKind = 'generic' | 'unsupported-trace-version'
 
 const status = ref<Status>('idle')
 const errorMessage = ref('')
+const errorKind = ref<LoadErrorKind>('generic')
 const traceUri = ref('')
 // Display name for a trace opened from disk; remote traces show their URL instead.
 const traceName = ref('')
@@ -63,13 +65,14 @@ async function registerServiceWorker(): Promise<void> {
 
 async function load(uri: string, name = ''): Promise<void> {
   status.value = 'loading'
+  errorKind.value = 'generic'
   traceUri.value = uri
   traceName.value = name
   try {
     await registerServiceWorker()
     const res = await fetch(`contexts?trace=${encodeURIComponent(uri)}`)
     if (!res.ok)
-      throw new Error(await res.text())
+      throw new Error(await parseErrorResponse(res))
     const contexts = await res.json() as ContextEntry[]
     const m = new TraceModel(uri, contexts)
     model.value = m
@@ -89,8 +92,24 @@ async function load(uri: string, name = ''): Promise<void> {
   }
   catch (err: any) {
     errorMessage.value = err?.message ?? String(err)
+    errorKind.value = isUnsupportedTraceVersion(errorMessage.value) ? 'unsupported-trace-version' : 'generic'
     status.value = 'error'
   }
+}
+
+async function parseErrorResponse(res: Response): Promise<string> {
+  const text = await res.text()
+  try {
+    const data = JSON.parse(text) as { error?: string, message?: string }
+    return data.error ?? data.message ?? text
+  }
+  catch {
+    return text
+  }
+}
+
+function isUnsupportedTraceVersion(message: string): boolean {
+  return message.includes('created by a newer version of Playwright') || message.includes('newer version of Playwright')
 }
 
 // Opening a trace from disk stays entirely client-side: the object URL is fetched
@@ -208,6 +227,7 @@ export function useTraceStore() {
   return {
     status,
     errorMessage,
+    errorKind,
     traceUri,
     traceName,
     model,
