@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import type { DetailTab } from '../store'
 import { cn } from '@kinora/ui'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { resourcesForAction } from '../lib/network'
 import { useTraceStore } from '../store'
 import AnnotationsView from './AnnotationsView.vue'
@@ -14,15 +15,6 @@ import NetworkView from './NetworkView.vue'
 import SourceView from './SourceView.vue'
 
 const store = useTraceStore()
-const TAB_IDS = ['source', 'call', 'log', 'network', 'attachments', 'errors', 'console', 'metadata', 'annotations'] as const
-type Tab = typeof TAB_IDS[number]
-
-function initialTab(): Tab {
-  const tab = new URLSearchParams(window.location.search).get('tab')
-  return TAB_IDS.find(id => id === tab) ?? 'source'
-}
-
-const active = ref<Tab>(initialTab())
 
 const errorCount = computed(() => store.model.value?.errorDescriptors.length ?? 0)
 const consoleCount = computed(() => {
@@ -37,7 +29,7 @@ const networkCount = computed(() =>
 const attachmentCount = computed(() => store.model.value?.visibleAttachments.length ?? 0)
 const annotationCount = computed(() => store.model.value?.annotations?.length ?? 0)
 
-const tabs = computed<{ id: Tab, label: string, count?: number }[]>(() => [
+const tabs = computed<{ id: DetailTab, label: string, count?: number }[]>(() => [
   { id: 'source', label: 'Source' },
   { id: 'call', label: 'Call' },
   { id: 'log', label: 'Log' },
@@ -59,9 +51,9 @@ const tabs = computed<{ id: Tab, label: string, count?: number }[]>(() => [
         type="button"
         :class="cn(
           'relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors',
-          active === t.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+          store.detailTab.value === t.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
         )"
-        @click="active = t.id"
+        @click="store.setDetailTab(t.id)"
       >
         {{ t.label }}
         <span
@@ -72,20 +64,20 @@ const tabs = computed<{ id: Tab, label: string, count?: number }[]>(() => [
           )"
         >{{ t.count }}</span>
         <span
-          v-if="active === t.id"
+          v-if="store.detailTab.value === t.id"
           class="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-signal"
         />
       </button>
     </div>
     <div class="min-h-0 flex-1">
-      <SourceView v-if="active === 'source'" />
-      <CallView v-else-if="active === 'call'" />
-      <LogView v-else-if="active === 'log'" />
-      <NetworkView v-else-if="active === 'network'" />
-      <AttachmentsView v-else-if="active === 'attachments'" />
-      <ErrorsView v-else-if="active === 'errors'" />
-      <ConsoleView v-else-if="active === 'console'" />
-      <MetadataView v-else-if="active === 'metadata'" />
+      <SourceView v-if="store.detailTab.value === 'source'" />
+      <CallView v-else-if="store.detailTab.value === 'call'" />
+      <LogView v-else-if="store.detailTab.value === 'log'" />
+      <NetworkView v-else-if="store.detailTab.value === 'network'" />
+      <AttachmentsView v-else-if="store.detailTab.value === 'attachments'" />
+      <ErrorsView v-else-if="store.detailTab.value === 'errors'" />
+      <ConsoleView v-else-if="store.detailTab.value === 'console'" />
+      <MetadataView v-else-if="store.detailTab.value === 'metadata'" />
       <AnnotationsView v-else />
     </div>
   </div>

@@ -1,4 +1,5 @@
 import type { ActionEntry, ContextEntry } from '@isomorphic/trace/entries'
+import type { StackFrame } from '@trace/trace'
 import type { Snapshot, SnapshotTab } from './lib/snapshots'
 import type { TimeRange } from './lib/timeline'
 import { buildActionTree, TraceModel } from '@isomorphic/trace/traceModel'
@@ -18,8 +19,16 @@ export interface SnapshotInfo {
   viewport?: { width: number, height: number }
 }
 
+export const DETAIL_TABS = ['source', 'call', 'log', 'network', 'attachments', 'errors', 'console', 'metadata', 'annotations'] as const
+export type DetailTab = typeof DETAIL_TABS[number]
+
 type Status = 'idle' | 'loading' | 'ready' | 'error'
 type LoadErrorKind = 'generic' | 'unsupported-trace-version'
+
+interface SourceReveal {
+  stack: StackFrame[]
+  version: number
+}
 
 const status = ref<Status>('idle')
 const errorMessage = ref('')
@@ -33,10 +42,18 @@ const collapsed = ref<Set<string>>(new Set())
 const selectedId = ref<string | null>(null)
 const snapshotTab = ref<SnapshotTab>('action')
 const snapshotInfo = ref<SnapshotInfo>({})
+const detailTab = ref<DetailTab>(initialDetailTab())
+const sourceReveal = ref<SourceReveal | null>(null)
 const playing = ref(false)
 // When set, a brushed time window that filters/zooms every tab; null = follow the selected action.
 const timeRange = ref<TimeRange | null>(null)
 let playTimer: ReturnType<typeof setInterval> | undefined
+let sourceRevealVersion = 0
+
+function initialDetailTab(): DetailTab {
+  const tab = new URLSearchParams(globalThis.location?.search ?? '').get('tab')
+  return DETAIL_TABS.find(id => id === tab) ?? 'source'
+}
 
 function flatten(m: TraceModel): ActionItem[] {
   const { rootItem } = buildActionTree(m.actions)
@@ -79,6 +96,7 @@ async function load(uri: string, name = ''): Promise<void> {
     items.value = flatten(m)
     collapsed.value = new Set()
     timeRange.value = null
+    sourceReveal.value = null
     // Default selection: failed action, else the last page action with a
     // snapshot (most representative page state), else the first action.
     const failed = m.failedAction()
@@ -170,16 +188,26 @@ function clearTimeRange(): void {
 
 function select(id: string): void {
   selectedId.value = id
+  sourceReveal.value = null
 }
 
 function step(delta: number): void {
   const next = selectedIndex.value + delta
   if (next >= 0 && next < items.value.length)
-    selectedId.value = items.value[next].id
+    select(items.value[next].id)
 }
 
 function setTab(tab: SnapshotTab): void {
   snapshotTab.value = tab
+}
+
+function setDetailTab(tab: DetailTab): void {
+  detailTab.value = tab
+}
+
+function revealSource(stack: StackFrame[]): void {
+  sourceReveal.value = { stack, version: ++sourceRevealVersion }
+  detailTab.value = 'source'
 }
 
 function stopPlay(): void {
@@ -243,6 +271,8 @@ export function useTraceStore() {
     currentSnapshot,
     currentSnapshotUrl,
     snapshotInfo,
+    detailTab,
+    sourceReveal,
     playing,
     timeRange,
     boundaries,
@@ -251,6 +281,8 @@ export function useTraceStore() {
     select,
     step,
     setTab,
+    setDetailTab,
+    revealSource,
     togglePlay,
     setTimeRange,
     clearTimeRange,
