@@ -50,12 +50,29 @@ test('network tab lists requests and previews a response body', async ({ page })
   await expect(page.getByText('font-family')).toBeVisible()
 })
 
+test('network tab can show all requests in the trace', async ({ page }) => {
+  await page.getByTestId('action').first().click()
+  await page.getByRole('button', { name: /^Network/ }).click()
+  await expect(page.getByText('No network for this action')).toBeVisible()
+  await page.getByRole('button', { name: 'All', exact: true }).click()
+  await expect(page.getByTestId('net-row').filter({ hasText: 'style.css' })).toBeVisible()
+})
+
 test('network copy menu offers cURL and fetch', async ({ page }) => {
   await page.getByRole('button', { name: /^Network/ }).click()
   await page.getByTestId('net-row').first().click()
   await page.getByRole('button', { name: 'Copy' }).click()
   await expect(page.getByRole('menuitem', { name: 'Copy as cURL' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: 'Copy as fetch' })).toBeVisible()
+})
+
+test('console tab can show all messages in the trace', async ({ page }) => {
+  await page.getByTestId('action').first().click()
+  await page.getByRole('button', { name: /^Console/ }).click()
+  await expect(page.getByText('No console output for this action')).toBeVisible()
+  await page.getByRole('button', { name: 'All', exact: true }).click()
+  await expect(page.getByText('submit clicked, name = Joris')).toBeVisible()
+  await expect(page.getByText('this is a console warning')).toBeVisible()
 })
 
 test('attachments tab previews the screenshot', async ({ page }) => {

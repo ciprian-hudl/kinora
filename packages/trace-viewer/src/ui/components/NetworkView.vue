@@ -9,7 +9,7 @@ import { ChevronDown, ChevronUp, Copy } from '@lucide/vue'
 import { getCoreRowModel, getSortedRowModel, useVueTable } from '@tanstack/vue-table'
 import { useStorage } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
-import { bodyUrl, formatSize, prettyJson, RESOURCE_CATEGORIES, resourcesForAction, resourcesInWindow, statusClass, toCurl, toFetch } from '../lib/network'
+import { allResources, bodyUrl, formatSize, prettyJson, RESOURCE_CATEGORIES, resourcesForAction, resourcesInWindow, statusClass, toCurl, toFetch } from '../lib/network'
 import { useTraceStore } from '../store'
 import FilterInput from './FilterInput.vue'
 import TextTooltip from './TextTooltip.vue'
@@ -19,17 +19,22 @@ const store = useTraceStore()
 // Persisted [table, detail] widths (percentages); applied only while a row is selected.
 const netCols = useStorage('kinora-tv-net-cols', [62, 38])
 
+type Scope = 'selected' | 'all'
+
 const search = ref('')
 const activeCats = ref<Set<ResourceCategory>>(new Set())
 const sorting = ref<SortingState>([])
 const selectedId = ref<string | null>(null)
+const scope = ref<Scope>('selected')
 
 const rows = computed(() => {
   const resources = store.model.value?.resources ?? []
   const range = store.timeRange.value
   const all = range
     ? resourcesInWindow(resources, range)
-    : resourcesForAction(resources, store.selectedAction.value)
+    : scope.value === 'all'
+      ? allResources(resources)
+      : resourcesForAction(resources, store.selectedAction.value)
   const q = search.value.trim().toLowerCase()
   return all.filter(r =>
     (!q || r.url.toLowerCase().includes(q))
@@ -104,6 +109,12 @@ function toggleCat(cat: ResourceCategory): void {
   activeCats.value = next
 }
 
+const emptyMessage = computed(() => {
+  if (store.timeRange.value)
+    return 'No network in range'
+  return scope.value === 'all' ? 'No network in this trace' : 'No network for this action'
+})
+
 const alignEnd = new Set(['size', 'duration', 'status'])
 </script>
 
@@ -111,6 +122,28 @@ const alignEnd = new Set(['size', 'duration', 'status'])
   <div class="flex h-full flex-col">
     <!-- filters -->
     <div class="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
+      <div v-if="!store.timeRange.value" class="flex shrink-0 items-center rounded-md bg-muted/60 p-0.5">
+        <button
+          type="button"
+          :class="cn(
+            'rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
+            scope === 'selected' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )"
+          @click="scope = 'selected'"
+        >
+          Selected
+        </button>
+        <button
+          type="button"
+          :class="cn(
+            'rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
+            scope === 'all' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )"
+          @click="scope = 'all'"
+        >
+          All
+        </button>
+      </div>
       <FilterInput v-model="search" placeholder="Filter network" class="w-48" />
       <div class="flex items-center gap-1">
         <button
@@ -130,7 +163,7 @@ const alignEnd = new Set(['size', 'duration', 'status'])
     </div>
 
     <div v-if="!rows.length" class="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-      {{ store.timeRange.value ? 'No network in range' : 'No network for this action' }}
+      {{ emptyMessage }}
     </div>
 
     <ResizablePanelGroup

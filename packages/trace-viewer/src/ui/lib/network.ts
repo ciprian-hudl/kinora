@@ -88,6 +88,10 @@ export function resourcesForAction(
   return resources.filter(r => r._monotonicTime !== undefined && r._monotonicTime <= end).map(toNetworkRow)
 }
 
+export function allResources(resources: ResourceEntry[]): NetworkRow[] {
+  return resources.map(toNetworkRow)
+}
+
 // Network requests whose start falls inside a brushed time window.
 export function resourcesInWindow(
   resources: ResourceEntry[],
