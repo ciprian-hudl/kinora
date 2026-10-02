@@ -32,6 +32,15 @@ test('syntax highlights the source', async ({ page }) => {
   expect(await tokens.count()).toBeGreaterThan(20)
 })
 
+test('action group filters hide noisy actions', async ({ page }) => {
+  const before = await page.getByTestId('action').count()
+  await page.getByRole('button', { name: 'Filter actions' }).click()
+  await page.getByRole('menuitemcheckbox', { name: /Network routes/ }).click()
+
+  await expect(page.getByText('4 hidden')).toBeVisible()
+  expect(await page.getByTestId('action').count()).toBe(before - 4)
+})
+
 test('network tab lists requests and previews a response body', async ({ page }) => {
   await page.getByRole('button', { name: /^Network/ }).click()
   const rows = page.getByTestId('net-row')

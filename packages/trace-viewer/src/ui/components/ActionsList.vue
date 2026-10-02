@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { ActionEntry } from '@isomorphic/trace/entries'
 import { cn } from '@kinora/ui'
-import { Check, ChevronRight, X } from '@lucide/vue'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@kinora/ui/dropdown-menu'
+import { Check, ChevronRight, Filter, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { actionDuration, actionStatus, actionTitle } from '../lib/action'
 import { formatMs } from '../lib/format'
@@ -12,7 +14,45 @@ import TextTooltip from './TextTooltip.vue'
 const store = useTraceStore()
 const filter = ref('')
 
+const ACTION_GROUPS = ['getter', 'route', 'configuration'] as const
+type ActionGroup = typeof ACTION_GROUPS[number]
+
+const groupLabels: Record<ActionGroup, string> = {
+  getter: 'Getters',
+  route: 'Network routes',
+  configuration: 'Configuration',
+}
+
+const visibleGroups = ref<Set<ActionGroup>>(new Set(ACTION_GROUPS))
+
 const filtering = computed(() => filter.value.trim().length > 0)
+
+function groupFor(action: ActionEntry): ActionGroup | undefined {
+  return ACTION_GROUPS.find(group => group === action.group)
+}
+
+function actionPassesGroup(action: ActionEntry): boolean {
+  const group = groupFor(action)
+  return !group || visibleGroups.value.has(group)
+}
+
+function setGroup(group: ActionGroup, checked: boolean): void {
+  const next = new Set(visibleGroups.value)
+  if (checked)
+    next.add(group)
+  else
+    next.delete(group)
+  visibleGroups.value = next
+}
+
+const hiddenByGroupCount = computed(() => store.items.value.filter(item => !actionPassesGroup(item.action)).length)
+
+const groupRows = computed(() => ACTION_GROUPS.map(group => ({
+  group,
+  label: groupLabels[group],
+  count: store.model.value?.actionCounters.get(group) ?? 0,
+  checked: visibleGroups.value.has(group),
+})))
 
 const rows = computed(() => {
   const f = filter.value.trim().toLowerCase()
@@ -20,6 +60,7 @@ const rows = computed(() => {
   // While filtering or zoomed, search the full flat list; otherwise follow collapse state.
   const source = f || range ? store.items.value : store.visibleItems.value
   return source
+    .filter(item => actionPassesGroup(item.action))
     .filter(item => !range || actionInWindow(item.action, range))
     .map(item => ({
       item,
@@ -29,6 +70,13 @@ const rows = computed(() => {
     }))
     .filter(r => !f || r.title.toLowerCase().includes(f))
 })
+
+const countLabel = computed(() => {
+  const total = store.items.value.length
+  return rows.value.length === total && !filtering.value && !store.timeRange.value
+    ? String(total)
+    : `${rows.value.length} / ${total}`
+})
 </script>
 
 <template>
@@ -36,12 +84,36 @@ const rows = computed(() => {
     <div class="flex h-11 shrink-0 items-center border-b border-border px-3">
       <div class="flex items-baseline gap-2">
         <span class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Actions</span>
-        <span class="font-mono text-[11px] text-muted-foreground/70">{{ store.timeRange.value ? `${rows.length} / ${store.items.value.length}` : store.items.value.length }}</span>
+        <span class="font-mono text-[11px] text-muted-foreground/70">{{ countLabel }}</span>
+        <span v-if="hiddenByGroupCount" class="font-mono text-[11px] text-muted-foreground/70">{{ hiddenByGroupCount }} hidden</span>
       </div>
     </div>
 
-    <div class="flex h-12 shrink-0 items-center border-b border-border px-2">
-      <FilterInput v-model="filter" placeholder="Filter actions" class="w-full" />
+    <div class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2">
+      <FilterInput v-model="filter" placeholder="Filter actions" class="min-w-0 flex-1" />
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          class="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Filter actions"
+          title="Filter actions"
+        >
+          <Filter class="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" class="w-52">
+          <DropdownMenuLabel>Show action groups</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem
+            v-for="row in groupRows"
+            :key="row.group"
+            :model-value="row.checked"
+            :disabled="row.count === 0"
+            @update:model-value="setGroup(row.group, $event)"
+          >
+            <span class="min-w-0 flex-1">{{ row.label }}</span>
+            <span class="ml-auto font-mono text-[11px] text-muted-foreground">{{ row.count }}</span>
+          </DropdownMenuCheckboxItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto py-1">
