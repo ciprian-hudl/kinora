@@ -3,16 +3,18 @@ import { cn } from '@kinora/ui'
 import { computed, ref } from 'vue'
 import { resourcesForAction } from '../lib/network'
 import { useTraceStore } from '../store'
+import AnnotationsView from './AnnotationsView.vue'
 import AttachmentsView from './AttachmentsView.vue'
 import CallView from './CallView.vue'
 import ConsoleView from './ConsoleView.vue'
 import ErrorsView from './ErrorsView.vue'
 import LogView from './LogView.vue'
+import MetadataView from './MetadataView.vue'
 import NetworkView from './NetworkView.vue'
 import SourceView from './SourceView.vue'
 
 const store = useTraceStore()
-const TAB_IDS = ['source', 'call', 'log', 'network', 'attachments', 'errors', 'console'] as const
+const TAB_IDS = ['source', 'call', 'log', 'network', 'attachments', 'errors', 'console', 'metadata', 'annotations'] as const
 type Tab = typeof TAB_IDS[number]
 
 function initialTab(): Tab {
@@ -33,6 +35,7 @@ const networkCount = computed(() =>
   resourcesForAction(store.model.value?.resources ?? [], store.selectedAction.value).length,
 )
 const attachmentCount = computed(() => store.model.value?.visibleAttachments.length ?? 0)
+const annotationCount = computed(() => store.model.value?.annotations?.length ?? 0)
 
 const tabs = computed<{ id: Tab, label: string, count?: number }[]>(() => [
   { id: 'source', label: 'Source' },
@@ -42,12 +45,14 @@ const tabs = computed<{ id: Tab, label: string, count?: number }[]>(() => [
   { id: 'attachments', label: 'Attachments', count: attachmentCount.value },
   { id: 'errors', label: 'Errors', count: errorCount.value },
   { id: 'console', label: 'Console', count: consoleCount.value },
+  { id: 'metadata', label: 'Metadata' },
+  { id: 'annotations', label: 'Annotations', count: annotationCount.value },
 ])
 </script>
 
 <template>
   <div class="flex h-full flex-col">
-    <div class="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
+    <div class="flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-2">
       <button
         v-for="t in tabs"
         :key="t.id"
@@ -79,7 +84,9 @@ const tabs = computed<{ id: Tab, label: string, count?: number }[]>(() => [
       <NetworkView v-else-if="active === 'network'" />
       <AttachmentsView v-else-if="active === 'attachments'" />
       <ErrorsView v-else-if="active === 'errors'" />
-      <ConsoleView v-else />
+      <ConsoleView v-else-if="active === 'console'" />
+      <MetadataView v-else-if="active === 'metadata'" />
+      <AnnotationsView v-else />
     </div>
   </div>
 </template>

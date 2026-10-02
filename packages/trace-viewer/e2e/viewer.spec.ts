@@ -55,6 +55,19 @@ test('attachments tab previews the screenshot', async ({ page }) => {
   await expect(page.getByText('note', { exact: true })).toBeVisible()
 })
 
+test('metadata tab shows trace environment details', async ({ page }) => {
+  await page.getByRole('button', { name: 'Metadata' }).click()
+  await expect(page.getByRole('heading', { name: 'Browser' })).toBeVisible()
+  await expect(page.getByText('playwright version')).toBeVisible()
+  await expect(page.getByText('1.60.0')).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'actions' })).toBeVisible()
+})
+
+test('annotations tab shows the empty state', async ({ page }) => {
+  await page.getByRole('button', { name: 'Annotations' }).click()
+  await expect(page.getByText('No annotations')).toBeVisible()
+})
+
 test('filmstrip renders screencast frames', async ({ page }) => {
   await expect(page.locator('img[src*="file/"]').first()).toBeVisible()
 })
