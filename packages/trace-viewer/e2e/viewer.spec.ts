@@ -102,9 +102,17 @@ test('action group filters hide noisy actions', async ({ page }) => {
   expect(await page.getByTestId('action').count()).toBe(before - 4)
 })
 
+test('timeline hover shows action details', async ({ page }) => {
+  await page.locator('[data-testid="action-segment"][aria-label*=\'Fill "alex@example.com"\']').hover()
+
+  await expect(page.getByTestId('timeline-hover-card')).toContainText('Fill "alex@example.com"')
+  await expect(page.getByTestId('timeline-hover-card')).toContainText(/\d+ms/)
+})
+
 test('double-clicking an action zooms to its time range', async ({ page }) => {
   await page.getByTestId('action').filter({ hasText: 'Fill "alex@example.com"' }).dblclick()
   await expect(page.getByTestId('reset-zoom')).toBeVisible()
+  await expect(page.getByTestId('reset-zoom')).toContainText(/\d+ms - \d+ms/)
 })
 
 test('network tab lists requests and previews a response body', async ({ page }) => {

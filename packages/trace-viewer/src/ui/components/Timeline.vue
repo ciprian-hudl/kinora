@@ -2,7 +2,8 @@
 import { cn } from '@kinora/ui'
 import { ChevronLeft, ChevronRight, Pause, Play, ZoomOut } from '@lucide/vue'
 import { computed, ref } from 'vue'
-import { actionStatus, actionTitle } from '../lib/action'
+import { actionDuration, actionStatus, actionTitle } from '../lib/action'
+import { formatMs } from '../lib/format'
 import { xToTime } from '../lib/timeline'
 import { useTraceStore } from '../store'
 
@@ -25,13 +26,13 @@ const segments = computed(() => {
       const a = item.action
       const start = a.startTime ?? min
       const end = a.endTime ?? start
-      return { id: item.id, start, end, status: actionStatus(a) }
+      return { duration: formatMs(actionDuration(a)), end, id: item.id, start, status: actionStatus(a), title: actionTitle(a) }
     })
     .filter(s => s.end >= min && s.start <= max)
     .map((s) => {
       const left = ((Math.max(s.start, min) - min) / span) * 100
       const width = Math.max(0.4, ((Math.min(s.end, max) - Math.max(s.start, min)) / span) * 100)
-      return { id: s.id, left, width, status: s.status }
+      return { duration: s.duration, end: s.end, id: s.id, left, start: s.start, status: s.status, title: s.title, width }
     })
 })
 
@@ -128,6 +129,24 @@ const currentTitle = computed(() =>
   store.selectedAction.value ? actionTitle(store.selectedAction.value) : 'No action selected',
 )
 const position = computed(() => `${store.selectedIndex.value + 1} / ${store.items.value.length}`)
+const hoveredDetails = computed(() => {
+  const id = store.hoveredActionId.value
+  const segment = segments.value.find(segment => segment.id === id)
+  if (!segment)
+    return null
+  return {
+    ...segment,
+    left: Math.min(86, Math.max(0, segment.left)),
+    range: `${formatMs(segment.start - bounds.value.min)} - ${formatMs(segment.end - bounds.value.min)}`,
+  }
+})
+const rangeLabel = computed(() => {
+  const range = store.timeRange.value
+  const model = store.model.value
+  if (!range || !model)
+    return ''
+  return `${formatMs(range.start - model.startTime)} - ${formatMs(range.end - model.startTime)}`
+})
 const scrubberValue = computed({
   get: () => Math.max(0, store.selectedIndex.value),
   set: value => store.selectIndex(Number(value)),
@@ -210,11 +229,11 @@ function seekToTime(t: number): void {
         v-if="store.timeRange.value"
         type="button"
         data-testid="reset-zoom"
-        class="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        class="flex shrink-0 items-center gap-1 rounded-md border border-signal/30 bg-signal/10 px-1.5 py-1 text-[11px] text-signal transition-colors hover:bg-signal/15"
         title="Reset zoom"
         @click="store.clearTimeRange"
       >
-        <ZoomOut class="size-3.5" /> Reset
+        <ZoomOut class="size-3.5" /> {{ rangeLabel }}
       </button>
       <div class="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
         {{ position }}
@@ -253,6 +272,8 @@ function seekToTime(t: number): void {
             (store.selectedId.value === seg.id || store.hoveredActionId.value === seg.id) && 'ring-2 ring-signal ring-offset-1 ring-offset-background z-10',
           )"
           :style="{ left: `${seg.left}%`, width: `${seg.width}%` }"
+          :title="`${seg.title} · ${seg.duration}`"
+          :aria-label="`${seg.title} ${seg.duration}`"
           @click="selectSegment(seg.id)"
           @dblclick.stop="store.zoomToAction(store.items.value.find(item => item.id === seg.id)!.action)"
           @mouseenter="store.setHoveredAction(seg.id)"
@@ -270,6 +291,21 @@ function seekToTime(t: number): void {
           @mouseenter="store.setHoveredAction(marker.id)"
           @mouseleave="store.setHoveredAction(null)"
         />
+        <div
+          v-if="hoveredDetails"
+          data-testid="timeline-hover-card"
+          class="pointer-events-none absolute bottom-full z-30 mb-1 w-56 rounded-md border border-border bg-popover p-2 text-xs shadow-lg"
+          :style="{ left: `${hoveredDetails.left}%` }"
+        >
+          <div class="truncate font-medium text-foreground">
+            {{ hoveredDetails.title }}
+          </div>
+          <div class="mt-1 flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
+            <span>{{ hoveredDetails.duration }}</span>
+            <span>{{ hoveredDetails.range }}</span>
+            <span :class="hoveredDetails.status === 'error' ? 'text-fail' : hoveredDetails.status === 'step' ? 'text-muted-foreground' : 'text-pass'">{{ hoveredDetails.status }}</span>
+          </div>
+        </div>
         <div
           v-if="brush"
           class="pointer-events-none absolute inset-y-0 border-x border-signal bg-signal/20"
