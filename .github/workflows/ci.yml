@@ -36,6 +36,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Check vendored Playwright trace viewer
+        run: pnpm vendor:playwright-trace:check
+
       - name: Lint
         run: pnpm lint
 
