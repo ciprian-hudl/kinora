@@ -1,0 +1,42 @@
+import { expect, test } from '@playwright/test'
+
+async function openTrace(page: import('@playwright/test').Page, fixture: string): Promise<void> {
+  await page.goto(`/?trace=fixtures/${fixture}`)
+  await expect(page.getByTestId('action').first()).toBeVisible()
+}
+
+test('generated iframe fixture replays nested frame snapshots', async ({ page }) => {
+  await openTrace(page, 'iframe-trace.zip')
+
+  await expect(page.getByTestId('action').filter({ hasText: 'Fill "Alex Example"' })).toBeVisible()
+  await expect(page.frameLocator('iframe[name="snapshot"]').frameLocator('iframe[title="Payment frame"]').getByText('Paid inside iframe')).toBeVisible()
+})
+
+test('generated popup fixture exposes popup actions', async ({ page }) => {
+  await openTrace(page, 'popup-trace.zip')
+
+  await expect(page.getByTestId('action').filter({ hasText: 'Click' })).toHaveCount(2)
+  await expect(page.frameLocator('iframe[name="snapshot"]').getByRole('heading', { name: 'Receipt popup' })).toBeVisible()
+})
+
+test('generated network fixture covers post bodies and error statuses', async ({ page }) => {
+  await openTrace(page, 'network-rich-trace.zip')
+
+  await page.getByRole('button', { name: /^Network/ }).click()
+  await page.getByRole('button', { name: 'All', exact: true }).click()
+
+  await expect(page.getByTestId('net-row').filter({ hasText: 'checkout' })).toBeVisible()
+  await expect(page.getByTestId('net-row').filter({ hasText: 'missing' })).toBeVisible()
+  await expect(page.getByTestId('net-row').filter({ hasText: 'error' })).toBeVisible()
+  await expect(page.getByText('404')).toBeVisible()
+  await expect(page.getByText('500')).toBeVisible()
+})
+
+test('generated annotations fixture renders trace annotations', async ({ page }) => {
+  await openTrace(page, 'annotations-trace.zip')
+
+  await page.getByRole('button', { name: 'Annotations' }).click()
+  await expect(page.getByText('issue')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'https://kinora.dev/docs/trace-viewer' })).toBeVisible()
+  await expect(page.getByText('QA platform team')).toBeVisible()
+})

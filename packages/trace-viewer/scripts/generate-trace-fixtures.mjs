@@ -17,6 +17,7 @@ const playwrightBin = path.join(root, 'node_modules/.bin/playwright')
 
 await generateDemoTrace()
 await generateAriaTrace()
+await generateScenarioTraces()
 await sanitizeFixturePaths()
 
 async function generateDemoTrace() {
@@ -149,6 +150,130 @@ button:focus-visible{outline:2px solid #14171f;outline-offset:2px}
   finally {
     await rm(tmp, { force: true, recursive: true })
   }
+}
+
+async function generateScenarioTraces() {
+  await generateTraceFixture('iframe-trace.zip', iframeSpec())
+  await generateTraceFixture('popup-trace.zip', popupSpec())
+  await generateTraceFixture('network-rich-trace.zip', networkRichSpec())
+  await generateTraceFixture('annotations-trace.zip', annotationsSpec())
+}
+
+async function generateTraceFixture(name, spec) {
+  const tmpRoot = process.platform === 'win32' ? os.tmpdir() : '/tmp'
+  const tmp = path.join(tmpRoot, `kinora-trace-fixture-${name.replace(/\.zip$/, '')}`)
+  await rm(tmp, { force: true, recursive: true })
+  await mkdir(tmp, { recursive: true })
+  try {
+    await symlink(path.join(root, 'node_modules'), path.join(tmp, 'node_modules'), 'dir')
+    await writeFile(path.join(tmp, 'playwright.config.mjs'), playwrightConfig())
+    await writeFile(path.join(tmp, 'fixture.spec.ts'), spec)
+    await execFileAsync(playwrightBin, ['test', '--config', 'playwright.config.mjs'], { cwd: tmp })
+    const trace = await findTraceZip(path.join(tmp, 'test-results'))
+    const target = path.join(fixtures, name)
+    await writeFile(target, await readFile(trace))
+    console.log(`Generated ${path.relative(process.cwd(), target)}`)
+  }
+  finally {
+    await rm(tmp, { force: true, recursive: true })
+  }
+}
+
+function playwrightConfig() {
+  return `
+import { defineConfig, devices } from '@playwright/test'
+
+export default defineConfig({
+  testDir: '.',
+  retries: 0,
+  reporter: 'list',
+  use: {
+    ...devices['Desktop Chrome'],
+    trace: 'on',
+  },
+  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+})
+`
+}
+
+function iframeSpec() {
+  return String.raw`
+import { expect, test } from '@playwright/test'
+
+test('iframe checkout support', async ({ page }) => {
+  await page.setContent([
+    '<main>',
+    '<h1>Iframe payment shell</h1>',
+    '<iframe title="Payment frame" srcdoc="<form><label>Card holder <input id=cardholder placeholder=Cardholder></label><button id=pay type=button>Pay invoice</button><p id=status>Waiting</p><script>document.getElementById(&quot;pay&quot;).addEventListener(&quot;click&quot;,()=>{document.getElementById(&quot;status&quot;).textContent=&quot;Paid inside iframe&quot;;console.log(&quot;iframe payment submitted&quot;)})<\/script></form>"></iframe>',
+    '</main>',
+  ].join(''))
+  const frame = page.frameLocator('iframe[title="Payment frame"]')
+  await frame.locator('#cardholder').fill('Alex Example')
+  await frame.getByRole('button', { name: 'Pay invoice' }).click()
+  await expect(frame.getByText('Paid inside iframe')).toBeVisible()
+})
+`
+}
+
+function popupSpec() {
+  return String.raw`
+import { expect, test } from '@playwright/test'
+
+test('popup receipt support', async ({ page, context }) => {
+  await context.route('**/receipt.html', route => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><title>Receipt</title><main><h1>Receipt popup</h1><button id="close">Close receipt</button><script>console.log("popup receipt opened")<\/script></main>',
+  }))
+  await page.setContent('<button id="open">Open receipt</button><script>document.getElementById("open").addEventListener("click",()=>window.open("https://demo.kinora.dev/receipt.html","receipt"))<\/script>', { baseURL: 'https://demo.kinora.dev' })
+  const popupPromise = page.waitForEvent('popup')
+  await page.getByRole('button', { name: 'Open receipt' }).click()
+  const popup = await popupPromise
+  await popup.waitForLoadState('domcontentloaded')
+  await expect(popup.getByRole('heading', { name: 'Receipt popup' })).toBeVisible()
+  await popup.getByRole('button', { name: 'Close receipt' }).click()
+})
+`
+}
+
+function networkRichSpec() {
+  return String.raw`
+import { expect, test } from '@playwright/test'
+
+test('rich network activity', async ({ page }) => {
+  await page.route('**/api/cart', route => route.fulfill({
+    contentType: 'application/json',
+    headers: { 'x-demo': 'cart' },
+    body: JSON.stringify({ plan: 'Pro', seats: 1 }),
+  }))
+  await page.route('**/api/checkout', async (route) => {
+    const post = route.request().postDataJSON()
+    await route.fulfill({
+      contentType: 'application/json',
+      status: 201,
+      headers: { 'x-demo': 'checkout' },
+      body: JSON.stringify({ ok: true, email: post.email }),
+    })
+  })
+  await page.route('**/api/missing', route => route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found' }) }))
+  await page.route('**/api/error', route => route.fulfill({ status: 500, contentType: 'text/plain', body: 'server exploded' }))
+  await page.setContent('<button id="load">Load network</button><pre id="out"></pre><script>document.getElementById("load").addEventListener("click",async()=>{const cart=await fetch("https://demo.kinora.dev/api/cart").then(r=>r.json());const checkout=await fetch("https://demo.kinora.dev/api/checkout",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:"alex@example.com",plan:cart.plan})}).then(r=>r.json());await fetch("https://demo.kinora.dev/api/missing");await fetch("https://demo.kinora.dev/api/error");console.log("network checkout",checkout.email);document.getElementById("out").textContent=checkout.email})<\/script>')
+  await page.getByRole('button', { name: 'Load network' }).click()
+  await expect(page.locator('#out')).toHaveText('alex@example.com')
+})
+`
+}
+
+function annotationsSpec() {
+  return String.raw`
+import { expect, test } from '@playwright/test'
+
+test('annotation metadata support', async ({ page }, testInfo) => {
+  testInfo.annotations.push({ type: 'issue', description: 'https://kinora.dev/docs/trace-viewer' })
+  testInfo.annotations.push({ type: 'owner', description: 'QA platform team' })
+  await page.setContent('<main><h1>Annotated trace</h1><p>Custom annotations are visible in the viewer.</p></main>')
+  await expect(page.getByRole('heading', { name: 'Annotated trace' })).toBeVisible()
+})
+`
 }
 
 async function findTraceZip(dir) {
