@@ -113,6 +113,7 @@ Binary artifacts (trace.zip) go through the `Storage` interface in `src/lib/stor
 
 - **Do not edit or lint the vendored code.** `src/core/**`, `src/sw/**`, `src/sw-main.ts`, and `public/sw.bundle.js` are in eslint's `ignores` (`eslint.config.js`).
 - The service worker is built as a separate step: `build:sw` (`vite.sw.config.ts`) bundles `src/sw-main.ts` into a single IIFE classic script at `public/sw.bundle.js`. `dev` and `build` run `build:sw` first.
+- Generated trace fixtures live in `public/fixtures/` and are refreshed with `pnpm --filter @kinora/trace-viewer fixtures:generate`. Use this when changing fixture scenarios; `aria-trace.zip` is derived from `demo.zip` with an injected `aria-snapshot` event for deterministic ARIA coverage.
 - In prod the viewer is served under `/trace/` (`vite.config.ts` sets `base: '/trace/'` on build); the dashboard links to it via `traceViewerHref` (`web/src/lib/trace.ts`), passing the artifact URL as `?trace=`.
 
 ### Desktop app
