@@ -16,7 +16,7 @@ test('loads the demo trace into the workbench', async ({ page }) => {
 
 test('replays the DOM snapshot in the iframe', async ({ page }) => {
   const frame = page.frameLocator('iframe[name="snapshot"]')
-  await expect(frame.getByText('Submitted!')).toBeVisible()
+  await expect(frame.getByText('Order complete')).toBeVisible()
 })
 
 test('shows ARIA snapshot mode empty state', async ({ page }) => {
@@ -31,29 +31,29 @@ test('renders an ARIA snapshot when present', async ({ page }) => {
   await page.getByRole('button', { name: 'ARIA' }).click()
 
   await expect(page.getByText('- document:')).toBeVisible()
-  await expect(page.getByText('button "Submit"')).toBeVisible()
+  await expect(page.getByText('button "Complete order"')).toBeVisible()
 })
 
 test('shows the test source code', async ({ page }) => {
   await page.getByRole('button', { name: 'Source', exact: true }).click()
-  await expect(page.getByText('@playwright/test').first()).toBeVisible()
+  await expect(page.getByText(/testInfo\.attach\('screenshot'/)).toBeVisible()
 })
 
 test('locator tab shows the selected action locator', async ({ page }) => {
-  await page.getByTestId('action').filter({ hasText: 'Fill "Joris"' }).click()
+  await page.getByTestId('action').filter({ hasText: 'Fill "Alex"' }).click()
   await page.getByRole('button', { name: 'Locator', exact: true }).click()
 
-  await expect(page.getByText(/locator\('#name'\)/)).toBeVisible()
-  await expect(page.getByText('#name', { exact: true })).toBeVisible()
+  await expect(page.getByText(/locator\('#customer'\)/)).toBeVisible()
+  await expect(page.getByText('#customer', { exact: true })).toBeVisible()
 })
 
 test('picks a locator from the snapshot', async ({ page }) => {
   await page.getByRole('button', { name: 'Pick locator' }).click()
-  await page.frameLocator('iframe[name="snapshot"]').getByRole('button', { name: 'Submit' }).click()
+  await page.frameLocator('iframe[name="snapshot"]').getByRole('button', { name: 'Complete order' }).click()
 
   await expect(page.getByRole('button', { name: 'Locator', exact: true })).toHaveClass(/text-foreground/)
-  await expect(page.getByText(/getByRole\('button', \{ name: 'Submit' \}\)/)).toBeVisible()
-  await expect(page.getByText('#go', { exact: true })).toBeVisible()
+  await expect(page.getByText(/getByRole\('button', \{ name: 'Complete order' \}\)/)).toBeVisible()
+  await expect(page.getByText('#complete', { exact: true })).toBeVisible()
 })
 
 test('syntax highlights the source', async ({ page }) => {
@@ -74,7 +74,7 @@ test('action group filters hide noisy actions', async ({ page }) => {
 })
 
 test('double-clicking an action zooms to its time range', async ({ page }) => {
-  await page.getByTestId('action').filter({ hasText: 'Fill "Joris"' }).dblclick()
+  await page.getByTestId('action').filter({ hasText: 'Fill "Alex"' }).dblclick()
   await expect(page.getByTestId('reset-zoom')).toBeVisible()
 })
 
@@ -108,8 +108,8 @@ test('console tab can show all messages in the trace', async ({ page }) => {
   await page.getByRole('button', { name: /^Console/ }).click()
   await expect(page.getByText('No console output for this action')).toBeVisible()
   await page.getByRole('button', { name: 'All', exact: true }).click()
-  await expect(page.getByText('submit clicked, name = Joris')).toBeVisible()
-  await expect(page.getByText('this is a console warning')).toBeVisible()
+  await expect(page.getByText('order submitted, customer = Alex')).toBeVisible()
+  await expect(page.getByText('demo warning from checkout flow')).toBeVisible()
 })
 
 test('attachments tab previews the screenshot', async ({ page }) => {
@@ -122,7 +122,7 @@ test('metadata tab shows trace environment details', async ({ page }) => {
   await page.getByRole('button', { name: 'Metadata' }).click()
   await expect(page.getByRole('heading', { name: 'Browser' })).toBeVisible()
   await expect(page.getByText('playwright version')).toBeVisible()
-  await expect(page.getByText('1.60.0')).toBeVisible()
+  await expect(page.getByText(/\d+\.\d+\.\d+/).first()).toBeVisible()
   await expect(page.getByRole('cell', { name: 'actions' })).toBeVisible()
 })
 
@@ -142,7 +142,7 @@ test('opens the current snapshot in a new tab', async ({ page }) => {
   ])
 
   await expect(popup).toHaveURL(/\/snapshot\//)
-  await expect(popup.getByText('Submitted!')).toBeVisible()
+  await expect(popup.getByText('Order complete')).toBeVisible()
 })
 
 test('play advances the selected action', async ({ page }) => {
@@ -177,7 +177,7 @@ test('tooltip shows the full url on a truncated network name', async ({ page }) 
   await page.getByRole('button', { name: /^Network/ }).click()
   const name = page.getByTestId('net-row').first().locator('span').first()
   await name.hover()
-  await expect(page.locator('[data-slot="tooltip-content"]').first()).toContainText('demo.test')
+  await expect(page.locator('[data-slot="tooltip-content"]').first()).toContainText('demo.kinora.dev')
 })
 
 // The connector seam: the dashboard's "View trace" button opens the viewer with

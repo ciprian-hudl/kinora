@@ -35,7 +35,7 @@ test('replays the snapshot of a trace opened from disk', async ({ page }) => {
   await expect(page.getByTestId('action').first()).toBeVisible()
 
   const frame = page.frameLocator('iframe[name="snapshot"]')
-  await expect(frame.getByText('Submitted!')).toBeVisible()
+  await expect(frame.getByText('Order complete')).toBeVisible()
 })
 
 test('falls back to the demo trace from the drop zone', async ({ page }) => {

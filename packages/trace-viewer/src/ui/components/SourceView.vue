@@ -34,8 +34,14 @@ watch([frames, selectedFrame], async () => {
   loading.value = true
   try {
     const sha1 = await calculateSha1(frame.file)
-    const res = await fetch(model.createRelativeUrl(`file/resources/src@${sha1}.txt`))
-    content.value = res.ok ? await res.text() : `Source unavailable for ${frame.file}`
+    const legacy = await fetch(model.createRelativeUrl(`file/resources/src@${sha1}.txt`))
+    if (legacy.ok) {
+      content.value = await legacy.text()
+      return
+    }
+    const ext = fileName(frame.file).split('.').pop() || 'txt'
+    const modern = await fetch(model.createRelativeUrl(`file/src/${sha1}.${ext}`))
+    content.value = modern.ok ? await modern.text() : `Source unavailable for ${frame.file}`
   }
   catch {
     content.value = `Unable to read ${frame.file}`
