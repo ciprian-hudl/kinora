@@ -30,6 +30,14 @@ test('generated network fixture covers post bodies and error statuses', async ({
   await expect(page.getByTestId('net-row').filter({ hasText: 'error' })).toBeVisible()
   await expect(page.getByText('404')).toBeVisible()
   await expect(page.getByText('500')).toBeVisible()
+
+  await page.getByTestId('net-row').filter({ hasText: 'checkout' }).click()
+  await expect(page.getByText('Request body')).toBeVisible()
+  await expect(page.getByText('Response body')).toBeVisible()
+  await expect(page.getByText('"plan": "Pro"')).toBeVisible()
+  await expect(page.getByText('"ok": true')).toBeVisible()
+  await expect(page.getByText('x-demo:')).toBeVisible()
+  await expect(page.getByText('checkout', { exact: true })).toBeVisible()
 })
 
 test('generated annotations fixture renders trace annotations', async ({ page }) => {

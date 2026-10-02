@@ -64,37 +64,58 @@ const table = useVueTable({
 
 const selected = computed(() => rows.value.find(r => r.id === selectedId.value) ?? null)
 
-interface Body { kind: 'image' | 'text' | 'none', url?: string, text?: string, raw?: string, canPretty?: boolean }
-const body = ref<Body>({ kind: 'none' })
-const showRaw = ref(false)
-const bodyText = computed(() => showRaw.value && body.value.raw ? body.value.raw : body.value.text)
+interface Body { kind: 'image' | 'text' | 'download' | 'none', url?: string, text?: string, raw?: string, canPretty?: boolean }
+const requestBody = ref<Body>({ kind: 'none' })
+const responseBody = ref<Body>({ kind: 'none' })
+const showRawRequest = ref(false)
+const showRawResponse = ref(false)
+const requestBodyText = computed(() => showRawRequest.value && requestBody.value.raw ? requestBody.value.raw : requestBody.value.text)
+const responseBodyText = computed(() => showRawResponse.value && responseBody.value.raw ? responseBody.value.raw : responseBody.value.text)
+
+function headerValue(headers: { name: string, value: string }[] | undefined, name: string): string {
+  return headers?.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? ''
+}
+
+function textLike(mime: string): boolean {
+  return mime.startsWith('text/') || mime.includes('json') || mime.includes('xml') || mime.includes('javascript') || mime.includes('form-urlencoded')
+}
+
+async function loadBody(file: string | undefined, mime: string, inlineText = ''): Promise<Body> {
+  const url = bodyUrl(store.model.value, file)
+  if (mime.startsWith('image/') && url)
+    return { kind: 'image', url }
+  if (!textLike(mime))
+    return url ? { kind: 'download', url } : { kind: 'none' }
+
+  try {
+    const raw = (inlineText || (url ? await (await fetch(url)).text() : '')).slice(0, 200_000)
+    if (!raw)
+      return url ? { kind: 'download', url } : { kind: 'none' }
+    const pretty = prettyJson(raw, mime)
+    return { kind: 'text', url, text: (pretty ?? raw).slice(0, 50_000), raw: raw.slice(0, 50_000), canPretty: pretty !== null }
+  }
+  catch {
+    return url ? { kind: 'download', url } : { kind: 'none' }
+  }
+}
 
 watch(selected, async (sel) => {
-  body.value = { kind: 'none' }
-  showRaw.value = false
+  requestBody.value = { kind: 'none' }
+  responseBody.value = { kind: 'none' }
+  showRawRequest.value = false
+  showRawResponse.value = false
   if (!sel)
     return
+
+  const postData = sel.resource.request.postData
+  requestBody.value = await loadBody(
+    postData?._file,
+    postData?.mimeType ?? headerValue(sel.resource.request.headers, 'content-type'),
+    postData?.text,
+  )
+
   const content = sel.resource.response?.content
-  const url = bodyUrl(store.model.value, content?._file)
-  if (!url)
-    return
-  const mime = content?.mimeType ?? ''
-  if (mime.startsWith('image/')) {
-    body.value = { kind: 'image', url }
-    return
-  }
-  if (mime.startsWith('text/') || mime.includes('json') || mime.includes('xml') || mime.includes('javascript')) {
-    try {
-      const raw = (await (await fetch(url)).text()).slice(0, 200_000)
-      const pretty = prettyJson(raw, mime)
-      body.value = { kind: 'text', url, text: (pretty ?? raw).slice(0, 50_000), raw: raw.slice(0, 50_000), canPretty: pretty !== null }
-    }
-    catch {
-      body.value = { kind: 'none', url }
-    }
-    return
-  }
-  body.value = { kind: 'none', url }
+  responseBody.value = await loadBody(content?._file, content?.mimeType ?? '')
 })
 
 function copy(text: string): void {
@@ -235,9 +256,16 @@ const alignEnd = new Set(['size', 'duration', 'status'])
         <ResizableHandle with-handle />
         <ResizablePanel id="net-detail" :order="2" :default-size="netCols[1]" :min-size="20" :max-size="60">
           <div class="h-full overflow-auto p-3 text-xs">
-            <div class="mb-2 flex items-start gap-2">
-              <div class="min-w-0 flex-1 font-mono break-all text-foreground/90">
-                {{ selected.url }}
+            <div class="mb-3 flex items-start gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="mb-1 flex items-center gap-2">
+                  <span class="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{{ selected.method }}</span>
+                  <span class="font-mono tabular-nums" :class="statusClass(selected.status)">{{ selected.status || '-' }}</span>
+                  <span class="text-muted-foreground">{{ selected.resource.response?.statusText }}</span>
+                </div>
+                <div class="font-mono break-all text-foreground/90">
+                  {{ selected.url }}
+                </div>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger
@@ -259,49 +287,92 @@ const alignEnd = new Set(['size', 'duration', 'status'])
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <div class="mb-3 flex gap-3 text-muted-foreground">
-              <span>{{ selected.method }}</span>
-              <span :class="statusClass(selected.status)">{{ selected.status || '-' }}</span>
-              <span>{{ formatSize(selected.size) }}</span>
+
+            <div class="mb-4 grid grid-cols-2 gap-2 rounded-md border border-border bg-muted/20 p-2 text-muted-foreground">
+              <div>
+                <span class="uppercase tracking-wide">Type</span>
+                <div class="font-mono text-foreground/90">
+                  {{ selected.category }}
+                </div>
+              </div>
+              <div>
+                <span class="uppercase tracking-wide">Duration</span>
+                <div class="font-mono text-foreground/90">
+                  {{ Math.round(selected.duration) }}ms
+                </div>
+              </div>
+              <div>
+                <span class="uppercase tracking-wide">Size</span>
+                <div class="font-mono text-foreground/90">
+                  {{ formatSize(selected.size) }}
+                </div>
+              </div>
+              <div>
+                <span class="uppercase tracking-wide">Started</span>
+                <div class="font-mono text-foreground/90">
+                  {{ Math.round(selected.resource._monotonicTime ?? 0) }}ms
+                </div>
+              </div>
             </div>
 
-            <template v-if="body.kind !== 'none' || body.url">
+            <section v-if="requestBody.kind !== 'none' || requestBody.url" class="mb-4">
+              <div class="mb-1 flex items-center gap-2">
+                <span class="font-semibold tracking-wide text-muted-foreground uppercase">
+                  Request body
+                </span>
+                <button
+                  v-if="requestBody.canPretty"
+                  type="button"
+                  class="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                  @click="showRawRequest = !showRawRequest"
+                >
+                  {{ showRawRequest ? 'Pretty' : 'Raw' }}
+                </button>
+              </div>
+              <pre v-if="requestBody.kind === 'text'" class="max-h-56 overflow-auto rounded bg-muted/40 p-2 font-mono whitespace-pre-wrap">{{ requestBodyText }}</pre>
+              <a v-else-if="requestBody.url" :href="requestBody.url" download class="text-muted-foreground hover:text-foreground">download body</a>
+            </section>
+
+            <section v-if="responseBody.kind !== 'none' || responseBody.url" class="mb-4">
               <div class="mb-1 flex items-center gap-2">
                 <span class="font-semibold tracking-wide text-muted-foreground uppercase">
                   Response body
                 </span>
                 <button
-                  v-if="body.canPretty"
+                  v-if="responseBody.canPretty"
                   type="button"
                   class="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-                  @click="showRaw = !showRaw"
+                  @click="showRawResponse = !showRawResponse"
                 >
-                  {{ showRaw ? 'Pretty' : 'Raw' }}
+                  {{ showRawResponse ? 'Pretty' : 'Raw' }}
                 </button>
               </div>
-              <div class="mb-3">
-                <img v-if="body.kind === 'image'" :src="body.url" class="max-h-48 rounded border border-border">
-                <pre v-else-if="body.kind === 'text'" class="max-h-48 overflow-auto rounded bg-muted/40 p-2 font-mono whitespace-pre-wrap">{{ bodyText }}</pre>
-                <a v-else-if="body.url" :href="body.url" download class="text-muted-foreground hover:text-foreground">download body</a>
-              </div>
-            </template>
+              <img v-if="responseBody.kind === 'image'" :src="responseBody.url" class="max-h-48 rounded border border-border">
+              <pre v-else-if="responseBody.kind === 'text'" class="max-h-56 overflow-auto rounded bg-muted/40 p-2 font-mono whitespace-pre-wrap">{{ responseBodyText }}</pre>
+              <a v-else-if="responseBody.url" :href="responseBody.url" download class="text-muted-foreground hover:text-foreground">download body</a>
+            </section>
 
-            <div class="mb-1 font-semibold tracking-wide text-muted-foreground uppercase">
-              Response headers
-            </div>
-            <div class="mb-3 flex flex-col gap-0.5 font-mono">
-              <div v-for="(h, i) in selected.resource.response?.headers ?? []" :key="i" class="break-all">
-                <span class="text-muted-foreground">{{ h.name }}:</span> {{ h.value }}
+            <section class="mb-4">
+              <div class="mb-1 font-semibold tracking-wide text-muted-foreground uppercase">
+                Request headers
               </div>
-            </div>
-            <div class="mb-1 font-semibold tracking-wide text-muted-foreground uppercase">
-              Request headers
-            </div>
-            <div class="flex flex-col gap-0.5 font-mono">
-              <div v-for="(h, i) in selected.resource.request?.headers ?? []" :key="i" class="break-all">
-                <span class="text-muted-foreground">{{ h.name }}:</span> {{ h.value }}
+              <div class="flex flex-col gap-0.5 font-mono">
+                <div v-for="(h, i) in selected.resource.request?.headers ?? []" :key="i" class="break-all">
+                  <span class="text-muted-foreground">{{ h.name }}:</span> {{ h.value }}
+                </div>
               </div>
-            </div>
+            </section>
+
+            <section>
+              <div class="mb-1 font-semibold tracking-wide text-muted-foreground uppercase">
+                Response headers
+              </div>
+              <div class="flex flex-col gap-0.5 font-mono">
+                <div v-for="(h, i) in selected.resource.response?.headers ?? []" :key="i" class="break-all">
+                  <span class="text-muted-foreground">{{ h.name }}:</span> {{ h.value }}
+                </div>
+              </div>
+            </section>
           </div>
         </ResizablePanel>
       </template>
