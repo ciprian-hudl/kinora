@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SnapshotTab } from '../lib/snapshots'
 import { cn } from '@kinora/ui'
-import { Monitor } from '@lucide/vue'
+import { ExternalLink, Monitor } from '@lucide/vue'
 import { computed, watch } from 'vue'
 import { useTraceStore } from '../store'
 import TextTooltip from './TextTooltip.vue'
@@ -17,6 +17,11 @@ const tabs: { id: SnapshotTab, label: string }[] = [
 const viewport = computed(() => store.snapshotInfo.value.viewport)
 const pageUrl = computed(() => store.snapshotInfo.value.url ?? '')
 const frameSrc = computed(() => store.currentSnapshotUrl.value ?? 'about:blank')
+
+function openSnapshot(): void {
+  if (store.currentSnapshotUrl.value)
+    window.open(store.currentSnapshotUrl.value, '_blank', 'noopener,noreferrer')
+}
 
 watch(frameSrc, () => {
   void store.refreshSnapshotInfo()
@@ -46,6 +51,15 @@ watch(frameSrc, () => {
       <div class="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
         <Monitor class="size-3.5" />
         <span v-if="viewport" class="font-mono tabular-nums">{{ viewport.width }}×{{ viewport.height }}</span>
+        <button
+          type="button"
+          class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+          title="Open snapshot in new tab"
+          :disabled="!store.currentSnapshotUrl.value"
+          @click="openSnapshot"
+        >
+          <ExternalLink class="size-3.5" />
+        </button>
       </div>
     </div>
 

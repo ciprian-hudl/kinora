@@ -24,6 +24,14 @@ test('shows the test source code', async ({ page }) => {
   await expect(page.getByText('@playwright/test').first()).toBeVisible()
 })
 
+test('locator tab shows the selected action locator', async ({ page }) => {
+  await page.getByTestId('action').filter({ hasText: 'Fill "Joris"' }).click()
+  await page.getByRole('button', { name: 'Locator' }).click()
+
+  await expect(page.getByText(/locator\('#name'\)/)).toBeVisible()
+  await expect(page.getByText('#name', { exact: true })).toBeVisible()
+})
+
 test('syntax highlights the source', async ({ page }) => {
   await page.getByRole('button', { name: 'Source', exact: true }).click()
   // A duplicate @codemirror/view silently drops highlight decorations, leaving plain monochrome text.
@@ -96,6 +104,16 @@ test('annotations tab shows the empty state', async ({ page }) => {
 
 test('filmstrip renders screencast frames', async ({ page }) => {
   await expect(page.locator('img[src*="file/"]').first()).toBeVisible()
+})
+
+test('opens the current snapshot in a new tab', async ({ page }) => {
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByRole('button', { name: 'Open snapshot in new tab' }).click(),
+  ])
+
+  await expect(popup).toHaveURL(/\/snapshot\//)
+  await expect(popup.getByText('Submitted!')).toBeVisible()
 })
 
 test('play advances the selected action', async ({ page }) => {

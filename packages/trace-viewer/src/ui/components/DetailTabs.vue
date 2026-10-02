@@ -9,6 +9,7 @@ import AttachmentsView from './AttachmentsView.vue'
 import CallView from './CallView.vue'
 import ConsoleView from './ConsoleView.vue'
 import ErrorsView from './ErrorsView.vue'
+import LocatorView from './LocatorView.vue'
 import LogView from './LogView.vue'
 import MetadataView from './MetadataView.vue'
 import NetworkView from './NetworkView.vue'
@@ -32,6 +33,7 @@ const annotationCount = computed(() => store.model.value?.annotations?.length ??
 const tabs = computed<{ id: DetailTab, label: string, count?: number }[]>(() => [
   { id: 'source', label: 'Source' },
   { id: 'call', label: 'Call' },
+  { id: 'locator', label: 'Locator' },
   { id: 'log', label: 'Log' },
   { id: 'network', label: 'Network', count: networkCount.value },
   { id: 'attachments', label: 'Attachments', count: attachmentCount.value },
@@ -72,6 +74,7 @@ const tabs = computed<{ id: DetailTab, label: string, count?: number }[]>(() => 
     <div class="min-h-0 flex-1">
       <SourceView v-if="store.detailTab.value === 'source'" />
       <CallView v-else-if="store.detailTab.value === 'call'" />
+      <LocatorView v-else-if="store.detailTab.value === 'locator'" />
       <LogView v-else-if="store.detailTab.value === 'log'" />
       <NetworkView v-else-if="store.detailTab.value === 'network'" />
       <AttachmentsView v-else-if="store.detailTab.value === 'attachments'" />

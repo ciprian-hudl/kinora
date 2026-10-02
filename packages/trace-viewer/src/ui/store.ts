@@ -19,7 +19,7 @@ export interface SnapshotInfo {
   viewport?: { width: number, height: number }
 }
 
-export const DETAIL_TABS = ['source', 'call', 'log', 'network', 'attachments', 'errors', 'console', 'metadata', 'annotations'] as const
+export const DETAIL_TABS = ['source', 'call', 'locator', 'log', 'network', 'attachments', 'errors', 'console', 'metadata', 'annotations'] as const
 export type DetailTab = typeof DETAIL_TABS[number]
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
