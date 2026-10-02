@@ -15,7 +15,7 @@ on:
       trigger_deploy:
         description: Trigger Dokploy after pushing the image
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
