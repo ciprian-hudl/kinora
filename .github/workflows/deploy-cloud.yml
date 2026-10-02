@@ -24,6 +24,11 @@ on:
         description: Build without Docker cache
         type: boolean
         default: false
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -33,12 +38,67 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.meta.outputs.should_deploy }}
+      tag: ${{ steps.meta.outputs.tag }}
+      deploy_web: ${{ steps.meta.outputs.deploy_web }}
+      deploy_server: ${{ steps.meta.outputs.deploy_server }}
+      trigger_deploy: ${{ steps.meta.outputs.trigger_deploy }}
+      no_cache: ${{ steps.meta.outputs.no_cache }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve deploy metadata
+        id: meta
+        env:
+          INPUT_TAG: ${{ inputs.tag || 'latest' }}
+          INPUT_DEPLOY_WEB: ${{ inputs.deploy_web || false }}
+          INPUT_DEPLOY_SERVER: ${{ inputs.deploy_server || false }}
+          INPUT_TRIGGER_DEPLOY: ${{ inputs.trigger_deploy || false }}
+          INPUT_NO_CACHE: ${{ inputs.no_cache || false }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_EVENT_NAME" = 'workflow_run' ]; then
+            subject="$(git log -1 --pretty=%s)"
+            echo "Commit subject: $subject"
+
+            if [[ ! "$subject" =~ ^release:\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+              echo "Release workflow did not run for a release commit, skipping cloud deploy."
+              exit 0
+            fi
+
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "deploy_web=true" >> "$GITHUB_OUTPUT"
+            echo "deploy_server=true" >> "$GITHUB_OUTPUT"
+            echo "trigger_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "no_cache=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          echo "deploy_web=$INPUT_DEPLOY_WEB" >> "$GITHUB_OUTPUT"
+          echo "deploy_server=$INPUT_DEPLOY_SERVER" >> "$GITHUB_OUTPUT"
+          echo "trigger_deploy=$INPUT_TRIGGER_DEPLOY" >> "$GITHUB_OUTPUT"
+          echo "no_cache=$INPUT_NO_CACHE" >> "$GITHUB_OUTPUT"
+
   web:
-    if: ${{ inputs.deploy_web }}
+    needs: prepare
+    if: ${{ needs.prepare.outputs.should_deploy == 'true' && needs.prepare.outputs.deploy_web == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -54,10 +114,10 @@ jobs:
           context: .
           file: packages/web/Dockerfile
           platforms: linux/amd64
-          no-cache: ${{ inputs.no_cache }}
+          no-cache: ${{ needs.prepare.outputs.no_cache }}
           push: true
           provenance: false
-          tags: ${{ secrets.DOCKER_REGISTRY }}/${{ secrets.WEB_IMAGE }}:${{ inputs.tag }}
+          tags: ${{ secrets.DOCKER_REGISTRY }}/${{ secrets.WEB_IMAGE }}:${{ needs.prepare.outputs.tag }}
           build-args: |
             VITE_KINORA_SERVER_URL=https://api.kinora.dev
             VITE_KINORA_CLOUD=true
@@ -69,14 +129,14 @@ jobs:
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Trigger web deploy in Dokploy
-        if: ${{ inputs.trigger_deploy }}
+        if: ${{ needs.prepare.outputs.trigger_deploy == 'true' }}
         env:
           DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
           DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_WEB_COMPOSE_ID }}
           DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
           WEB_IMAGE: ${{ secrets.WEB_IMAGE }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
 
@@ -104,11 +164,14 @@ jobs:
             --data "$PAYLOAD"
 
   server:
-    if: ${{ inputs.deploy_server }}
+    needs: prepare
+    if: ${{ needs.prepare.outputs.should_deploy == 'true' && needs.prepare.outputs.deploy_server == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -124,20 +187,20 @@ jobs:
           context: .
           file: packages/server/Dockerfile
           platforms: linux/amd64
-          no-cache: ${{ inputs.no_cache }}
+          no-cache: ${{ needs.prepare.outputs.no_cache }}
           push: true
           provenance: false
-          tags: ${{ secrets.DOCKER_REGISTRY }}/${{ secrets.SERVER_IMAGE }}:${{ inputs.tag }}
+          tags: ${{ secrets.DOCKER_REGISTRY }}/${{ secrets.SERVER_IMAGE }}:${{ needs.prepare.outputs.tag }}
 
       - name: Trigger server deploy in Dokploy
-        if: ${{ inputs.trigger_deploy }}
+        if: ${{ needs.prepare.outputs.trigger_deploy == 'true' }}
         env:
           DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
           DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_SERVER_COMPOSE_ID }}
           DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
           SERVER_IMAGE: ${{ secrets.SERVER_IMAGE }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
 
