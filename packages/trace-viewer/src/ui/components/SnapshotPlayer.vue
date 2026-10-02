@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { actionTitle } from '../lib/action'
 import { useLocatorPicker } from '../lib/useLocatorPicker'
 import { useTraceStore } from '../store'
 import AriaSnapshotView from './AriaSnapshotView.vue'
@@ -15,13 +16,26 @@ const viewport = computed(() => store.snapshotInfo.value.viewport)
 const pageUrl = computed(() => store.snapshotInfo.value.url ?? '')
 const frameSrc = computed(() => store.currentSnapshotUrl.value ?? 'about:blank')
 const hasSnapshot = computed(() => !!store.currentSnapshotUrl.value)
-const ariaUrl = computed(() => {
+const ariaEvent = computed(() => {
   const snapshot = store.currentSnapshot.value
   const model = store.model.value
   if (!snapshot || !model)
     return undefined
-  const event = model.ariaSnapshotForCall(snapshot.callId, snapshot.phase)
-  return event?.file ? model.createRelativeUrl(`file/${event.file}`) : undefined
+  return model.ariaSnapshotForCall(snapshot.callId, snapshot.phase)
+})
+const ariaUrl = computed(() => {
+  const model = store.model.value
+  const event = ariaEvent.value
+  return event?.file && model ? model.createRelativeUrl(`file/${event.file}`) : undefined
+})
+const ariaTerms = computed(() => {
+  const action = store.selectedAction.value
+  if (!action)
+    return []
+  const params = action.params ?? {}
+  const quoted = [...actionTitle(action).matchAll(/[“"]([^”"]+)[”"]/g)].map(match => match[1])
+  return [params.value, params.expected, params.selector?.replace(/^#/, ''), ...quoted]
+    .filter((term): term is string => typeof term === 'string' && term.length >= 2)
 })
 
 const { installInspector, setIframe } = useLocatorPicker(frameSrc)
@@ -74,7 +88,14 @@ watch(frameSrc, () => {
             :src="frameSrc"
             @loaded="installInspector"
           />
-          <AriaSnapshotView v-else :url="ariaUrl" />
+          <AriaSnapshotView
+            v-else
+            :url="ariaUrl"
+            :call-id="ariaEvent?.callId"
+            :phase="ariaEvent?.phase"
+            :file="ariaEvent?.file"
+            :terms="ariaTerms"
+          />
         </div>
       </div>
     </div>

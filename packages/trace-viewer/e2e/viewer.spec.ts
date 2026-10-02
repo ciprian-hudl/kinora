@@ -21,7 +21,7 @@ test('replays the DOM snapshot in the iframe', async ({ page }) => {
 
 test('shows ARIA snapshot mode empty state', async ({ page }) => {
   await page.getByRole('button', { name: 'ARIA' }).click()
-  await expect(page.getByText('No ARIA snapshot for this action')).toBeVisible()
+  await expect(page.getByText('No ARIA snapshot captured for this phase')).toBeVisible()
 })
 
 test('renders an ARIA snapshot when present', async ({ page }) => {
@@ -30,6 +30,10 @@ test('renders an ARIA snapshot when present', async ({ page }) => {
   await page.getByTestId('action').filter({ hasText: 'Click' }).first().click()
   await page.getByRole('button', { name: 'ARIA' }).click()
 
+  await expect(page.getByText('ARIA snapshot', { exact: true })).toBeVisible()
+  await expect(page.getByText('call@')).toBeVisible()
+  await expect(page.getByText('resources/aria-checkout.yml')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copy ARIA' })).toBeVisible()
   await expect(page.getByText('- document:')).toBeVisible()
   await expect(page.getByText('button "Complete checkout"')).toBeVisible()
 })
@@ -43,8 +47,11 @@ test('locator tab shows the selected action locator', async ({ page }) => {
   await page.getByTestId('action').filter({ hasText: 'Fill "alex@example.com"' }).click()
   await page.getByRole('button', { name: 'Locator', exact: true }).click()
 
-  await expect(page.getByText(/locator\('#customer'\)/)).toBeVisible()
-  await expect(page.getByText('#customer', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('locator-source')).toHaveText('Selected action')
+  await expect(page.getByTestId('locator-value')).toContainText(/locator\('#customer'\)/)
+  await expect(page.getByTestId('selector-value')).toHaveText('#customer')
+  await expect(page.getByRole('button', { name: 'Copy locator' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copy selector' })).toBeVisible()
 })
 
 test('call tab highlights action details', async ({ page }) => {
@@ -73,8 +80,9 @@ test('picks a locator from the snapshot', async ({ page }) => {
   await page.frameLocator('iframe[name="snapshot"]').getByRole('button', { name: 'Complete checkout' }).click()
 
   await expect(page.getByRole('button', { name: 'Locator', exact: true })).toHaveClass(/text-foreground/)
-  await expect(page.getByText(/getByRole\('button', \{ name: 'Complete checkout' \}\)/)).toBeVisible()
-  await expect(page.getByText('#complete', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('locator-source')).toHaveText('Snapshot picker')
+  await expect(page.getByTestId('locator-value')).toContainText(/getByRole\('button', \{ name: 'Complete checkout' \}\)/)
+  await expect(page.getByTestId('selector-value')).toHaveText('#complete')
 })
 
 test('syntax highlights the source', async ({ page }) => {

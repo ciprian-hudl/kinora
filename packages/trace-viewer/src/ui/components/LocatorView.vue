@@ -5,7 +5,9 @@ import { computed, ref } from 'vue'
 import { useTraceStore } from '../store'
 
 const store = useTraceStore()
-const copied = ref(false)
+const copied = ref<'locator' | 'selector' | null>(null)
+
+const source = computed(() => store.pickedLocator.value ? 'Snapshot picker' : 'Selected action')
 
 const selector = computed(() => {
   if (store.pickedLocator.value)
@@ -28,12 +30,15 @@ const locator = computed(() => {
   }
 })
 
-async function copyLocator(): Promise<void> {
-  if (!locator.value)
+async function copyValue(kind: 'locator' | 'selector', value: string): Promise<void> {
+  if (!value)
     return
-  await navigator.clipboard.writeText(locator.value)
-  copied.value = true
-  setTimeout(() => (copied.value = false), 1500)
+  await navigator.clipboard.writeText(value)
+  copied.value = kind
+  setTimeout(() => {
+    if (copied.value === kind)
+      copied.value = null
+  }, 1500)
 }
 </script>
 
@@ -43,29 +48,45 @@ async function copyLocator(): Promise<void> {
       No locator for this action
     </div>
     <div v-else class="flex max-w-3xl flex-col gap-4">
+      <div class="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs">
+        <span class="font-semibold text-foreground">Source</span>
+        <span class="text-muted-foreground">: </span>
+        <span data-testid="locator-source" class="text-foreground/90">{{ source }}</span>
+      </div>
+
       <section>
         <div class="mb-1.5 flex items-center gap-2">
           <h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Locator
+            Generated locator
           </h3>
           <button
             v-if="locator"
             type="button"
             class="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:border-signal/50 hover:text-foreground"
-            @click="copyLocator"
+            @click="copyValue('locator', locator)"
           >
-            <component :is="copied ? Check : Copy" class="size-3.5" />
-            {{ copied ? 'Copied' : 'Copy' }}
+            <component :is="copied === 'locator' ? Check : Copy" class="size-3.5" />
+            {{ copied === 'locator' ? 'Copied' : 'Copy locator' }}
           </button>
         </div>
-        <pre class="overflow-auto rounded-md border border-border bg-muted/30 p-3 font-mono text-xs text-foreground/90">{{ locator || selector }}</pre>
+        <pre data-testid="locator-value" class="overflow-auto rounded-md border border-border bg-muted/30 p-3 font-mono text-xs text-foreground/90">{{ locator || selector }}</pre>
       </section>
 
       <section>
-        <h3 class="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Raw selector
-        </h3>
-        <pre class="overflow-auto rounded-md border border-border bg-muted/30 p-3 font-mono text-xs text-foreground/90">{{ selector }}</pre>
+        <div class="mb-1.5 flex items-center gap-2">
+          <h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Raw selector
+          </h3>
+          <button
+            type="button"
+            class="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:border-signal/50 hover:text-foreground"
+            @click="copyValue('selector', selector)"
+          >
+            <component :is="copied === 'selector' ? Check : Copy" class="size-3.5" />
+            {{ copied === 'selector' ? 'Copied' : 'Copy selector' }}
+          </button>
+        </div>
+        <pre data-testid="selector-value" class="overflow-auto rounded-md border border-border bg-muted/30 p-3 font-mono text-xs text-foreground/90">{{ selector }}</pre>
       </section>
     </div>
   </div>
