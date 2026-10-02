@@ -17,7 +17,7 @@ function onPick(event: Event): void {
 }
 
 function openDemo(): void {
-  void store.load(new URL('fixtures/demo.zip', location.href).href, 'demo.zip')
+  void store.load(new URL(`fixtures/demo.zip?v=${__DEMO_TRACE_VERSION__}`, location.href).href, 'demo.zip')
 }
 </script>
 
