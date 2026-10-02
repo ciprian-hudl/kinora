@@ -40,6 +40,20 @@ test('generated network fixture covers post bodies and error statuses', async ({
   await expect(page.getByText('checkout', { exact: true })).toBeVisible()
 })
 
+test('generated console fixture renders typed messages and args', async ({ page }) => {
+  await openTrace(page, 'console-rich-trace.zip')
+
+  await page.getByRole('button', { name: /^Console/ }).click()
+  await page.getByRole('button', { name: 'All', exact: true }).click()
+
+  await expect(page.getByText('checkout state {step: payment, total: 29}')).toBeVisible()
+  await expect(page.getByText('payment latency warning')).toBeVisible()
+  await expect(page.getByText('payment failed {code: card_declined}')).toBeVisible()
+  await expect(page.getByText('{code: card_declined}', { exact: true })).toBeVisible()
+  await expect(page.getByText('warning', { exact: true })).toBeVisible()
+  await expect(page.getByText('error', { exact: true })).toBeVisible()
+})
+
 test('generated annotations fixture renders trace annotations', async ({ page }) => {
   await openTrace(page, 'annotations-trace.zip')
 

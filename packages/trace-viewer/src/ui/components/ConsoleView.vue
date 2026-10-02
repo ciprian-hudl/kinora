@@ -20,12 +20,37 @@ const messages = computed(() => {
         : []
   return source
     .filter((e): e is ConsoleMessageTraceEvent => e.type === 'console')
-    .map(e => ({
-      kind: e.messageType === 'error' ? 'error' : e.messageType === 'warning' ? 'warning' : 'log',
-      text: e.text,
-      location: e.location?.url ? `${e.location.url.split('/').pop()}:${e.location.lineNumber}` : '',
-    }))
+    .map((e) => {
+      const args = e.args ?? []
+      return {
+        args: args.length === 1 && args[0].preview === e.text ? [] : args,
+        kind: consoleKind(e.messageType),
+        location: e.location,
+        locationLabel: formatLocation(e),
+        text: e.text,
+        time: e.time,
+        type: e.messageType,
+      }
+    })
 })
+
+function consoleKind(type: string): 'error' | 'warning' | 'log' {
+  if (type === 'error')
+    return 'error'
+  if (type === 'warning' || type === 'warn')
+    return 'warning'
+  return 'log'
+}
+
+function formatLocation(event: ConsoleMessageTraceEvent): string {
+  const url = event.location?.url ?? ''
+  const line = event.location?.lineNumber ?? 0
+  const column = event.location?.columnNumber ?? 0
+  const file = url ? (url.split('/').pop() || url) : '<inline>'
+  if (!line && !column)
+    return file
+  return `${file}:${line}:${column}`
+}
 
 const emptyMessage = computed(() => {
   if (store.timeRange.value)
@@ -74,10 +99,34 @@ const kindClass: Record<string, string> = {
       <div
         v-for="(msg, i) in messages"
         :key="i"
-        :class="cn('flex items-start gap-3 border-l-2 px-3 py-1 font-mono text-xs', kindClass[msg.kind])"
+        :class="cn('border-l-2 px-3 py-2 font-mono text-xs', kindClass[msg.kind])"
       >
-        <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{{ msg.text }}</span>
-        <span v-if="msg.location" class="shrink-0 text-muted-foreground/60">{{ msg.location }}</span>
+        <div class="mb-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+          <span class="rounded bg-muted px-1.5 py-0.5 uppercase tracking-wide">{{ msg.type }}</span>
+          <span class="tabular-nums">{{ Math.round(msg.time) }}ms</span>
+          <a
+            v-if="msg.location?.url"
+            :href="msg.location.url"
+            target="_blank"
+            rel="noreferrer"
+            class="ml-auto min-w-0 truncate underline-offset-2 hover:underline"
+          >{{ msg.locationLabel }}</a>
+          <span v-else class="ml-auto min-w-0 truncate">{{ msg.locationLabel }}</span>
+        </div>
+        <div class="whitespace-pre-wrap break-words text-foreground/90">
+          {{ msg.text }}
+        </div>
+        <div v-if="msg.args.length" class="mt-1 flex flex-col gap-1">
+          <div
+            v-for="(arg, j) in msg.args"
+            :key="j"
+            class="rounded border border-border/70 bg-background/60 px-2 py-1 text-[11px] text-muted-foreground"
+          >
+            <span class="text-foreground/80">arg {{ j + 1 }}</span>
+            <span class="mx-1">·</span>
+            <span class="whitespace-pre-wrap break-words">{{ arg.preview || String(arg.value) }}</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>

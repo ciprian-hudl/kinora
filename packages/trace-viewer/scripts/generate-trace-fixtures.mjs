@@ -156,6 +156,7 @@ async function generateScenarioTraces() {
   await generateTraceFixture('iframe-trace.zip', iframeSpec())
   await generateTraceFixture('popup-trace.zip', popupSpec())
   await generateTraceFixture('network-rich-trace.zip', networkRichSpec())
+  await generateTraceFixture('console-rich-trace.zip', consoleRichSpec())
   await generateTraceFixture('annotations-trace.zip', annotationsSpec())
 }
 
@@ -259,6 +260,18 @@ test('rich network activity', async ({ page }) => {
   await page.setContent('<button id="load">Load network</button><pre id="out"></pre><script>document.getElementById("load").addEventListener("click",async()=>{const cart=await fetch("https://demo.kinora.dev/api/cart").then(r=>r.json());const checkout=await fetch("https://demo.kinora.dev/api/checkout",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:"alex@example.com",plan:cart.plan})}).then(r=>r.json());await fetch("https://demo.kinora.dev/api/missing");await fetch("https://demo.kinora.dev/api/error");console.log("network checkout",checkout.email);document.getElementById("out").textContent=checkout.email})<\/script>')
   await page.getByRole('button', { name: 'Load network' }).click()
   await expect(page.locator('#out')).toHaveText('alex@example.com')
+})
+`
+}
+
+function consoleRichSpec() {
+  return String.raw`
+import { expect, test } from '@playwright/test'
+
+test('rich console output', async ({ page }) => {
+  await page.setContent('<button id="run">Run console</button><output id="done"></output><script>document.getElementById("run").addEventListener("click",()=>{console.log("checkout state",{step:"payment",total:29});console.info("info message",["trace","viewer"]);console.warn("payment latency warning");console.error("payment failed",{code:"card_declined"});document.getElementById("done").textContent="console complete"})<\/script>', { baseURL: 'https://demo.kinora.dev' })
+  await page.getByRole('button', { name: 'Run console' }).click()
+  await expect(page.locator('#done')).toHaveText('console complete')
 })
 `
 }
