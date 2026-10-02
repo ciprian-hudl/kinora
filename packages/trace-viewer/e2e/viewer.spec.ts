@@ -24,6 +24,16 @@ test('shows ARIA snapshot mode empty state', async ({ page }) => {
   await expect(page.getByText('No ARIA snapshot for this action')).toBeVisible()
 })
 
+test('renders an ARIA snapshot when present', async ({ page }) => {
+  await page.goto('/?trace=fixtures/aria-trace.zip')
+  await expect(page.getByTestId('action').first()).toBeVisible()
+  await page.getByTestId('action').filter({ hasText: 'Click' }).first().click()
+  await page.getByRole('button', { name: 'ARIA' }).click()
+
+  await expect(page.getByText('- document:')).toBeVisible()
+  await expect(page.getByText('button "Submit"')).toBeVisible()
+})
+
 test('shows the test source code', async ({ page }) => {
   await page.getByRole('button', { name: 'Source', exact: true }).click()
   await expect(page.getByText('@playwright/test').first()).toBeVisible()
