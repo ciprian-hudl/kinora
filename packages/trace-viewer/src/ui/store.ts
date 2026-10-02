@@ -52,6 +52,9 @@ const sourceReveal = ref<SourceReveal | null>(null)
 const pickedLocator = ref<PickedLocator | null>(null)
 const inspectingLocator = ref(false)
 const playing = ref(false)
+const PLAYBACK_SPEEDS = [0.5, 1, 2] as const
+const playbackSpeedIndex = ref(1)
+const playbackSpeed = computed(() => PLAYBACK_SPEEDS[playbackSpeedIndex.value])
 // When set, a brushed time window that filters/zooms every tab; null = follow the selected action.
 const timeRange = ref<TimeRange | null>(null)
 let playTimer: ReturnType<typeof setInterval> | undefined
@@ -201,10 +204,14 @@ function select(id: string): void {
   pickedLocator.value = null
 }
 
+function selectIndex(index: number): void {
+  const item = items.value[index]
+  if (item)
+    select(item.id)
+}
+
 function step(delta: number): void {
-  const next = selectedIndex.value + delta
-  if (next >= 0 && next < items.value.length)
-    select(items.value[next].id)
+  selectIndex(selectedIndex.value + delta)
 }
 
 function setTab(tab: SnapshotTab): void {
@@ -238,6 +245,24 @@ function stopPlay(): void {
   }
 }
 
+function startPlayTimer(): void {
+  if (playTimer)
+    clearInterval(playTimer)
+  playTimer = setInterval(() => {
+    if (selectedIndex.value >= items.value.length - 1) {
+      stopPlay()
+      return
+    }
+    step(1)
+  }, 700 / playbackSpeed.value)
+}
+
+function cyclePlaybackSpeed(): void {
+  playbackSpeedIndex.value = (playbackSpeedIndex.value + 1) % PLAYBACK_SPEEDS.length
+  if (playing.value)
+    startPlayTimer()
+}
+
 // Auto-advance selection through actions (slideshow). Stops at the last action.
 function togglePlay(): void {
   if (playing.value) {
@@ -245,15 +270,9 @@ function togglePlay(): void {
     return
   }
   if (selectedIndex.value >= items.value.length - 1)
-    selectedId.value = items.value[0]?.id ?? null
+    selectIndex(0)
   playing.value = true
-  playTimer = setInterval(() => {
-    if (selectedIndex.value >= items.value.length - 1) {
-      stopPlay()
-      return
-    }
-    step(1)
-  }, 700)
+  startPlayTimer()
 }
 
 async function refreshSnapshotInfo(): Promise<void> {
@@ -296,11 +315,13 @@ export function useTraceStore() {
     pickedLocator,
     inspectingLocator,
     playing,
+    playbackSpeed,
     timeRange,
     boundaries,
     load,
     loadFile,
     select,
+    selectIndex,
     step,
     setTab,
     setDetailTab,
@@ -308,6 +329,7 @@ export function useTraceStore() {
     setInspectingLocator,
     pickLocator,
     togglePlay,
+    cyclePlaybackSpeed,
     setTimeRange,
     clearTimeRange,
     refreshSnapshotInfo,

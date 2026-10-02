@@ -137,6 +137,15 @@ test('play advances the selected action', async ({ page }) => {
   await expect(page.getByTestId('play')).toHaveAttribute('title', 'Play')
 })
 
+test('cycles playback speed and scrubs actions', async ({ page }) => {
+  await expect(page.getByTestId('playback-speed')).toHaveText('1x')
+  await page.getByTestId('playback-speed').click()
+  await expect(page.getByTestId('playback-speed')).toHaveText('2x')
+
+  await page.getByTestId('action-scrubber').fill('0')
+  await expect(page.getByTestId('current-action')).toContainText('Before Hooks')
+})
+
 test('keyboard navigates between actions', async ({ page }) => {
   const current = page.getByTestId('current-action')
   const before = await current.textContent()

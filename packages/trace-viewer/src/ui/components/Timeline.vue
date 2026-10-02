@@ -112,6 +112,10 @@ const currentTitle = computed(() =>
   store.selectedAction.value ? actionTitle(store.selectedAction.value) : 'No action selected',
 )
 const position = computed(() => `${store.selectedIndex.value + 1} / ${store.items.value.length}`)
+const scrubberValue = computed({
+  get: () => Math.max(0, store.selectedIndex.value),
+  set: value => store.selectIndex(Number(value)),
+})
 
 // Select the action whose time window is closest to a screencast frame.
 function seekToTime(t: number): void {
@@ -163,9 +167,29 @@ function seekToTime(t: number): void {
           <ChevronRight class="size-4" />
         </button>
       </div>
+      <button
+        type="button"
+        data-testid="playback-speed"
+        class="flex h-7 w-10 shrink-0 items-center justify-center rounded-md font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        title="Playback speed"
+        @click="store.cyclePlaybackSpeed"
+      >
+        {{ store.playbackSpeed.value }}x
+      </button>
       <div data-testid="current-action" class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
         {{ currentTitle }}
       </div>
+      <input
+        v-model.number="scrubberValue"
+        data-testid="action-scrubber"
+        type="range"
+        min="0"
+        :max="Math.max(0, store.items.value.length - 1)"
+        step="1"
+        class="h-1 w-32 shrink-0 cursor-pointer appearance-none rounded-full bg-muted accent-signal disabled:opacity-30"
+        title="Action scrubber"
+        :disabled="store.items.value.length <= 1"
+      >
       <button
         v-if="store.timeRange.value"
         type="button"
