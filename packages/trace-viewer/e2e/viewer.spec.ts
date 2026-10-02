@@ -26,10 +26,19 @@ test('shows the test source code', async ({ page }) => {
 
 test('locator tab shows the selected action locator', async ({ page }) => {
   await page.getByTestId('action').filter({ hasText: 'Fill "Joris"' }).click()
-  await page.getByRole('button', { name: 'Locator' }).click()
+  await page.getByRole('button', { name: 'Locator', exact: true }).click()
 
   await expect(page.getByText(/locator\('#name'\)/)).toBeVisible()
   await expect(page.getByText('#name', { exact: true })).toBeVisible()
+})
+
+test('picks a locator from the snapshot', async ({ page }) => {
+  await page.getByRole('button', { name: 'Pick locator' }).click()
+  await page.frameLocator('iframe[name="snapshot"]').getByRole('button', { name: 'Submit' }).click()
+
+  await expect(page.getByRole('button', { name: 'Locator', exact: true })).toHaveClass(/text-foreground/)
+  await expect(page.getByText(/getByRole\('button', \{ name: 'Submit' \}\)/)).toBeVisible()
+  await expect(page.getByText('#go', { exact: true })).toBeVisible()
 })
 
 test('syntax highlights the source', async ({ page }) => {

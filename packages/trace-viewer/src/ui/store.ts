@@ -19,6 +19,11 @@ export interface SnapshotInfo {
   viewport?: { width: number, height: number }
 }
 
+export interface PickedLocator {
+  selector: string
+  locator: string
+}
+
 export const DETAIL_TABS = ['source', 'call', 'locator', 'log', 'network', 'attachments', 'errors', 'console', 'metadata', 'annotations'] as const
 export type DetailTab = typeof DETAIL_TABS[number]
 
@@ -44,6 +49,8 @@ const snapshotTab = ref<SnapshotTab>('action')
 const snapshotInfo = ref<SnapshotInfo>({})
 const detailTab = ref<DetailTab>(initialDetailTab())
 const sourceReveal = ref<SourceReveal | null>(null)
+const pickedLocator = ref<PickedLocator | null>(null)
+const inspectingLocator = ref(false)
 const playing = ref(false)
 // When set, a brushed time window that filters/zooms every tab; null = follow the selected action.
 const timeRange = ref<TimeRange | null>(null)
@@ -97,6 +104,8 @@ async function load(uri: string, name = ''): Promise<void> {
     collapsed.value = new Set()
     timeRange.value = null
     sourceReveal.value = null
+    pickedLocator.value = null
+    inspectingLocator.value = false
     // Default selection: failed action, else the last page action with a
     // snapshot (most representative page state), else the first action.
     const failed = m.failedAction()
@@ -189,6 +198,7 @@ function clearTimeRange(): void {
 function select(id: string): void {
   selectedId.value = id
   sourceReveal.value = null
+  pickedLocator.value = null
 }
 
 function step(delta: number): void {
@@ -208,6 +218,16 @@ function setDetailTab(tab: DetailTab): void {
 function revealSource(stack: StackFrame[]): void {
   sourceReveal.value = { stack, version: ++sourceRevealVersion }
   detailTab.value = 'source'
+}
+
+function setInspectingLocator(value: boolean): void {
+  inspectingLocator.value = value
+}
+
+function pickLocator(locator: PickedLocator): void {
+  pickedLocator.value = locator
+  inspectingLocator.value = false
+  detailTab.value = 'locator'
 }
 
 function stopPlay(): void {
@@ -273,6 +293,8 @@ export function useTraceStore() {
     snapshotInfo,
     detailTab,
     sourceReveal,
+    pickedLocator,
+    inspectingLocator,
     playing,
     timeRange,
     boundaries,
@@ -283,6 +305,8 @@ export function useTraceStore() {
     setTab,
     setDetailTab,
     revealSource,
+    setInspectingLocator,
+    pickLocator,
     togglePlay,
     setTimeRange,
     clearTimeRange,

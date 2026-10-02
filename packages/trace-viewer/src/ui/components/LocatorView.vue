@@ -8,12 +8,16 @@ const store = useTraceStore()
 const copied = ref(false)
 
 const selector = computed(() => {
+  if (store.pickedLocator.value)
+    return store.pickedLocator.value.selector
   const params = store.selectedAction.value?.params ?? {}
   const value = params.selector ?? params.locator?.selector
   return typeof value === 'string' ? value : ''
 })
 
 const locator = computed(() => {
+  if (store.pickedLocator.value)
+    return store.pickedLocator.value.locator
   if (!selector.value)
     return ''
   try {
