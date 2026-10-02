@@ -28,8 +28,11 @@ onMounted(() => {
   // No ?trace= means someone landed on the viewer directly (the public
   // kinora.dev entry point), so offer the drop zone rather than guess a trace.
   const param = new URLSearchParams(location.search).get('trace')
+  const pending = store.consumePendingLoad()
   if (param)
     void store.load(param)
+  else if (pending)
+    void store.load(pending.uri, pending.name)
 })
 </script>
 

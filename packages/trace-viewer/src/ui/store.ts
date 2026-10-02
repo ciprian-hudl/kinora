@@ -58,6 +58,14 @@ const playbackSpeedIndex = ref(1)
 const playbackSpeed = computed(() => PLAYBACK_SPEEDS[playbackSpeedIndex.value])
 // When set, a brushed time window that filters/zooms every tab; null = follow the selected action.
 const timeRange = ref<TimeRange | null>(null)
+const PENDING_LOAD_KEY = 'kinora.traceViewer.pendingLoad'
+const SW_RELOAD_ATTEMPTS_KEY = 'kinora.traceViewer.swReloadAttempts'
+
+interface PendingLoad {
+  uri: string
+  name: string
+}
+
 let playTimer: ReturnType<typeof setInterval> | undefined
 let sourceRevealVersion = 0
 
@@ -79,16 +87,42 @@ function flatten(m: TraceModel): ActionItem[] {
   return out
 }
 
-async function registerServiceWorker(): Promise<void> {
+async function registerServiceWorker(uri: string, name: string): Promise<void> {
   if (!navigator.serviceWorker)
     throw new Error('Service workers unavailable. Serve over https or localhost.')
   const registration = await navigator.serviceWorker.register('sw.bundle.js', { updateViaCache: 'none' })
   await registration.update()
-  if (!navigator.serviceWorker.controller)
-    await new Promise<void>((resolve) => { navigator.serviceWorker.oncontrollerchange = () => resolve() })
+  if (!navigator.serviceWorker.controller) {
+    await Promise.race([
+      new Promise<void>((resolve) => { navigator.serviceWorker.oncontrollerchange = () => resolve() }),
+      new Promise(resolve => setTimeout(resolve, 1500)),
+    ])
+  }
+  if (!navigator.serviceWorker.controller) {
+    const attempts = Number(sessionStorage.getItem(SW_RELOAD_ATTEMPTS_KEY) ?? '0')
+    if (attempts >= 1)
+      throw new Error('Service worker registered but did not control this page. Reload the viewer and try again.')
+    sessionStorage.setItem(PENDING_LOAD_KEY, JSON.stringify({ uri, name } satisfies PendingLoad))
+    sessionStorage.setItem(SW_RELOAD_ATTEMPTS_KEY, String(attempts + 1))
+    location.reload()
+    await new Promise(() => {})
+  }
   setInterval(() => {
     void fetch('ping')
   }, 10_000)
+}
+
+function consumePendingLoad(): PendingLoad | null {
+  const raw = sessionStorage.getItem(PENDING_LOAD_KEY)
+  sessionStorage.removeItem(PENDING_LOAD_KEY)
+  if (!raw)
+    return null
+  try {
+    return JSON.parse(raw) as PendingLoad
+  }
+  catch {
+    return null
+  }
 }
 
 async function load(uri: string, name = ''): Promise<void> {
@@ -97,7 +131,7 @@ async function load(uri: string, name = ''): Promise<void> {
   traceUri.value = uri
   traceName.value = name
   try {
-    await registerServiceWorker()
+    await registerServiceWorker(uri, name)
     const res = await fetch(`contexts?trace=${encodeURIComponent(uri)}`)
     if (!res.ok)
       throw new Error(await parseErrorResponse(res))
@@ -119,6 +153,8 @@ async function load(uri: string, name = ''): Promise<void> {
       || m.hasDomSnapshotForCall(i.action.callId, 'before'),
     )
     selectedId.value = (failed?.callId ?? lastWithPage?.id ?? items.value[0]?.id) ?? null
+    sessionStorage.removeItem(SW_RELOAD_ATTEMPTS_KEY)
+    sessionStorage.removeItem(PENDING_LOAD_KEY)
     status.value = 'ready'
   }
   catch (err: any) {
@@ -333,6 +369,7 @@ export function useTraceStore() {
     boundaries,
     load,
     loadFile,
+    consumePendingLoad,
     select,
     selectIndex,
     step,

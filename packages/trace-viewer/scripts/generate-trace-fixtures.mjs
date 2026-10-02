@@ -43,38 +43,96 @@ export default defineConfig({
     await writeFile(path.join(tmp, 'demo.spec.ts'), `
 import { expect, test } from '@playwright/test'
 
-const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l5Ta2QAAAABJRU5ErkJggg==', 'base64')
-
 test('checkout flow demo', async ({ page }, testInfo) => {
   await page.route('**/style.css', route => route.fulfill({
     contentType: 'text/css',
-    body: \`body{font-family:system-ui;margin:40px;background:#0f172a;color:#e2e8f0}
-      .card{background:#1e293b;padding:24px;border-radius:12px;max-width:520px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
-      h1{margin:0 0 8px;color:#f59e0b} button{background:#f59e0b;color:#000;border:0;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer}
-      input{padding:8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#fff;margin-right:8px}\`,
+    body: \`
+*{box-sizing:border-box}
+html{color-scheme:light}
+body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.5;color:#14171f;background:#fff;-webkit-font-smoothing:antialiased}
+.shell{display:grid;grid-template-columns:minmax(0,1fr) 400px;min-height:100vh}
+.checkout{padding:40px 72px 56px;max-width:820px;width:100%;justify-self:end}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+.mark{display:block;border-radius:7px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:44px 0 0;padding:0;list-style:none}
+.step{border-top:2px solid #e3e6eb;padding-top:10px;color:#5b6472;font-size:13px}
+.step strong{display:block;color:#14171f;font-size:14px;font-weight:600}
+.step.done{border-top-color:#15803d}
+.step.done strong::after{content:"\\\\2713";margin-left:6px;color:#15803d}
+h1{margin:40px 0 8px;font-size:40px;line-height:1.1;font-weight:650;letter-spacing:-.03em}
+.lead{margin:0 0 32px;max-width:52ch;color:#5b6472;font-size:16px}
+.field{display:block;margin-bottom:6px;font-size:13px;font-weight:600}
+.form{display:flex;gap:10px}
+.input{flex:1;min-width:0;max-width:340px;border:1px solid #c9ced6;border-radius:8px;background:#fff;color:inherit;padding:11px 12px;font:inherit}
+.input::placeholder{color:#8a93a1}
+.input:focus{outline:2px solid #14171f;outline-offset:1px;border-color:#14171f}
+button{border:0;border-radius:8px;background:#f59e0b;color:#14171f;padding:11px 18px;font:inherit;font-weight:600;cursor:pointer}
+button:hover{background:#e8930a}
+button:focus-visible{outline:2px solid #14171f;outline-offset:2px}
+.receipt{display:none;margin-top:28px;border-left:2px solid #15803d;padding:2px 0 2px 14px;color:#14171f}
+.receipt.visible{display:block}
+.side{border-left:1px solid #e3e6eb;background:#f6f7f9;padding:104px 44px 56px}
+.side h2{margin:0 0 12px;font-size:15px;font-weight:600}
+.row{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid #e3e6eb;padding:12px 0;color:#5b6472}
+.row strong{color:#14171f;font-weight:500;font-variant-numeric:tabular-nums}
+.total{display:flex;justify-content:space-between;align-items:baseline;padding-top:16px;font-weight:600}
+.total strong{font-size:24px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.trust{margin:28px 0 0;color:#5b6472;font-size:13px}
+@media (max-width:820px){.shell{grid-template-columns:1fr}.checkout{padding:28px 24px 36px}.side{border-left:0;border-top:1px solid #e3e6eb;padding:28px 24px}.form{flex-direction:column}.input{max-width:none}}
+\`,
   }))
-  await page.route('**/logo.png', route => route.fulfill({ contentType: 'image/png', body: PNG }))
+  await page.route('**/logo.svg', route => route.fulfill({
+    contentType: 'image/svg+xml',
+    body: \`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#f59e0b"/><path d="M18 42V22h8v7l12-7h8L33 32l13 10h-9l-11-8v8z" fill="#111827"/></svg>\`,
+  }))
 
   await page.setContent(\`<!doctype html><html><head>
     <link rel="stylesheet" href="https://demo.kinora.dev/style.css">
     </head><body>
-    <div class="card">
-      <img src="https://demo.kinora.dev/logo.png" width="32" height="32" alt="Kinora logo">
-      <h1 id="title">Checkout flow</h1>
-      <p>Sample page for the Kinora trace viewer.</p>
-      <input id="customer" placeholder="customer name">
-      <button id="complete">Complete order</button>
-    </div>
+    <main class="shell">
+      <section class="checkout">
+        <div class="brand">
+          <img class="mark" src="https://demo.kinora.dev/logo.svg" width="28" height="28" alt="Kinora logo">
+          <span>Kinora Store</span>
+        </div>
+        <ol class="steps" aria-label="Checkout steps">
+          <li class="step done"><strong>Cart</strong>Pro plan selected</li>
+          <li class="step done"><strong>Details</strong>Customer ready</li>
+          <li class="step" id="confirm-step"><strong>Confirm</strong>Waiting for payment</li>
+        </ol>
+        <h1 id="title">Checkout</h1>
+        <p id="message" class="lead">Kinora Pro for one seat, billed monthly. Change seats or cancel whenever you like.</p>
+        <label class="field" for="customer">Customer email</label>
+        <div class="form">
+          <input class="input" id="customer" type="email" placeholder="you@company.com">
+          <button id="complete">Complete checkout</button>
+        </div>
+        <div id="receipt" class="receipt" role="status">Receipt sent to alex@example.com.</div>
+      </section>
+      <aside class="side" aria-label="Order summary">
+        <h2>Order summary</h2>
+        <div class="row"><span>Kinora Pro</span><strong>$29</strong></div>
+        <div class="row"><span>Team seats</span><strong>1</strong></div>
+        <div class="row"><span>Trace retention</span><strong>90 days</strong></div>
+        <div class="total"><span>Total due today</span><strong>$29</strong></div>
+        <p class="trust">Every test run keeps its trace, network log, and console output for 90 days.</p>
+      </aside>
+    </main>
     <script>
       document.getElementById('complete').addEventListener('click', () => {
-        console.log('order submitted, customer =', document.getElementById('customer').value);
+        const customer = document.getElementById('customer').value;
+        console.log('order submitted, customer =', customer);
         console.warn('demo warning from checkout flow');
         document.getElementById('title').textContent = 'Order complete';
+        document.getElementById('message').textContent = 'Your team can start uploading Playwright runs right away.';
+        document.getElementById('confirm-step').classList.add('done');
+        document.getElementById('confirm-step').lastChild.textContent = 'Payment confirmed';
+        document.getElementById('receipt').classList.add('visible');
       });
     </script>
   </body></html>\`, { baseURL: 'https://demo.kinora.dev' })
 
-  await page.fill('#customer', 'Alex')
+  await page.fill('#customer', 'alex@example.com')
   await page.click('#complete')
   await expect(page.locator('#title')).toHaveText('Order complete')
 
@@ -107,8 +165,8 @@ async function generateAriaTrace() {
   const ariaFile = 'resources/aria-checkout.yml'
   const ariaText = `- document:
   - heading "Order complete" [level=1]
-  - textbox "customer name": Alex
-  - button "Complete order"
+  - textbox "Customer email": alex@example.com
+  - button "Complete checkout"
 `
 
   const entries = await readZip(source)
