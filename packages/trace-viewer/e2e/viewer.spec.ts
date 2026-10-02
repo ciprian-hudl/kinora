@@ -47,6 +47,27 @@ test('locator tab shows the selected action locator', async ({ page }) => {
   await expect(page.getByText('#customer', { exact: true })).toBeVisible()
 })
 
+test('call tab highlights action details', async ({ page }) => {
+  await page.getByTestId('action').filter({ hasText: 'Fill "alex@example.com"' }).click()
+  await page.getByRole('button', { name: 'Call', exact: true }).click()
+
+  await expect(page.getByTestId('call-title')).toHaveText('Fill "alex@example.com"')
+  await expect(page.getByTestId('call-method')).toHaveText('Frame.fill')
+  await expect(page.getByText('Key details')).toBeVisible()
+  await expect(page.getByText('selector')).toBeVisible()
+  await expect(page.getByText('#customer', { exact: true })).toBeVisible()
+  await expect(page.getByText('alex@example.com', { exact: true })).toBeVisible()
+})
+
+test('call tab formats expect details', async ({ page }) => {
+  await page.getByTestId('action').filter({ hasText: 'Expect "toHaveText"' }).first().click()
+  await page.getByRole('button', { name: 'Call', exact: true }).click()
+
+  await expect(page.getByTestId('call-title')).toHaveText('Expect "toHaveText"')
+  await expect(page.getByText('expected text')).toBeVisible()
+  await expect(page.getByText('Order complete', { exact: true })).toBeVisible()
+})
+
 test('picks a locator from the snapshot', async ({ page }) => {
   await page.getByRole('button', { name: 'Pick locator' }).click()
   await page.frameLocator('iframe[name="snapshot"]').getByRole('button', { name: 'Complete checkout' }).click()
