@@ -34,13 +34,13 @@ const highlight = HighlightStyle.define([
 
 // Chrome + search panel, all driven by our design tokens.
 const theme = EditorView.theme({
-  '&': { backgroundColor: 'transparent', height: '100%', color: 'var(--foreground)' },
+  '&': { backgroundColor: 'var(--background)', height: '100%', color: 'var(--foreground)' },
   '.cm-scroller': { fontFamily: 'var(--font-mono)', fontSize: '12px', lineHeight: '1.6' },
   '.cm-content': { caretColor: 'var(--foreground)' },
   '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--foreground)' },
-  '.cm-gutters': { backgroundColor: 'transparent', color: 'color-mix(in oklch, var(--muted-foreground) 80%, transparent)', border: 'none', borderRight: '1px solid var(--border)' },
+  '.cm-gutters': { backgroundColor: 'var(--background)', color: 'color-mix(in oklch, var(--muted-foreground) 80%, transparent)', border: 'none', borderRight: '1px solid var(--border)', zIndex: '2' },
   '.cm-activeLine': { backgroundColor: 'transparent' },
-  '.cm-activeLineGutter': { backgroundColor: 'transparent' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--background)' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': { backgroundColor: 'color-mix(in oklch, var(--signal) 28%, transparent)' },
   '.cm-targetLine': { backgroundColor: 'color-mix(in oklch, var(--signal) 16%, transparent)' },
   '.cm-searchMatch': { backgroundColor: 'color-mix(in oklch, var(--flaky) 35%, transparent)', borderRadius: '2px', outline: '1px solid color-mix(in oklch, var(--flaky) 50%, transparent)' },
