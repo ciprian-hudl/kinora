@@ -1,10 +1,10 @@
 import type { Counts, NormTest } from '@kinora/core'
 import type { AlertPayload, AlertPolicy } from './core'
 import { compareRuns } from '@kinora/core'
-import { eq } from 'drizzle-orm'
+import { and, eq, gt, isNull, or } from 'drizzle-orm'
 import { getEntitlements } from '../billing/entitlements'
 import { db } from '../db'
-import { alertChannel, project, slackIntegration } from '../db/schemas/index'
+import { alertChannel, project, slackIntegration, testQuarantine } from '../db/schemas/index'
 import { env } from '../lib/env'
 import { logger } from '../lib/logger'
 import { sendMail } from '../lib/mailer'
@@ -24,6 +24,15 @@ export interface NotifyRunInput {
   tests: NormTest[]
 }
 
+function countsFor(tests: NormTest[]): Counts {
+  const counts: Counts = { total: 0, expected: 0, unexpected: 0, flaky: 0, skipped: 0 }
+  for (const t of tests) {
+    counts.total++
+    counts[t.status]++
+  }
+  return counts
+}
+
 export async function notifyRun(input: NotifyRunInput): Promise<void> {
   // Alerts are a paid feature (self-host is unlimited).
   const entitlements = await getEntitlements(input.organizationId)
@@ -40,8 +49,18 @@ export async function notifyRun(input: NotifyRunInput): Promise<void> {
   if (!activeSlack && activeChannels.length === 0)
     return
 
+  const mutedRows = await db.query.testQuarantine.findMany({
+    where: and(
+      eq(testQuarantine.projectId, input.projectId),
+      or(isNull(testQuarantine.expiresAt), gt(testQuarantine.expiresAt, new Date())),
+    ),
+    columns: { testKey: true },
+  })
+  const muted = new Set(mutedRows.map(q => q.testKey))
+  const activeTests = input.tests.filter(t => !muted.has(t.testKey))
+
   const prevTests = await previousRunTests(input.projectId, input.startedAt, input.branch)
-  const deltas = compareRuns(prevTests, input.tests)
+  const deltas = compareRuns(prevTests, input.tests).filter(d => !muted.has(d.testKey))
   const newlyFailing = deltas.filter(d => d.change === 'broken')
   const newlyFlaky = deltas.filter(d => d.change === 'newly-flaky')
 
@@ -53,7 +72,7 @@ export async function notifyRun(input: NotifyRunInput): Promise<void> {
   const payload: AlertPayload = {
     projectName: projectRow?.name ?? 'project',
     runUrl: `${env.WEB_ORIGIN}/projects/${slug}/runs/${input.runId}`,
-    counts: input.counts,
+    counts: countsFor(activeTests),
     newlyFailing: newlyFailing.map(d => d.title),
     newlyFlaky: newlyFlaky.map(d => d.title),
   }

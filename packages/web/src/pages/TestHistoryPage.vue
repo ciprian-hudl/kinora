@@ -1,21 +1,29 @@
 <script setup lang="ts">
 import { formatPct, stripAnsi } from '@kinora/core'
+import { Badge } from '@kinora/ui/badge'
 import { Button } from '@kinora/ui/button'
 import { Separator } from '@kinora/ui/separator'
 import { Skeleton } from '@kinora/ui/skeleton'
 import { StatBlock } from '@kinora/ui/stat-block'
+import { Textarea } from '@kinora/ui/textarea'
 import { ArrowLeft } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { toast } from 'vue-sonner'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
-import { useProjectHistory } from '@/composables/queries'
+import { useDemo, useProjectHistory, useQuarantines } from '@/composables/queries'
 import { testLabel } from '@/lib/test-display'
+import { trpc } from '@/lib/trpc'
 
 const props = defineProps<{ projectId: string }>()
 const route = useRoute()
+const isDemo = useDemo()
 const { state, isLoading, error } = useProjectHistory(props.projectId)
+const { state: quarantines, execute: reloadQuarantines } = useQuarantines(props.projectId)
+const savingQuarantine = ref(false)
+const quarantineReason = ref('')
 
 const testKey = computed(() => {
   const k = route.query.key
@@ -24,6 +32,7 @@ const testKey = computed(() => {
 
 const project = computed(() => state.value.project)
 const history = computed(() => state.value.histories.find(h => h.testKey === testKey.value))
+const quarantine = computed(() => quarantines.value.find(q => q.testKey === testKey.value))
 
 // Clusters this test shares with at least one other test: "the same error hits N others".
 const relatedClusters = computed(() =>
@@ -47,6 +56,51 @@ const visibleIncidents = computed(() => (showAll.value ? incidents.value : incid
 watch(testKey, () => {
   showAll.value = false
 })
+watch(quarantine, (q) => {
+  quarantineReason.value = q?.reason ?? ''
+}, { immediate: true })
+
+async function saveQuarantine(reason?: string) {
+  if (!history.value || savingQuarantine.value)
+    return
+
+  savingQuarantine.value = true
+  try {
+    await trpc.dashboard.quarantine.mutate({ projectId: props.projectId, testKey: history.value.testKey, reason: reason?.trim() || undefined })
+    toast.success(quarantine.value ? 'Quarantine updated' : 'Test quarantined')
+    await reloadQuarantines()
+  }
+  catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Could not update quarantine')
+  }
+  finally {
+    savingQuarantine.value = false
+  }
+}
+
+async function toggleQuarantine() {
+  if (!history.value || savingQuarantine.value)
+    return
+
+  savingQuarantine.value = true
+  try {
+    if (quarantine.value) {
+      await trpc.dashboard.unquarantine.mutate({ projectId: props.projectId, testKey: history.value.testKey })
+      toast.success('Test removed from quarantine')
+    }
+    else {
+      await trpc.dashboard.quarantine.mutate({ projectId: props.projectId, testKey: history.value.testKey, reason: quarantineReason.value.trim() || undefined })
+      toast.success('Test quarantined')
+    }
+    await reloadQuarantines()
+  }
+  catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Could not update quarantine')
+  }
+  finally {
+    savingQuarantine.value = false
+  }
+}
 
 const dateFmt = new Intl.DateTimeFormat(undefined, {
   weekday: 'short',
@@ -93,9 +147,43 @@ const dateFmt = new Intl.DateTimeFormat(undefined, {
             </div>
           </div>
           <div class="flex shrink-0 items-center gap-2">
+            <Badge v-if="quarantine" class="border-flaky/30 bg-flaky/10 text-flaky">
+              Quarantined
+            </Badge>
             <TestStatusBadge :status="history.lastStatus" />
+            <Button
+              variant="outline"
+              size="sm"
+              class="font-mono text-xs text-muted-foreground"
+              :disabled="isDemo || savingQuarantine"
+              @click="toggleQuarantine"
+            >
+              {{ quarantine ? 'Unquarantine' : 'Quarantine' }}
+            </Button>
             <CopyLinkButton />
           </div>
+        </div>
+
+        <div v-if="quarantine" class="flex flex-col gap-3 rounded-lg border border-flaky/30 bg-flaky/5 px-4 py-3">
+          <div class="font-mono text-xs text-flaky">
+            Quarantined since {{ dateFmt.format(new Date(quarantine.createdAt)) }}
+          </div>
+          <Textarea
+            v-model="quarantineReason"
+            class="min-h-20 bg-background/70 text-sm"
+            placeholder="Add a reason for the team..."
+            :disabled="isDemo || savingQuarantine"
+            maxlength="500"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            class="self-start font-mono text-xs text-muted-foreground"
+            :disabled="isDemo || savingQuarantine || quarantineReason.trim() === (quarantine.reason ?? '')"
+            @click="saveQuarantine(quarantineReason)"
+          >
+            Save reason
+          </Button>
         </div>
 
         <div class="flex flex-col gap-3 rounded-lg border border-border/70 bg-card/80 px-6 py-5">

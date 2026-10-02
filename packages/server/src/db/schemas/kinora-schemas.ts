@@ -74,6 +74,19 @@ export const artifact = pgTable('artifact', {
   index('artifact_projectId_idx').on(table.projectId),
 ])
 
+export const testQuarantine = pgTable('test_quarantine', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => project.id, { onDelete: 'cascade' }),
+  testKey: text('test_key').notNull(),
+  reason: text('reason'),
+  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, table => [
+  index('test_quarantine_projectId_idx').on(table.projectId),
+  unique('test_quarantine_project_key_uniq').on(table.projectId, table.testKey),
+])
+
 // Cached Polar billing state, synced from the customer.state_changed webhook.
 export const subscription = pgTable('subscription', {
   organizationId: text('organization_id').primaryKey().references(() => organization.id, { onDelete: 'cascade' }),

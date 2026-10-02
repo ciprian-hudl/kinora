@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { notifyRun } from '../src/alerts/notify'
 import { db } from '../src/db'
-import { alertChannel, project, run, slackIntegration, test as testRow } from '../src/db/schemas/index'
+import { alertChannel, project, run, slackIntegration, testQuarantine, test as testRow } from '../src/db/schemas/index'
 import { createUser, ownedOrgId, resetDb } from './helpers'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -116,6 +116,18 @@ describe('notifyRun', () => {
 
     const fetchMock = stubFetchOk()
     await notifyRun({ organizationId: await ownedOrgId(user.id), projectId, runId: 'r1', startedAt: new Date(), counts: PASS, tests: [normTest('t1', 'expected')] })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('does not fire on failure when the only failing test is quarantined', async () => {
+    const user = await createUser()
+    const projectId = await seedProject(user.id)
+    await setChannel(projectId, 'on-failure')
+    await db.insert(testQuarantine).values({ id: randomUUID(), projectId, testKey: 't1' })
+
+    const fetchMock = stubFetchOk()
+    await notifyRun({ organizationId: await ownedOrgId(user.id), projectId, runId: 'r1', startedAt: new Date(), counts: FAIL, tests: [normTest('t1', 'unexpected')] })
 
     expect(fetchMock).not.toHaveBeenCalled()
   })

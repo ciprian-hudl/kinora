@@ -83,6 +83,47 @@ describe('dashboard scoping', () => {
   })
 })
 
+describe('dashboard quarantine', () => {
+  it('creates, updates, lists and removes a test quarantine', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    const payload = runPayload('web-app', '@smoke', 'flaky')
+    await ingest(key, payload)
+
+    const api = await caller(a)
+    const first = await api.dashboard.quarantine({ projectId: 'web-app', testKey: payload.tests[0].testKey, reason: 'known noisy checkout' })
+    expect(first.reason).toBe('known noisy checkout')
+
+    await api.dashboard.quarantine({ projectId: 'web-app', testKey: payload.tests[0].testKey, reason: 'muted until fixed' })
+    expect(await api.dashboard.quarantines({ projectId: 'web-app' })).toMatchObject([
+      { testKey: payload.tests[0].testKey, reason: 'muted until fixed' },
+    ])
+
+    await api.dashboard.unquarantine({ projectId: 'web-app', testKey: payload.tests[0].testKey })
+    expect(await api.dashboard.quarantines({ projectId: 'web-app' })).toHaveLength(0)
+  })
+
+  it('does not expose expired quarantines', async () => {
+    const a = await createUser('a@test.dev')
+    const payload = runPayload('web-app')
+    await ingest(await createApiKey(a.id), payload)
+
+    const api = await caller(a)
+    await api.dashboard.quarantine({ projectId: 'web-app', testKey: payload.tests[0].testKey, expiresAt: new Date(Date.now() - 1000).toISOString() })
+
+    expect(await api.dashboard.quarantines({ projectId: 'web-app' })).toHaveLength(0)
+  })
+
+  it('rejects quarantine writes on a project owned by another user', async () => {
+    const a = await createUser('a@test.dev')
+    const b = await createUser('b@test.dev')
+    const payload = runPayload('web-app')
+    await ingest(await createApiKey(a.id), payload)
+
+    await expect((await caller(b)).dashboard.quarantine({ projectId: 'web-app', testKey: payload.tests[0].testKey })).rejects.toThrow()
+  })
+})
+
 describe('dashboard reads', () => {
   it('run returns the report with the run tests', async () => {
     const a = await createUser('a@test.dev')

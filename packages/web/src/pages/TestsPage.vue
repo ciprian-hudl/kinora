@@ -23,20 +23,32 @@ import SearchInput from '@/components/app/SearchInput.vue'
 import FailureCausesCard from '@/components/project/FailureCausesCard.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
-import { useProjectHistory } from '@/composables/queries'
+import { useProjectHistory, useQuarantines } from '@/composables/queries'
 import { testLabel } from '@/lib/test-display'
 
 const props = defineProps<{ projectId: string }>()
 const { state, isLoading, error } = useProjectHistory(props.projectId)
+const { state: quarantines } = useQuarantines(props.projectId)
 
 const project = computed(() => state.value.project)
 const histories = computed(() => state.value.histories)
 const clusters = computed(() => state.value.clusters)
+const quarantineByKey = computed(() => new Map(quarantines.value.map(q => [q.testKey, q])))
+const quarantinedCount = computed(() => quarantineByKey.value.size)
+function isQuarantined(testKey: string): boolean {
+  return quarantineByKey.value.has(testKey)
+}
 
 const search = useRouteQuery('q', '')
 const unstableOnly = useRouteQuery<string, boolean>('unstable', 'true', {
   transform: {
     get: v => v !== 'false',
+    set: v => (v ? 'true' : 'false'),
+  },
+})
+const quarantinedOnly = useRouteQuery<string, boolean>('quarantined', 'false', {
+  transform: {
+    get: v => v === 'true',
     set: v => (v ? 'true' : 'false'),
   },
 })
@@ -78,7 +90,7 @@ function rank(h: TestHistory): number {
 const rows = computed(() => {
   const q = search.value.trim().toLowerCase()
   return histories.value
-    .filter(h => (unstableOnly.value ? stats(h).unstable : true))
+    .filter(h => (quarantinedOnly.value ? isQuarantined(h.testKey) : unstableOnly.value ? stats(h).unstable : true))
     .filter(
       h =>
         !q
@@ -108,9 +120,24 @@ const currentPage = computed(() => pageIndex.value + 1)
 const paged = computed(() => rows.value.slice(pageIndex.value * PAGE_SIZE, pageIndex.value * PAGE_SIZE + PAGE_SIZE))
 
 // A changed filter should land on page 1, not a stale (clamped) page.
-watch([search, unstableOnly], () => {
+watch([search, unstableOnly, quarantinedOnly], () => {
   page.value = null
 })
+
+function showAllTests() {
+  unstableOnly.value = false
+  quarantinedOnly.value = false
+}
+
+function showUnstableTests() {
+  unstableOnly.value = true
+  quarantinedOnly.value = false
+}
+
+function showQuarantinedTests() {
+  unstableOnly.value = false
+  quarantinedOnly.value = true
+}
 
 function setPage(p: number) {
   page.value = p > 1 ? String(p) : null
@@ -156,6 +183,8 @@ function setPage(p: number) {
           <StatBlock label="New flakiness" :value="newlyFlakyCount" :tone="newlyFlakyCount ? 'flaky' : 'default'" />
           <Separator orientation="vertical" class="h-10" />
           <StatBlock label="New failures" :value="newlyBrokenCount" :tone="newlyBrokenCount ? 'fail' : 'default'" />
+          <Separator orientation="vertical" class="h-10" />
+          <StatBlock label="Quarantined" :value="quarantinedCount" :tone="quarantinedCount ? 'flaky' : 'default'" />
         </div>
       </div>
 
@@ -163,15 +192,35 @@ function setPage(p: number) {
 
       <!-- Toolbar -->
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <Button
-          variant="outline"
-          size="sm"
-          class="font-mono text-xs"
-          :class="unstableOnly ? 'border-flaky/50 text-flaky' : ''"
-          @click="unstableOnly = !unstableOnly"
-        >
-          {{ unstableOnly ? 'Unstable only' : 'All tests' }}
-        </Button>
+        <div class="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            class="font-mono text-xs"
+            :class="!unstableOnly && !quarantinedOnly ? 'border-foreground/30 text-foreground' : ''"
+            @click="showAllTests"
+          >
+            All tests
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            class="font-mono text-xs"
+            :class="unstableOnly && !quarantinedOnly ? 'border-flaky/50 text-flaky' : ''"
+            @click="showUnstableTests"
+          >
+            Unstable only
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            class="font-mono text-xs"
+            :class="quarantinedOnly ? 'border-flaky/50 text-flaky' : ''"
+            @click="showQuarantinedTests"
+          >
+            Quarantined <span class="ml-1 tabular-nums text-muted-foreground">{{ quarantinedCount }}</span>
+          </Button>
+        </div>
         <SearchInput v-model="search" placeholder="Filter by title or file..." />
       </div>
 
@@ -192,6 +241,9 @@ function setPage(p: number) {
               </Badge>
               <Badge v-else-if="h.newlyFlaky" class="border-flaky/30 bg-flaky/15 text-[10px] text-flaky">
                 New flakiness
+              </Badge>
+              <Badge v-if="isQuarantined(h.testKey)" class="border-flaky/30 bg-flaky/10 text-[10px] text-flaky">
+                Quarantined
               </Badge>
             </div>
             <div class="mt-0.5 font-mono text-[11px] text-muted-foreground">
@@ -224,7 +276,7 @@ function setPage(p: number) {
         </RouterLink>
 
         <div v-if="!rows.length" class="py-12 text-center font-mono text-sm text-muted-foreground">
-          {{ unstableOnly ? 'No unstable tests. All green.' : 'No tests match this filter.' }}
+          {{ quarantinedOnly ? 'No quarantined tests.' : unstableOnly ? 'No unstable tests. All green.' : 'No tests match this filter.' }}
         </div>
       </div>
 

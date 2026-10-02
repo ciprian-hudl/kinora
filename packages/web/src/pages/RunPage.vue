@@ -8,21 +8,53 @@ import { StatBlock } from '@kinora/ui/stat-block'
 import { Tabs, TabsList, TabsTrigger } from '@kinora/ui/tabs'
 import { ArrowLeft, ExternalLink, Film, GitBranch, GitCompareArrows, Paperclip } from '@lucide/vue'
 import { useRouteQuery } from '@vueuse/router'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { toast } from 'vue-sonner'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
 import FilterCombobox from '@/components/FilterCombobox.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
-import { useManifest, useRun } from '@/composables/queries'
+import { useDemo, useManifest, useQuarantines, useRun } from '@/composables/queries'
 import { testLabel } from '@/lib/test-display'
 import { isTraceAttachment, traceViewerHref } from '@/lib/trace'
+import { trpc } from '@/lib/trpc'
 import { httpsUrl } from '@/lib/url'
 
 const props = defineProps<{ projectId: string, runId: string }>()
 
+const isDemo = useDemo()
 const { state: report, isLoading, error } = useRun(props.projectId, props.runId)
 const { state: manifest } = useManifest()
+const { state: quarantines, execute: reloadQuarantines } = useQuarantines(props.projectId)
+const savingQuarantineKey = ref<string | null>(null)
+const quarantineByKey = computed(() => new Map(quarantines.value.map(q => [q.testKey, q])))
+function isQuarantined(testKey: string): boolean {
+  return quarantineByKey.value.has(testKey)
+}
+
+async function toggleQuarantine(testKey: string) {
+  if (savingQuarantineKey.value)
+    return
+  savingQuarantineKey.value = testKey
+  try {
+    if (isQuarantined(testKey)) {
+      await trpc.dashboard.unquarantine.mutate({ projectId: props.projectId, testKey })
+      toast.success('Test removed from quarantine')
+    }
+    else {
+      await trpc.dashboard.quarantine.mutate({ projectId: props.projectId, testKey })
+      toast.success('Test quarantined')
+    }
+    await reloadQuarantines()
+  }
+  catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Could not update quarantine')
+  }
+  finally {
+    savingQuarantineKey.value = null
+  }
+}
 
 const projectName = computed(
   () => manifest.value?.projects.find(p => p.id === props.projectId)?.name ?? props.projectId,
@@ -56,7 +88,7 @@ const commitHref = computed(() => {
 })
 const ciRunHref = computed(() => httpsUrl(report.value?.meta.ci?.runUrl))
 
-const filter = useRouteQuery<'all' | PwTestStatus>('status', 'all')
+const filter = useRouteQuery<'all' | PwTestStatus | 'quarantined'>('status', 'all')
 const selectedTag = useRouteQuery('tag', 'all')
 const search = useRouteQuery('q', '')
 
@@ -81,19 +113,23 @@ const searchMatched = computed(() => {
 })
 
 const tabCounts = computed(() => {
-  const c = { all: searchMatched.value.length, unexpected: 0, flaky: 0, skipped: 0 }
+  const c = { all: searchMatched.value.length, unexpected: 0, flaky: 0, skipped: 0, quarantined: 0 }
   for (const t of searchMatched.value) {
     if (t.status === 'unexpected' || t.status === 'flaky' || t.status === 'skipped')
       c[t.status]++
+    if (isQuarantined(t.testKey))
+      c.quarantined++
   }
   return c
 })
 
-const filtered = computed(() =>
-  filter.value === 'all'
-    ? searchMatched.value
-    : searchMatched.value.filter(t => t.status === filter.value),
-)
+const filtered = computed(() => {
+  if (filter.value === 'all')
+    return searchMatched.value
+  if (filter.value === 'quarantined')
+    return searchMatched.value.filter(t => isQuarantined(t.testKey))
+  return searchMatched.value.filter(t => t.status === filter.value)
+})
 
 type Attachment = NonNullable<typeof report.value>['tests'][number]['attachments'][number]
 
@@ -226,6 +262,9 @@ const dateFmt = new Intl.DateTimeFormat(undefined, {
             <TabsTrigger value="skipped">
               Skipped <span class="ml-1.5 tabular-nums text-muted-foreground">{{ tabCounts.skipped }}</span>
             </TabsTrigger>
+            <TabsTrigger value="quarantined" class="data-[state=active]:text-flaky">
+              Quarantined <span class="ml-1.5 tabular-nums text-muted-foreground">{{ tabCounts.quarantined }}</span>
+            </TabsTrigger>
           </TabsList>
         </Tabs>
         <div class="flex flex-wrap items-center justify-end gap-2">
@@ -258,6 +297,10 @@ const dateFmt = new Intl.DateTimeFormat(undefined, {
                   class="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
                 >{{ tag }}</span>
                 <span
+                  v-if="isQuarantined(t.testKey)"
+                  class="rounded border border-flaky/30 bg-flaky/10 px-1.5 py-0.5 font-mono text-[10px] text-flaky"
+                >Quarantined</span>
+                <span
                   v-for="(a, i) in t.annotations"
                   :key="`${a.type}-${i}`"
                   :title="a.description"
@@ -276,13 +319,24 @@ const dateFmt = new Intl.DateTimeFormat(undefined, {
                 {{ t.file }}:{{ t.line }} &middot; {{ t.projectName }}
               </div>
             </div>
-            <div class="shrink-0 text-right font-mono text-[11px] text-muted-foreground">
-              <div class="tabular-nums">
-                {{ formatDuration(t.duration) }}
+            <div class="flex shrink-0 flex-col items-end gap-2">
+              <div class="text-right font-mono text-[11px] text-muted-foreground">
+                <div class="tabular-nums">
+                  {{ formatDuration(t.duration) }}
+                </div>
+                <div v-if="t.retries" class="tabular-nums text-flaky">
+                  {{ t.retries }} retry
+                </div>
               </div>
-              <div v-if="t.retries" class="tabular-nums text-flaky">
-                {{ t.retries }} retry
-              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-7 font-mono text-[11px] text-muted-foreground"
+                :disabled="isDemo || savingQuarantineKey === t.testKey"
+                @click="toggleQuarantine(t.testKey)"
+              >
+                {{ isQuarantined(t.testKey) ? 'Unquarantine' : 'Quarantine' }}
+              </Button>
             </div>
           </div>
 

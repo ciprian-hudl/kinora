@@ -1,10 +1,11 @@
 import type { Manifest, ProjectEntry, ProjectHistory, RunComparison, RunReport } from '@kinora/core'
+import { randomUUID } from 'node:crypto'
 import { compareRuns, SCHEMA_VERSION } from '@kinora/core'
 import { TRPCError } from '@trpc/server'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '../db'
-import { project, run, test } from '../db/schemas/index'
+import { project, run, test, testQuarantine } from '../db/schemas/index'
 import { findProject, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries, MAX_DASHBOARD_RUNS, toNormTest } from '../reports/queries'
 import { orgProcedure, router } from '../trpc/index'
 
@@ -15,6 +16,18 @@ export async function ownedProject(organizationId: string, slug: string) {
   if (!p)
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Project not found' })
   return p
+}
+
+const quarantineInput = z.object({
+  projectId: z.string().min(1),
+  testKey: z.string().min(1),
+})
+
+function activeQuarantineWhere(projectId: string) {
+  return and(
+    eq(testQuarantine.projectId, projectId),
+    or(isNull(testQuarantine.expiresAt), gt(testQuarantine.expiresAt, new Date())),
+  )
 }
 
 export const dashboardRouter = router({
@@ -46,6 +59,64 @@ export const dashboardRouter = router({
     .query(async ({ ctx, input }): Promise<ProjectHistory> => {
       const p = await ownedProject(ctx.organizationId, input.projectId)
       return loadProjectHistory(p)
+    }),
+
+  quarantines: orgProcedure
+    .input(z.object({ projectId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const p = await ownedProject(ctx.organizationId, input.projectId)
+      const rows = await db.query.testQuarantine.findMany({
+        where: activeQuarantineWhere(p.id),
+        orderBy: desc(testQuarantine.createdAt),
+      })
+      return rows.map(q => ({
+        testKey: q.testKey,
+        reason: q.reason ?? undefined,
+        expiresAt: q.expiresAt?.toISOString(),
+        createdAt: q.createdAt.toISOString(),
+        updatedAt: q.updatedAt.toISOString(),
+      }))
+    }),
+
+  quarantine: orgProcedure
+    .input(quarantineInput.extend({
+      reason: z.string().trim().max(500).optional(),
+      expiresAt: z.string().datetime().optional().nullable(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const p = await ownedProject(ctx.organizationId, input.projectId)
+      const now = new Date()
+      const [row] = await db.insert(testQuarantine).values({
+        id: randomUUID(),
+        projectId: p.id,
+        testKey: input.testKey,
+        reason: input.reason || null,
+        expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+        createdAt: now,
+        updatedAt: now,
+      }).onConflictDoUpdate({
+        target: [testQuarantine.projectId, testQuarantine.testKey],
+        set: {
+          reason: input.reason || null,
+          expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+          updatedAt: now,
+        },
+      }).returning()
+      return {
+        testKey: row.testKey,
+        reason: row.reason ?? undefined,
+        expiresAt: row.expiresAt?.toISOString(),
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      }
+    }),
+
+  unquarantine: orgProcedure
+    .input(quarantineInput)
+    .mutation(async ({ ctx, input }) => {
+      const p = await ownedProject(ctx.organizationId, input.projectId)
+      await db.delete(testQuarantine).where(and(eq(testQuarantine.projectId, p.id), eq(testQuarantine.testKey, input.testKey)))
+      return { ok: true }
     }),
 
   compareRuns: orgProcedure

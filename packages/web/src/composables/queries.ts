@@ -34,6 +34,10 @@ export function useProjectHistory(projectId: string) {
   )
 }
 
+export function useQuarantines(projectId: string) {
+  return useAsyncState(() => trpc.dashboard.quarantines.query({ projectId }), [], { immediate: true })
+}
+
 export function useCompareRuns(projectId: string, baseRunId: string, headRunId: string) {
   return useAsyncState(
     () => trpc.dashboard.compareRuns.query({ projectId, baseRunId, headRunId }),
