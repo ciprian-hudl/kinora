@@ -3,7 +3,7 @@ import type { SnapshotTab } from '../lib/snapshots'
 import type { PickedLocator } from '../store'
 import { cn } from '@kinora/ui'
 import { ExternalLink, Monitor, Target } from '@lucide/vue'
-import { computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useTraceStore } from '../store'
 import TextTooltip from './TextTooltip.vue'
 
@@ -15,9 +15,22 @@ const tabs: { id: SnapshotTab, label: string }[] = [
   { id: 'after', label: 'After' },
 ]
 
+type SnapshotMode = 'dom' | 'aria'
+
+const mode = ref<SnapshotMode>('dom')
 const viewport = computed(() => store.snapshotInfo.value.viewport)
 const pageUrl = computed(() => store.snapshotInfo.value.url ?? '')
 const frameSrc = computed(() => store.currentSnapshotUrl.value ?? 'about:blank')
+const ariaText = ref('')
+const ariaLoading = ref(false)
+const ariaUrl = computed(() => {
+  const snapshot = store.currentSnapshot.value
+  const model = store.model.value
+  if (!snapshot || !model)
+    return undefined
+  const event = model.ariaSnapshotForCall(snapshot.callId, snapshot.phase)
+  return event?.file ? model.createRelativeUrl(`file/${event.file}`) : undefined
+})
 let iframe: HTMLIFrameElement | null = null
 let cleanupInspector: (() => void) | undefined
 
@@ -170,6 +183,23 @@ watch(frameSrc, () => {
   void store.refreshSnapshotInfo()
 }, { immediate: true })
 
+watch(ariaUrl, async (url) => {
+  ariaText.value = ''
+  if (!url)
+    return
+  ariaLoading.value = true
+  try {
+    const res = await fetch(url)
+    ariaText.value = res.ok ? await res.text() : ''
+  }
+  catch {
+    ariaText.value = ''
+  }
+  finally {
+    ariaLoading.value = false
+  }
+}, { immediate: true })
+
 watch([() => store.inspectingLocator.value, frameSrc], () => {
   void nextTick(installInspector)
 })
@@ -198,6 +228,28 @@ onBeforeUnmount(() => cleanupInspector?.())
         </button>
       </div>
       <div class="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+        <div class="flex items-center gap-0.5 rounded-md bg-muted/60 p-0.5">
+          <button
+            type="button"
+            :class="cn(
+              'rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
+              mode === 'dom' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )"
+            @click="mode = 'dom'"
+          >
+            DOM
+          </button>
+          <button
+            type="button"
+            :class="cn(
+              'rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
+              mode === 'aria' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )"
+            @click="mode = 'aria'"
+          >
+            ARIA
+          </button>
+        </div>
         <Monitor class="size-3.5" />
         <span v-if="viewport" class="font-mono tabular-nums">{{ viewport.width }}×{{ viewport.height }}</span>
         <button
@@ -208,7 +260,7 @@ onBeforeUnmount(() => cleanupInspector?.())
           )"
           title="Pick locator"
           :disabled="!store.currentSnapshotUrl.value"
-          @click="store.setInspectingLocator(!store.inspectingLocator.value)"
+          @click="() => { mode = 'dom'; store.setInspectingLocator(!store.inspectingLocator.value) }"
         >
           <Target class="size-3.5" />
         </button>
@@ -239,6 +291,7 @@ onBeforeUnmount(() => cleanupInspector?.())
         </div>
         <div class="relative min-h-0 flex-1 bg-white">
           <iframe
+            v-if="mode === 'dom'"
             :ref="setIframe"
             :src="frameSrc"
             name="snapshot"
@@ -247,6 +300,15 @@ onBeforeUnmount(() => cleanupInspector?.())
             class="absolute inset-0 size-full border-0"
             @load="installInspector"
           />
+          <div v-else class="absolute inset-0 overflow-auto bg-background p-4 text-foreground">
+            <div v-if="ariaLoading" class="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Loading ARIA snapshot…
+            </div>
+            <pre v-else-if="ariaText" class="font-mono text-xs leading-relaxed whitespace-pre-wrap">{{ ariaText }}</pre>
+            <div v-else class="flex h-full items-center justify-center text-sm text-muted-foreground">
+              No ARIA snapshot for this action
+            </div>
+          </div>
         </div>
       </div>
     </div>

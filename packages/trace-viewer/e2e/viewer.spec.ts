@@ -19,6 +19,11 @@ test('replays the DOM snapshot in the iframe', async ({ page }) => {
   await expect(frame.getByText('Submitted!')).toBeVisible()
 })
 
+test('shows ARIA snapshot mode empty state', async ({ page }) => {
+  await page.getByRole('button', { name: 'ARIA' }).click()
+  await expect(page.getByText('No ARIA snapshot for this action')).toBeVisible()
+})
+
 test('shows the test source code', async ({ page }) => {
   await page.getByRole('button', { name: 'Source', exact: true }).click()
   await expect(page.getByText('@playwright/test').first()).toBeVisible()
