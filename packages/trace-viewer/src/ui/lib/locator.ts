@@ -32,7 +32,7 @@ export function uniqueSelector(element: Element, testIdName = 'data-testid'): st
 
   const parts: string[] = []
   let current: Element | null = element
-  while (current && current.nodeType === Node.ELEMENT_NODE && current.tagName.toLowerCase() !== 'html') {
+  while (current && current.nodeType === 1 && current.tagName.toLowerCase() !== 'html') {
     const currentElement: Element = current
     const parent: Element | null = currentElement.parentElement
     let part = currentElement.tagName.toLowerCase()

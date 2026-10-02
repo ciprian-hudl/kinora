@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatSize, prettyJson, resourceCategory, resourcesForAction, resourcesInWindow, statusClass, toCurl } from '../src/ui/lib/network'
+import { allResources, bodyUrl, formatSize, prettyJson, resourceCategory, resourcesForAction, resourcesInWindow, statusClass, toCurl, toFetch } from '../src/ui/lib/network'
 
 type Res = Parameters<typeof resourceCategory>[0]
 
@@ -74,6 +74,17 @@ describe('statusClass', () => {
   })
 })
 
+describe('allResources', () => {
+  it('maps every resource to a row', () => {
+    const rows = allResources([
+      res({ url: 'https://x/a.js', status: 200 }),
+      res({ url: 'not a url', status: 404 }),
+    ])
+    expect(rows.map(r => r.name)).toEqual(['a.js', 'not a url'])
+    expect(rows.map(r => r.status)).toEqual([200, 404])
+  })
+})
+
 describe('toCurl', () => {
   it('builds a GET curl with just the url', () => {
     expect(toCurl(res({ url: 'https://x/a' }))).toBe(`curl 'https://x/a'`)
@@ -94,6 +105,34 @@ describe('toCurl', () => {
 
   it('escapes single quotes in values', () => {
     expect(toCurl(res({ url: `https://x/it's` }))).toContain(`'https://x/it'\\''s'`)
+  })
+})
+
+describe('toFetch', () => {
+  it('builds a fetch snippet with method, headers, and body', () => {
+    expect(toFetch(res({
+      url: 'https://x/a',
+      method: 'POST',
+      reqHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+      postData: '{"a":1}',
+    }))).toBe(`fetch("https://x/a", {
+  "method": "POST",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\\"a\\":1}"
+})`)
+  })
+})
+
+describe('bodyUrl', () => {
+  it('returns undefined without a model or file', () => {
+    expect(bodyUrl(null, 'body.txt')).toBeUndefined()
+    expect(bodyUrl({ createRelativeUrl: path => path }, undefined)).toBeUndefined()
+  })
+
+  it('creates a trace-relative file url', () => {
+    expect(bodyUrl({ createRelativeUrl: path => `/viewer/${path}` }, 'resources/body.txt')).toBe('/viewer/file/resources/body.txt')
   })
 })
 
