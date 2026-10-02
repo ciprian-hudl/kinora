@@ -140,6 +140,20 @@ Two per-package Dockerfiles, both built from the **repo root** (workspace contex
 
 `website/` is a standalone **Astro** site (its own pnpm workspace + lockfile + `Dockerfile`, **not** part of the root `packages/*` workspace). Build/dev separately from `website/` (`pnpm dev` / `pnpm build`).
 
+## Required workflow
+
+- Add or update tests when the change has behavior worth protecting. Skip tests for purely cosmetic, mechanical, or documentation-only changes when a test would only mirror implementation details.
+- Run `pnpm lint` before finishing code, config, or docs changes unless the change is explicitly experimental/WIP and validation was explicitly skipped.
+- Run the smallest additional useful validation before finishing, and mention exactly what ran. Typical checks:
+  - Server/API/database changes: `pnpm --filter @kinora/server typecheck` plus targeted vitest files, and `pnpm --filter @kinora/server build` when migrations or build output matter.
+  - Web UI changes: `pnpm --filter @kinora/web typecheck` plus targeted web tests or a browser smoke against an existing running app when useful.
+  - Trace viewer changes: `pnpm --filter @kinora/trace-viewer typecheck`, `pnpm --filter @kinora/trace-viewer test`, and targeted Playwright e2e/compat tests for viewer behavior.
+  - Cross-package changes: prefer `pnpm typecheck` and targeted package builds/tests over a full matrix unless the change is broad.
+- For schema changes, update Drizzle schemas and add a matching knex migration in `packages/server/migrations/`. Run/verify the migration path locally when a Postgres test database is available.
+- For dashboard or desktop UI behavior, prefer a manual smoke test in the real running app with Playwright MCP when the local dev servers are already running. Do not start dev servers unless explicitly asked.
+- For trace fixture changes, regenerate fixtures with `pnpm --filter @kinora/trace-viewer fixtures:generate`, verify public fixtures are sanitized, and run the compatibility suite.
+- Keep final replies concise: summarize the behavior changed, list validation commands, call out any skipped validation with the reason, and include the suggested Conventional Commit message.
+
 ## Conventions
 
 - ESLint is `@antfu/eslint-config` (vue + typescript). No Prettier; lint owns formatting.
