@@ -72,12 +72,7 @@ jobs:
             exit 1
           fi
 
-          DOKPLOY_URL="${DOKPLOY_URL%/}"
-          if [[ "$DOKPLOY_URL" == */api ]]; then
-            DOKPLOY_DEPLOY_URL="$DOKPLOY_URL/compose.deploy"
-          else
-            DOKPLOY_DEPLOY_URL="$DOKPLOY_URL/api/compose.deploy"
-          fi
+          DOKPLOY_DEPLOY_URL="$DOKPLOY_URL/api/compose.deploy"
 
           PAYLOAD=$(jq -n \
             --arg composeId "$DOKPLOY_COMPOSE_ID" \
