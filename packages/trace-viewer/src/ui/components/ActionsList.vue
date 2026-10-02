@@ -126,10 +126,15 @@ const countLabel = computed(() => {
           'group relative flex w-full items-center gap-2 py-1.5 pr-2.5 text-left text-[13px] transition-colors',
           store.selectedId.value === row.item.id
             ? 'bg-signal/10 text-foreground'
-            : 'text-foreground/80 hover:bg-muted/50',
+            : store.hoveredActionId.value === row.item.id
+              ? 'bg-muted/60 text-foreground'
+              : 'text-foreground/80 hover:bg-muted/50',
         )"
         :style="{ paddingLeft: `${10 + row.item.depth * 14}px` }"
         @click="store.select(row.item.id)"
+        @dblclick="store.zoomToAction(row.item.action)"
+        @mouseenter="store.setHoveredAction(row.item.id)"
+        @mouseleave="store.setHoveredAction(null)"
       >
         <span
           v-if="store.selectedId.value === row.item.id"

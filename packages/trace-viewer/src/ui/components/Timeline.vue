@@ -35,6 +35,17 @@ const segments = computed(() => {
     })
 })
 
+const errorMarkers = computed(() => {
+  const { min, max, span } = bounds.value
+  return store.items.value
+    .filter(item => item.action.error?.message)
+    .map((item) => {
+      const time = item.action.startTime ?? item.action.endTime ?? min
+      return { id: item.id, time, left: ((time - min) / span) * 100, title: actionTitle(item.action) }
+    })
+    .filter(marker => marker.time >= min && marker.time <= max)
+})
+
 const frames = computed(() => {
   const m = store.model.value
   if (!m)
@@ -106,6 +117,11 @@ const statusColor: Record<string, string> = {
   ok: 'bg-pass/70 hover:bg-pass',
   error: 'bg-fail hover:bg-fail',
   step: 'bg-muted-foreground/40 hover:bg-muted-foreground/70',
+}
+
+function selectMarker(id: string): void {
+  store.select(id)
+  store.setHoveredAction(null)
 }
 
 const currentTitle = computed(() =>
@@ -230,13 +246,29 @@ function seekToTime(t: number): void {
           v-for="seg in segments"
           :key="seg.id"
           type="button"
+          data-testid="action-segment"
           :class="cn(
             'absolute top-0 h-full rounded-sm transition-all cursor-crosshair',
             statusColor[seg.status],
-            store.selectedId.value === seg.id && 'ring-2 ring-signal ring-offset-1 ring-offset-background z-10',
+            (store.selectedId.value === seg.id || store.hoveredActionId.value === seg.id) && 'ring-2 ring-signal ring-offset-1 ring-offset-background z-10',
           )"
           :style="{ left: `${seg.left}%`, width: `${seg.width}%` }"
           @click="selectSegment(seg.id)"
+          @dblclick.stop="store.zoomToAction(store.items.value.find(item => item.id === seg.id)!.action)"
+          @mouseenter="store.setHoveredAction(seg.id)"
+          @mouseleave="store.setHoveredAction(null)"
+        />
+        <button
+          v-for="marker in errorMarkers"
+          :key="`error-${marker.id}`"
+          type="button"
+          data-testid="timeline-error-marker"
+          class="absolute -top-1 bottom-[-4px] z-20 w-1 -translate-x-1/2 rounded-full bg-fail shadow-[0_0_0_2px_color-mix(in_oklch,var(--background)_80%,transparent)] transition-transform hover:scale-x-150"
+          :style="{ left: `${marker.left}%` }"
+          :title="marker.title"
+          @click.stop="selectMarker(marker.id)"
+          @mouseenter="store.setHoveredAction(marker.id)"
+          @mouseleave="store.setHoveredAction(null)"
         />
         <div
           v-if="brush"

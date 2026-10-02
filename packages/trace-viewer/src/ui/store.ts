@@ -45,6 +45,7 @@ const model = shallowRef<TraceModel | null>(null)
 const items = shallowRef<ActionItem[]>([])
 const collapsed = ref<Set<string>>(new Set())
 const selectedId = ref<string | null>(null)
+const hoveredActionId = ref<string | null>(null)
 const snapshotTab = ref<SnapshotTab>('action')
 const snapshotInfo = ref<SnapshotInfo>({})
 const detailTab = ref<DetailTab>(initialDetailTab())
@@ -178,6 +179,10 @@ function toggleCollapse(id: string): void {
   collapsed.value = next
 }
 
+function setHoveredAction(id: string | null): void {
+  hoveredActionId.value = id
+}
+
 const selectedIndex = computed(() => items.value.findIndex(i => i.id === selectedId.value))
 const selectedAction = computed<ActionEntry | undefined>(() => items.value[selectedIndex.value]?.action)
 const snapshots = computed(() => collectSnapshots(model.value, selectedAction.value))
@@ -192,6 +197,12 @@ const boundaries = computed(() => {
 function setTimeRange(a: number, b: number): void {
   const { start, end } = normalizeRange(a, b)
   timeRange.value = end > start ? { start, end } : null
+}
+
+function zoomToAction(action: ActionEntry): void {
+  const start = action.startTime ?? 0
+  const end = action.endTime ?? start
+  setTimeRange(start, end)
 }
 
 function clearTimeRange(): void {
@@ -302,6 +313,8 @@ export function useTraceStore() {
     visibleItems,
     collapsed,
     toggleCollapse,
+    hoveredActionId,
+    setHoveredAction,
     selectedId,
     selectedIndex,
     selectedAction,
@@ -331,6 +344,7 @@ export function useTraceStore() {
     togglePlay,
     cyclePlaybackSpeed,
     setTimeRange,
+    zoomToAction,
     clearTimeRange,
     refreshSnapshotInfo,
   }

@@ -58,6 +58,11 @@ test('action group filters hide noisy actions', async ({ page }) => {
   expect(await page.getByTestId('action').count()).toBe(before - 4)
 })
 
+test('double-clicking an action zooms to its time range', async ({ page }) => {
+  await page.getByTestId('action').filter({ hasText: 'Fill "Joris"' }).dblclick()
+  await expect(page.getByTestId('reset-zoom')).toBeVisible()
+})
+
 test('network tab lists requests and previews a response body', async ({ page }) => {
   await page.getByRole('button', { name: /^Network/ }).click()
   const rows = page.getByTestId('net-row')

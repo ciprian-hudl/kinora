@@ -20,3 +20,11 @@ test('Errors tab reveals the failing source line', async ({ page }) => {
   await expect(page.getByText('Pay now')).toBeVisible()
   await expect(page.locator('.cm-targetLine')).toBeVisible()
 })
+
+test('Timeline exposes error markers', async ({ page }) => {
+  const marker = page.getByTestId('timeline-error-marker').first()
+  await expect(marker).toBeVisible()
+  await marker.click()
+
+  await expect(page.getByTestId('current-action')).toContainText('Expect')
+})
