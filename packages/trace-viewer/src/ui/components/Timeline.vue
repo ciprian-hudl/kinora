@@ -47,6 +47,18 @@ const errorMarkers = computed(() => {
     .filter(marker => marker.time >= min && marker.time <= max)
 })
 
+const cursor = computed(() => {
+  const action = store.selectedAction.value
+  const { min, max, span } = bounds.value
+  const time = action?.startTime ?? min
+  if (time < min || time > max)
+    return undefined
+  return {
+    left: ((time - min) / span) * 100,
+    label: formatMs(time - (store.model.value?.startTime ?? min)),
+  }
+})
+
 const frames = computed(() => {
   const m = store.model.value
   if (!m)
@@ -86,13 +98,23 @@ function onBrushMove(e: PointerEvent): void {
   if (brush.value)
     brush.value = { ...brush.value, x1: localX(e.clientX).x }
 }
+function selectNearestAtClientX(clientX: number): void {
+  const { x, width } = localX(clientX)
+  const { min, span } = bounds.value
+  seekToTime(xToTime(x, width, min, span))
+}
+
 function onBrushUp(e: PointerEvent): void {
   window.removeEventListener('pointermove', onBrushMove)
   window.removeEventListener('pointerup', onBrushUp)
   const b = brush.value
   brush.value = null
-  if (!b || Math.abs(b.x1 - b.x0) < 4)
+  if (!b)
     return
+  if (Math.abs(b.x1 - b.x0) < 4) {
+    selectNearestAtClientX(e.clientX)
+    return
+  }
   brushed = true
   const { width } = localX(e.clientX)
   const { min, span } = bounds.value
@@ -214,6 +236,9 @@ function seekToTime(t: number): void {
       <div data-testid="current-action" class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
         {{ currentTitle }}
       </div>
+      <span v-if="cursor" data-testid="timeline-current-time" class="shrink-0 font-mono text-[11px] text-muted-foreground">
+        {{ cursor.label }}
+      </span>
       <input
         v-model.number="scrubberValue"
         data-testid="action-scrubber"
@@ -258,6 +283,7 @@ function seekToTime(t: number): void {
     <div class="relative h-7 shrink-0 bg-muted/20">
       <div
         ref="trackInner"
+        data-testid="timeline-track"
         class="absolute inset-x-2 inset-y-1.5 cursor-crosshair touch-none"
         @pointerdown="onBrushDown"
       >
@@ -278,6 +304,12 @@ function seekToTime(t: number): void {
           @dblclick.stop="store.zoomToAction(store.items.value.find(item => item.id === seg.id)!.action)"
           @mouseenter="store.setHoveredAction(seg.id)"
           @mouseleave="store.setHoveredAction(null)"
+        />
+        <div
+          v-if="cursor"
+          data-testid="timeline-cursor"
+          class="pointer-events-none absolute -top-1 bottom-[-4px] z-20 w-px bg-signal shadow-[0_0_0_1px_color-mix(in_oklch,var(--background)_70%,transparent)]"
+          :style="{ left: `${cursor.left}%` }"
         />
         <button
           v-for="marker in errorMarkers"
@@ -308,7 +340,8 @@ function seekToTime(t: number): void {
         </div>
         <div
           v-if="brush"
-          class="pointer-events-none absolute inset-y-0 border-x border-signal bg-signal/20"
+          data-testid="timeline-brush"
+          class="pointer-events-none absolute inset-y-0 z-30 rounded-sm border-x-2 border-signal bg-signal/25 shadow-[0_0_0_1px_color-mix(in_oklch,var(--signal)_45%,transparent)]"
           :style="brushStyle"
         />
       </div>

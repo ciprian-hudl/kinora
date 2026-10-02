@@ -109,6 +109,26 @@ test('timeline hover shows action details', async ({ page }) => {
   await expect(page.getByTestId('timeline-hover-card')).toContainText(/\d+ms/)
 })
 
+test('timeline cursor follows clicked segments', async ({ page }) => {
+  await page.locator('[data-testid="action-segment"][aria-label*=\'Fill "alex@example.com"\']').click()
+
+  await expect(page.getByTestId('current-action')).toContainText('Fill "alex@example.com"')
+  await expect(page.getByTestId('timeline-cursor')).toBeVisible()
+  await expect(page.getByTestId('timeline-current-time')).toContainText(/\d+ms/)
+})
+
+test('timeline brush stays visible while selecting a range', async ({ page }) => {
+  const box = await page.getByTestId('timeline-track').boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.move(box!.x + 20, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + 140, box!.y + box!.height / 2)
+
+  await expect(page.getByTestId('timeline-brush')).toBeVisible()
+
+  await page.mouse.up()
+})
+
 test('double-clicking an action zooms to its time range', async ({ page }) => {
   await page.getByTestId('action').filter({ hasText: 'Fill "alex@example.com"' }).dblclick()
   await expect(page.getByTestId('reset-zoom')).toBeVisible()
