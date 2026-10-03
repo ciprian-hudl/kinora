@@ -92,6 +92,8 @@ export const dashboardRouter = router({
         testKey: input.testKey,
         reason: input.reason || null,
         expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+        createdByUserId: ctx.user.id,
+        updatedByUserId: ctx.user.id,
         createdAt: now,
         updatedAt: now,
       }).onConflictDoUpdate({
@@ -99,6 +101,7 @@ export const dashboardRouter = router({
         set: {
           reason: input.reason || null,
           expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+          updatedByUserId: ctx.user.id,
           updatedAt: now,
         },
       }).returning()

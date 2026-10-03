@@ -1,7 +1,7 @@
 import type { Counts, NormTest, RunReport } from '@kinora/core'
 import { relations } from 'drizzle-orm'
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core'
-import { organization } from './auth-schemas'
+import { organization, user } from './auth-schemas'
 
 type GitMeta = NonNullable<RunReport['meta']['git']>
 type CiMeta = NonNullable<RunReport['meta']['ci']>
@@ -83,6 +83,8 @@ export const testQuarantine = pgTable('test_quarantine', {
   testKey: text('test_key').notNull(),
   reason: text('reason'),
   expiresAt: timestamp('expires_at'),
+  createdByUserId: text('created_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+  updatedByUserId: text('updated_by_user_id').references(() => user.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, table => [

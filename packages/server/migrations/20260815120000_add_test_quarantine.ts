@@ -7,6 +7,8 @@ export async function up(knex: Knex): Promise<void> {
     t.text('test_key').notNullable()
     t.text('reason')
     t.timestamp('expires_at', { useTz: false })
+    t.text('created_by_user_id').references('id').inTable('user').onDelete('SET NULL')
+    t.text('updated_by_user_id').references('id').inTable('user').onDelete('SET NULL')
     t.timestamp('created_at', { useTz: false }).notNullable().defaultTo(knex.fn.now())
     t.timestamp('updated_at', { useTz: false }).notNullable().defaultTo(knex.fn.now())
     t.index(['project_id'], 'test_quarantine_projectId_idx')

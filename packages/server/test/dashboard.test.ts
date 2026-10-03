@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { db } from '../src/db'
-import { artifact, project, run, test } from '../src/db/schemas/index'
+import { artifact, project, run, test, testQuarantine } from '../src/db/schemas/index'
 import { MAX_DASHBOARD_RUNS } from '../src/router/dashboard'
 import { caller, createApiKey, createUser, ingest, runPayload } from './helpers'
 
@@ -98,6 +98,8 @@ describe('dashboard quarantine', () => {
     expect(await api.dashboard.quarantines({ projectId: 'web-app' })).toMatchObject([
       { testKey: payload.tests[0].testKey, reason: 'muted until fixed' },
     ])
+    const row = await db.query.testQuarantine.findFirst({ where: eq(testQuarantine.testKey, payload.tests[0].testKey) })
+    expect(row).toMatchObject({ createdByUserId: a.id, updatedByUserId: a.id })
 
     await api.dashboard.unquarantine({ projectId: 'web-app', testKey: payload.tests[0].testKey })
     expect(await api.dashboard.quarantines({ projectId: 'web-app' })).toHaveLength(0)
