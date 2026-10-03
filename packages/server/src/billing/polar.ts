@@ -73,6 +73,45 @@ export async function meteredResults(externalCustomerId: string): Promise<Metere
   }
 }
 
+export interface OveragePrice {
+  // Cents per unit; Polar allows fractions of a cent (0.4 = $0.004).
+  unitAmount: number
+  capAmount: number | null
+  currency: string
+}
+
+// What the units past the included credits cost so far, in cents, honoring the price's cap.
+export function overageCents(usage: MeteredUsage, price: OveragePrice): number {
+  const amount = Math.max(0, usage.consumed - usage.credited) * price.unitAmount
+  return price.capAmount == null ? amount : Math.min(amount, price.capAmount)
+}
+
+const PRICE_TTL_MS = 60 * 60 * 1000
+const priceCache = new Map<string, { at: number, price: OveragePrice | null }>()
+
+// The product's metered price. Cached: it only changes when the plan is edited in Polar, and the
+// billing summary would otherwise pay a second Polar round-trip on every load.
+export async function overagePrice(productId: string): Promise<OveragePrice | null> {
+  if (!polarClient)
+    return null
+  const hit = priceCache.get(productId)
+  if (hit && Date.now() - hit.at < PRICE_TTL_MS)
+    return hit.price
+  try {
+    const product = await polarClient.products.get({ id: productId })
+    const metered = product.prices.find(p => 'amountType' in p && p.amountType === 'metered_unit' && !p.isArchived)
+    const price = metered && 'unitAmount' in metered
+      ? { unitAmount: Number(metered.unitAmount), capAmount: metered.capAmount, currency: metered.priceCurrency }
+      : null
+    priceCache.set(productId, { at: Date.now(), price })
+    return price
+  }
+  catch (error) {
+    logger.error({ error, productId }, 'polar product price read failed')
+    return null
+  }
+}
+
 export function polarAuthPlugin() {
   if (!cloud || !polarClient)
     return null

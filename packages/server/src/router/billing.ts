@@ -1,9 +1,10 @@
 import { and, eq } from 'drizzle-orm'
 import { getEntitlements, getSubscription, isActivePaid } from '../billing/entitlements'
-import { meteredResults } from '../billing/polar'
+import { meteredResults, overageCents, overagePrice } from '../billing/polar'
 import { currentPeriodResults, storageBytes } from '../billing/usage'
 import { db } from '../db'
 import { member } from '../db/schemas/index'
+import { cloud } from '../lib/env'
 import { orgProcedure, router } from '../trpc/index'
 
 // Infinity doesn't survive JSON: unlimited limits go over the wire as null.
@@ -36,6 +37,9 @@ export const billingRouter = router({
       ? await billedUsage(organizationId)
       : null
 
+    const productId = entitlements.tier === 'pro' ? cloud?.proProductId : entitlements.tier === 'team' ? cloud?.teamProductId : undefined
+    const price = metered && productId && metered.consumed > metered.credited ? await overagePrice(productId) : null
+
     return {
       tier: entitlements.tier,
       alerts: entitlements.alerts,
@@ -45,6 +49,10 @@ export const billingRouter = router({
       usedResults: metered?.consumed ?? localResults,
       // 'cycle' = Polar's billing cycle (ends at currentPeriodEnd); 'month' = calendar month (UTC).
       usagePeriod: metered ? 'cycle' as const : 'month' as const,
+      // Cost of the results past the included ones so far this cycle; null when not in overage.
+      overage: metered && price
+        ? { amountCents: overageCents(metered, price), unitAmountCents: price.unitAmount, currency: price.currency }
+        : null,
       storageBytes: finiteOrNull(entitlements.storageBytes),
       usedStorageBytes,
       status: sub?.status ?? null,

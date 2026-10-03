@@ -1,7 +1,7 @@
 import type { Entitlements } from '../src/billing/entitlements'
 import { describe, expect, it } from 'vitest'
 import { formatBytes, ingestCapError, quotaCrossing, quotaWarningText, storageCapError } from '../src/billing/entitlements'
-import { pickResultsMeter } from '../src/billing/polar'
+import { overageCents, pickResultsMeter } from '../src/billing/polar'
 
 const free: Entitlements = { tier: 'free', includedResults: 2500, maxProjects: 1, retentionDays: 7, storageBytes: 2 * 1024 ** 3, alerts: false }
 const selfhost: Entitlements = { tier: 'selfhost', includedResults: Infinity, maxProjects: Infinity, retentionDays: Infinity, storageBytes: Infinity, alerts: true }
@@ -108,5 +108,18 @@ describe('pickResultsMeter', () => {
   it('returns null when the customer has no such meter', () => {
     expect(pickResultsMeter([])).toBeNull()
     expect(pickResultsMeter([{ consumedUnits: 5, creditedUnits: 0, meter: { filter: filter('other_event') } }])).toBeNull()
+  })
+})
+
+describe('overageCents', () => {
+  const price = { unitAmount: 0.4, capAmount: null, currency: 'usd' }
+
+  it('charges only the units past the included credits', () => {
+    expect(overageCents({ consumed: 55, credited: 50 }, price)).toBeCloseTo(2)
+    expect(overageCents({ consumed: 40, credited: 50 }, price)).toBe(0)
+  })
+
+  it('stops at the price cap', () => {
+    expect(overageCents({ consumed: 1_000_000, credited: 50_000 }, { ...price, capAmount: 10_000 })).toBe(10_000)
   })
 })

@@ -87,6 +87,16 @@ const SUPPORT_HREF = `mailto:${SUPPORT_EMAIL}?subject=kinora%20support`
 
 const isPaid = computed(() => ['team', 'pro', 'enterprise'].includes(billing.value?.tier ?? ''))
 
+// Polar amounts are in cents and can be fractions of one (a $0.004 unit price).
+function money(cents: number, currency: string): string {
+  return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: currency.toUpperCase(), minimumFractionDigits: 2, maximumFractionDigits: 4 })
+}
+
+const overageNote = computed(() => {
+  const o = billing.value?.overage
+  return o ? `: ${money(o.amountCents, o.currency)} so far (${money(o.unitAmountCents, o.currency)} / result)` : ''
+})
+
 const usagePct = computed(() => {
   const b = billing.value
   if (!b || b.includedResults == null)
@@ -258,7 +268,7 @@ function fmtDate(d: Date | string | null | undefined): string {
             />
           </div>
           <p v-if="overCap && isPaid" class="font-mono text-[11px] text-fail">
-            Included results used up - extra results are billed as overage.
+            Included results used up - extra results are billed as overage{{ overageNote }}.
           </p>
           <p v-else-if="overCap" class="font-mono text-[11px] text-fail">
             Monthly limit reached - upgrade to keep ingesting.
