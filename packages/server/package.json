@@ -29,7 +29,8 @@
     "db:seed:market": "tsx scripts/seed-market.ts",
     "migrate": "tsx scripts/migrate.ts",
     "purge-expired-runs": "tsx scripts/purge-expired-runs.ts",
-    "report-pending-usage": "tsx scripts/report-pending-usage.ts"
+    "report-pending-usage": "tsx scripts/report-pending-usage.ts",
+    "notify-usage-alerts": "tsx scripts/notify-usage-alerts.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",

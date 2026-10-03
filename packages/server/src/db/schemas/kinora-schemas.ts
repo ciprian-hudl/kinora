@@ -106,6 +106,8 @@ export const subscription = pgTable('subscription', {
   cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
   // Polar event-occurrence time of the last applied state; lets us drop out-of-order webhooks.
   stateChangedAt: timestamp('state_changed_at'),
+  // Highest included-results threshold already emailed for the current billing cycle.
+  usageAlertLevel: text('usage_alert_level').$type<'near' | 'reached'>(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 })
 

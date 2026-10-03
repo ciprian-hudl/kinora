@@ -28,14 +28,25 @@ const transport = createTransport()
 
 export const mailerEnabled = transport !== null
 
-// Fire-and-forget: auth flows must not await delivery (timing attacks) nor fail on it.
-export function sendMail(mail: Mail, transportImpl: MailTransport | null = transport, from = smtp?.from): void {
+// Awaitable delivery, for callers that must know the outcome (cron scripts that exit right after,
+// or that only record a notification once it actually left). False when skipped or failed.
+export async function deliverMail(mail: Mail, transportImpl: MailTransport | null = transport, from = smtp?.from): Promise<boolean> {
   if (!transportImpl || !from) {
     logger.info({ to: mail.to, subject: mail.subject }, 'smtp not configured, mail skipped')
-    return
+    return false
   }
-  transportImpl
-    .sendMail({ from, ...mail })
-    .then(() => logger.info({ to: mail.to, subject: mail.subject }, 'mail sent'))
-    .catch(error => logger.error({ error, to: mail.to, subject: mail.subject }, 'mail send failed'))
+  try {
+    await transportImpl.sendMail({ from, ...mail })
+    logger.info({ to: mail.to, subject: mail.subject }, 'mail sent')
+    return true
+  }
+  catch (error) {
+    logger.error({ error, to: mail.to, subject: mail.subject }, 'mail send failed')
+    return false
+  }
+}
+
+// Fire-and-forget: auth flows must not await delivery (timing attacks) nor fail on it.
+export function sendMail(mail: Mail, transportImpl: MailTransport | null = transport, from = smtp?.from): void {
+  void deliverMail(mail, transportImpl, from)
 }
