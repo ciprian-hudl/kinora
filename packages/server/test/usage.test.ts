@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { currentPeriodResults, projectCount, storageBytes } from '../src/billing/usage'
+import { purgeScope } from '../src/billing/retention'
+import { currentPeriodResults, projectCount, recordResults, storageBytes } from '../src/billing/usage'
 import { db } from '../src/db'
 import { artifact, project, run, test as testRow } from '../src/db/schemas/index'
 import { createUser, ownedOrgId, resetDb } from './helpers'
@@ -14,7 +15,9 @@ function lastInstantOfPreviousMonthUtc(): Date {
 
 async function seedTests(userId: string, count: number, startedAt?: Date): Promise<void> {
   const projectId = randomUUID()
-  await db.insert(project).values({ id: projectId, organizationId: await ownedOrgId(userId), slug: `slug-${projectId}`, name: 'p' })
+  const organizationId = await ownedOrgId(userId)
+  await db.insert(project).values({ id: projectId, organizationId, slug: `slug-${projectId}`, name: 'p' })
+  await recordResults(db, organizationId, startedAt ?? new Date(), count)
 
   const runId = randomUUID()
   await db.insert(run).values({
@@ -50,7 +53,7 @@ async function seedTests(userId: string, count: number, startedAt?: Date): Promi
 }
 
 describe('currentPeriodResults', () => {
-  it('counts this-month test rows for the user', async () => {
+  it('counts this-month results for the org', async () => {
     const user = await createUser()
     await seedTests(user.id, 3)
     expect(await currentPeriodResults(await ownedOrgId(user.id))).toBe(3)
@@ -61,6 +64,22 @@ describe('currentPeriodResults', () => {
     await seedTests(user.id, 3)
     await seedTests(user.id, 5, lastInstantOfPreviousMonthUtc())
     expect(await currentPeriodResults(await ownedOrgId(user.id))).toBe(3)
+  })
+
+  it('accumulates across runs in the same month', async () => {
+    const user = await createUser()
+    await seedTests(user.id, 3)
+    await seedTests(user.id, 4)
+    expect(await currentPeriodResults(await ownedOrgId(user.id))).toBe(7)
+  })
+
+  it('keeps counting results whose runs were purged by retention', async () => {
+    const user = await createUser()
+    const org = await ownedOrgId(user.id)
+    await seedTests(user.id, 3)
+    await purgeScope(new Date(Date.now() + 1000), { includeOrgs: [org] })
+    expect(await db.query.run.findMany()).toHaveLength(0)
+    expect(await currentPeriodResults(org)).toBe(3)
   })
 
   it('scopes the count to the given user', async () => {

@@ -10,7 +10,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { notifyRun } from '../alerts/notify'
 import { getEntitlements, ingestCapError, quotaCrossing, quotaWarningText, storageCapError } from '../billing/entitlements'
 import { meterTestResults, polarClient } from '../billing/polar'
-import { currentPeriodResults, projectCount, startOfMonthUtc, storageBytes } from '../billing/usage'
+import { currentPeriodResults, projectCount, recordResults, startOfMonthUtc, storageBytes } from '../billing/usage'
 import { db } from '../db'
 import { artifact, member, project, run, test, user } from '../db/schemas/index'
 import { auth } from '../lib/auth'
@@ -126,6 +126,8 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
         attachments: item.attachments,
       })))
     }
+
+    await recordResults(tx, orgId, new Date(input.run.startedAt), input.tests.length)
 
     return { projectId, runId, tests: input.tests.length }
   })

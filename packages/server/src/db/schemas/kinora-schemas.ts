@@ -1,6 +1,6 @@
 import type { Counts, NormTest, RunReport } from '@kinora/core'
 import { relations } from 'drizzle-orm'
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from 'drizzle-orm/pg-core'
 import { organization, user } from './auth-schemas'
 
 type GitMeta = NonNullable<RunReport['meta']['git']>
@@ -105,6 +105,15 @@ export const subscription = pgTable('subscription', {
   stateChangedAt: timestamp('state_changed_at'),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 })
+
+// Test results ingested per org per calendar month (UTC, 'YYYY-MM'). A counter rather than a count
+// over `test`, so retention purges and deleted projects never hand quota back.
+export const usagePeriod = pgTable('usage_period', {
+  organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  period: text('period').notNull(),
+  results: integer('results').notNull().default(0),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, table => [primaryKey({ columns: [table.organizationId, table.period] })])
 
 // One Slack channel per project for run/regression notifications.
 export const slackIntegration = pgTable('slack_integration', {

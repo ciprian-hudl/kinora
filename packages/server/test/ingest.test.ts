@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { currentPeriodResults } from '../src/billing/usage'
 import { db } from '../src/db'
-import { createApiKey, createUser, ingest, runPayload } from './helpers'
+import { createApiKey, createUser, ingest, ownedOrgId, runPayload } from './helpers'
 
 describe('ingest /api/v1/runs', () => {
   it('rejects a request without an api key', async () => {
@@ -33,6 +34,21 @@ describe('ingest /api/v1/runs', () => {
     const tests = await db.query.test.findMany()
     expect(tests).toHaveLength(1)
     expect(tests[0].tags).toEqual(['@smoke'])
+  })
+
+  it('records usage for the current month, and not for a run that executed earlier', async () => {
+    const user = await createUser()
+    const key = await createApiKey(user.id)
+    const org = await ownedOrgId(user.id)
+
+    await ingest(key)
+    await ingest(key)
+    expect(await currentPeriodResults(org)).toBe(2)
+
+    const old = runPayload()
+    old.run.startedAt = new Date(Date.UTC(2020, 0, 15)).toISOString()
+    await ingest(key, old)
+    expect(await currentPeriodResults(org)).toBe(2)
   })
 
   it('reuses the project on a second run for the same slug', async () => {
