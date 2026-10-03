@@ -245,7 +245,7 @@ function fmtDate(d: Date | string | null | undefined): string {
 
         <div class="flex flex-col gap-2">
           <div class="flex items-baseline justify-between">
-            <span :class="labelClass">Test results · this month</span>
+            <span :class="labelClass">Test results · {{ billing.usagePeriod === 'cycle' ? 'this billing period' : 'this month' }}</span>
             <span class="font-mono text-xs tabular-nums" :class="overCap ? 'text-fail' : 'text-muted-foreground'">
               {{ billing.usedResults.toLocaleString() }}<template v-if="billing.includedResults != null"> / {{ billing.includedResults.toLocaleString() }}</template><template v-else> · unlimited</template>
             </span>
@@ -257,7 +257,10 @@ function fmtDate(d: Date | string | null | undefined): string {
               :style="{ width: `${usagePct}%` }"
             />
           </div>
-          <p v-if="overCap" class="font-mono text-[11px] text-fail">
+          <p v-if="overCap && isPaid" class="font-mono text-[11px] text-fail">
+            Included results used up - extra results are billed as overage.
+          </p>
+          <p v-else-if="overCap" class="font-mono text-[11px] text-fail">
             Monthly limit reached - upgrade to keep ingesting.
           </p>
           <p class="font-mono text-[11px] text-muted-foreground">

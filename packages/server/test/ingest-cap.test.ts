@@ -1,6 +1,7 @@
 import type { Entitlements } from '../src/billing/entitlements'
 import { describe, expect, it } from 'vitest'
 import { formatBytes, ingestCapError, quotaCrossing, quotaWarningText, storageCapError } from '../src/billing/entitlements'
+import { pickResultsMeter } from '../src/billing/polar'
 
 const free: Entitlements = { tier: 'free', includedResults: 2500, maxProjects: 1, retentionDays: 7, storageBytes: 2 * 1024 ** 3, alerts: false }
 const selfhost: Entitlements = { tier: 'selfhost', includedResults: Infinity, maxProjects: Infinity, retentionDays: Infinity, storageBytes: Infinity, alerts: true }
@@ -90,5 +91,22 @@ describe('quotaWarningText', () => {
 
   it('near: states usage out of the limit', () => {
     expect(quotaWarningText(null, 'near', 2000, 2500, 'x')).toContain('2,000 of its 2,500')
+  })
+})
+
+describe('pickResultsMeter', () => {
+  const filter = (name: string) => ({ conjunction: 'and', clauses: [{ property: 'name', operator: 'eq', value: name }] })
+
+  it('reads the meter fed by the test_results event', () => {
+    const items = [
+      { consumedUnits: 5, creditedUnits: 0, meter: { filter: filter('other_event') } },
+      { consumedUnits: 27_997, creditedUnits: 50_000, meter: { filter: filter('test_results') } },
+    ]
+    expect(pickResultsMeter(items)).toEqual({ consumed: 27_997, credited: 50_000 })
+  })
+
+  it('returns null when the customer has no such meter', () => {
+    expect(pickResultsMeter([])).toBeNull()
+    expect(pickResultsMeter([{ consumedUnits: 5, creditedUnits: 0, meter: { filter: filter('other_event') } }])).toBeNull()
   })
 })
