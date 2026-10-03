@@ -204,8 +204,16 @@ jobs:
             VITE_KINORA_SERVER_URL=https://demo.kinora.dev
             VITE_KINORA_CLOUD=false
 
+  # The demo stack runs the demo web image + the shared server image, so it deploys only once both
+  # are pushed; triggered right after the demo web build it would restart on the previous server image.
+  demo-deploy:
+    needs: [prepare, demo-web, server]
+    # server is skipped when deploy_server is off: still deploy, but never after a failed build.
+    if: ${{ !cancelled() && needs.demo-web.result == 'success' && needs.server.result != 'failure' && needs.prepare.outputs.trigger_deploy == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
       - name: Trigger demo web deploy in Dokploy
-        if: ${{ needs.prepare.outputs.trigger_deploy == 'true' }}
         env:
           DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
