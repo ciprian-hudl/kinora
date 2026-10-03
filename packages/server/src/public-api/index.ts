@@ -9,7 +9,8 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { notifyRun } from '../alerts/notify'
 import { getEntitlements, ingestCapError, quotaCrossing, quotaWarningText, storageCapError } from '../billing/entitlements'
-import { meterTestResults, polarClient } from '../billing/polar'
+import { meterRun } from '../billing/metering'
+import { polarClient } from '../billing/polar'
 import { currentPeriodResults, projectCount, recordResults, startOfMonthUtc, storageBytes } from '../billing/usage'
 import { db } from '../db'
 import { artifact, member, project, run, test, user } from '../db/schemas/index'
@@ -73,6 +74,9 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
   if (cap)
     return c.json(cap, 402)
 
+  // Meter only runs that executed in the current period; historical backfill stays unmetered.
+  const billable = Boolean(polarClient) && input.tests.length > 0 && new Date(input.run.startedAt) >= startOfMonthUtc()
+
   const result = await db.transaction(async (tx) => {
     let projectId = existing?.id
     if (!projectId) {
@@ -102,6 +106,7 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
       git: input.run.git,
       ci: input.run.ci,
       shards: input.run.shards,
+      meterPending: billable,
     })
 
     if (input.tests.length) {
@@ -132,21 +137,8 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
     return { projectId, runId, tests: input.tests.length }
   })
 
-  // Meter only runs that executed in the current period; historical backfill stays unmetered.
-  if (polarClient && result.tests > 0 && new Date(input.run.startedAt) >= startOfMonthUtc()) {
-    try {
-      // Polar customer = the org owner; meter usage against them.
-      const owner = await db.query.member.findFirst({
-        where: and(eq(member.organizationId, orgId), eq(member.role, 'owner')),
-        columns: { userId: true },
-      })
-      if (owner)
-        await meterTestResults(owner.userId, result.tests)
-    }
-    catch (error) {
-      logger.error({ error, orgId, runId: result.runId }, 'polar usage ingest failed')
-    }
-  }
+  if (billable)
+    await meterRun(result.runId, orgId, result.tests)
 
   if (!backfill) {
     // Fire-and-forget: alerts hit external webhook/Slack/SMTP and must not block or fail the ingest response.

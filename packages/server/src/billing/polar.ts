@@ -24,12 +24,13 @@ function retryAfterMs(error: unknown, attempt: number): number {
 // Bulk imports of current-period runs can burst past Polar's rate limit; retry 429s
 // (honoring Retry-After) so billable usage isn't silently dropped. Best-effort: gives up
 // after a few tries rather than stalling ingest. Normal per-run traffic never retries.
-export async function meterTestResults(externalCustomerId: string, results: number): Promise<void> {
+// `eventId` (the run id) is Polar's dedup key: resending the same run never bills it twice.
+export async function meterTestResults(externalCustomerId: string, results: number, eventId: string): Promise<void> {
   if (!polarClient)
     return
   for (let attempt = 0; ; attempt++) {
     try {
-      await polarClient.events.ingest({ events: [{ name: TEST_RESULTS_EVENT, externalCustomerId, metadata: { results } }] })
+      await polarClient.events.ingest({ events: [{ name: TEST_RESULTS_EVENT, externalId: eventId, externalCustomerId, metadata: { results } }] })
       return
     }
     catch (error) {

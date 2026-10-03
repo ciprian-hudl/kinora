@@ -33,6 +33,9 @@ export const run = pgTable('run', {
   git: jsonb('git').$type<GitMeta>(),
   ci: jsonb('ci').$type<CiMeta>(),
   shards: integer('shards'),
+  // Billable usage not yet acknowledged by Polar. Set in the ingest transaction and cleared once the
+  // usage event is accepted, so a failed or interrupted report is retried by report-pending-usage.
+  meterPending: boolean('meter_pending').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, table => [index('run_projectId_idx').on(table.projectId)])
 
