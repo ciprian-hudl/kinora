@@ -9,6 +9,7 @@ export interface AlertPayload {
   counts: Counts
   newlyFailing: string[]
   newlyFlaky: string[]
+  codeOwners?: Record<string, string[]>
 }
 
 export function shouldFire(policy: AlertPolicy, counts: Counts, newlyFailing: number, newlyFlaky: number): boolean {
@@ -19,7 +20,11 @@ export function shouldFire(policy: AlertPolicy, counts: Counts, newlyFailing: nu
 
 const MAX_LISTED = 10
 
-export function listTests(titles: string[]): string {
+export function listTests(titles: string[], codeOwners: Record<string, string[]> = {}): string {
   const rest = titles.length - MAX_LISTED
-  return titles.slice(0, MAX_LISTED).join(', ') + (rest > 0 ? ` and ${rest} more` : '')
+  const listed = titles.slice(0, MAX_LISTED).map((title) => {
+    const owners = codeOwners[title]
+    return owners?.length ? `${title} (${owners.join(', ')})` : title
+  })
+  return listed.join(', ') + (rest > 0 ? ` and ${rest} more` : '')
 }

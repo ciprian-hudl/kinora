@@ -15,9 +15,9 @@ export function buildSlackMessage(input: AlertPayload): SlackPayload {
     `${counts.expected} passed · ${counts.unexpected} failed · ${counts.flaky} flaky · ${counts.skipped} skipped`,
   ]
   if (input.newlyFailing.length)
-    lines.push(`*Newly failing (${input.newlyFailing.length}):* ${listTests(input.newlyFailing)}`)
+    lines.push(`*Newly failing (${input.newlyFailing.length}):* ${listTests(input.newlyFailing, input.codeOwners)}`)
   if (input.newlyFlaky.length)
-    lines.push(`*Newly flaky (${input.newlyFlaky.length}):* ${listTests(input.newlyFlaky)}`)
+    lines.push(`*Newly flaky (${input.newlyFlaky.length}):* ${listTests(input.newlyFlaky, input.codeOwners)}`)
   lines.push(`<${input.runUrl}|View run>`)
   return { text: lines.join('\n') }
 }

@@ -102,6 +102,7 @@ export const normTestSchema = z.object({
   annotations: z.array(z.object({ type: z.string(), description: z.string().optional() })),
   errors: z.array(normErrorSchema),
   attachments: z.array(normAttachmentSchema),
+  codeOwners: z.array(z.string()).optional(),
 })
 export type NormTest = z.infer<typeof normTestSchema>
 
@@ -141,6 +142,7 @@ export const testHistorySchema = z.object({
   titlePath: z.array(z.string()),
   file: z.string(),
   projectName: z.string(),
+  codeOwners: z.array(z.string()).optional(),
   points: z.array(testPointSchema),
   runs: z.number(),
   passed: z.number(),

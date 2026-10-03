@@ -10,9 +10,9 @@ export function buildAlertEmail(p: AlertPayload): { subject: string, text: strin
     `${counts.expected} passed · ${counts.unexpected} failed · ${counts.flaky} flaky · ${counts.skipped} skipped`,
   ]
   if (p.newlyFailing.length)
-    lines.push('', `Newly failing (${p.newlyFailing.length}): ${listTests(p.newlyFailing)}`)
+    lines.push('', `Newly failing (${p.newlyFailing.length}): ${listTests(p.newlyFailing, p.codeOwners)}`)
   if (p.newlyFlaky.length)
-    lines.push('', `Newly flaky (${p.newlyFlaky.length}): ${listTests(p.newlyFlaky)}`)
+    lines.push('', `Newly flaky (${p.newlyFlaky.length}): ${listTests(p.newlyFlaky, p.codeOwners)}`)
   lines.push('', `View the run: ${p.runUrl}`)
   return { subject, text: lines.join('\n') }
 }

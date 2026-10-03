@@ -28,6 +28,7 @@ export function buildTestHistories(reports: RunReport[]): TestHistory[] {
           titlePath: t.titlePath,
           file: t.file,
           projectName: t.projectName,
+          codeOwners: t.codeOwners,
           points: [],
           runs: 0,
           passed: 0,
@@ -46,6 +47,8 @@ export function buildTestHistories(reports: RunReport[]): TestHistory[] {
         }
         byKey.set(t.testKey, h)
       }
+      if (!h.codeOwners?.length && t.codeOwners?.length)
+        h.codeOwners = t.codeOwners
       h.points.push({
         runId: report.runId,
         startedAt: report.startedAt,

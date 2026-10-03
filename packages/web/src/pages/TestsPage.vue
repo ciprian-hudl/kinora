@@ -245,6 +245,9 @@ function setPage(p: number) {
               <Badge v-if="isQuarantined(h.testKey)" class="border-flaky/30 bg-flaky/10 text-[10px] text-flaky">
                 Quarantined
               </Badge>
+              <Badge v-for="owner in h.codeOwners" :key="owner" class="border-signal/30 bg-signal/10 text-[10px] text-signal">
+                {{ owner }}
+              </Badge>
             </div>
             <div class="mt-0.5 font-mono text-[11px] text-muted-foreground">
               {{ h.file }} · {{ h.projectName }}

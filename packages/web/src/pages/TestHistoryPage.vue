@@ -145,6 +145,11 @@ const dateFmt = new Intl.DateTimeFormat(undefined, {
             <div class="mt-0.5 font-mono text-[11px] text-muted-foreground">
               {{ history.file }} · {{ history.projectName }}
             </div>
+            <div v-if="history.codeOwners?.length" class="mt-2 flex flex-wrap gap-1.5">
+              <Badge v-for="owner in history.codeOwners" :key="owner" class="border-signal/30 bg-signal/10 text-[10px] text-signal">
+                {{ owner }}
+              </Badge>
+            </div>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <Badge v-if="quarantine" class="border-flaky/30 bg-flaky/10 text-flaky">

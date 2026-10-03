@@ -1,8 +1,10 @@
 import type { NormTest, ProjectEntry, ProjectHistory, RunReport, RunSummary } from '@kinora/core'
+import type { CodeownersRule } from '../lib/codeowners'
 import { buildFailureClusters, buildTestHistories, SCHEMA_VERSION } from '@kinora/core'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db'
 import { artifact, project, run, test } from '../db/schemas/index'
+import { matchCodeowners, parseCodeowners } from '../lib/codeowners'
 import { storage } from '../lib/storage'
 
 type ProjectRow = typeof project.$inferSelect
@@ -31,7 +33,7 @@ export function runSummary(slug: string, r: RunRow): RunSummary {
 
 // Attachment names repeat within a test (two toHaveScreenshot assertions both attach "actual"),
 // so urls are queued per name and handed out in upload order.
-export function toNormTest(t: TestRow, urls?: Map<string, string[]>): NormTest {
+export function toNormTest(t: TestRow, urls?: Map<string, string[]>, codeowners?: CodeownersRule[]): NormTest {
   const seen = new Map<string, number>()
   return {
     testKey: t.testKey,
@@ -53,10 +55,11 @@ export function toNormTest(t: TestRow, urls?: Map<string, string[]>): NormTest {
       seen.set(a.name, index + 1)
       return { ...a, url: urls?.get(a.name)?.[index] ?? a.url }
     }),
+    codeOwners: codeowners?.length ? matchCodeowners(codeowners, t.file) : undefined,
   }
 }
 
-export function runReport(slug: string, r: RunRow, tests: TestRow[], urlsByTest?: Map<string, Map<string, string[]>>): RunReport {
+export function runReport(slug: string, r: RunRow, tests: TestRow[], urlsByTest?: Map<string, Map<string, string[]>>, codeowners?: CodeownersRule[]): RunReport {
   return {
     schemaVersion: SCHEMA_VERSION,
     runId: r.id,
@@ -65,7 +68,7 @@ export function runReport(slug: string, r: RunRow, tests: TestRow[], urlsByTest?
     duration: r.duration,
     counts: r.counts,
     meta: { playwrightVersion: r.playwrightVersion ?? undefined, git: r.git ?? undefined, ci: r.ci ?? undefined, shards: r.shards ?? undefined },
-    tests: tests.map(t => toNormTest(t, urlsByTest?.get(t.id))),
+    tests: tests.map(t => toNormTest(t, urlsByTest?.get(t.id), codeowners)),
   }
 }
 
@@ -110,7 +113,7 @@ export async function loadRunReport(p: ProjectRow, r: RunRow): Promise<RunReport
     urlsByTest.set(a.testId, m)
   }
 
-  return runReport(p.slug, r, tests, urlsByTest)
+  return runReport(p.slug, r, tests, urlsByTest, parseCodeowners(p.codeownersText))
 }
 
 // Newest runs only, then just those runs' tests, to bound memory on long-lived projects.
@@ -126,7 +129,8 @@ export async function loadProjectHistory(p: ProjectRow): Promise<ProjectHistory>
     byRun.set(t.runId, arr)
   }
 
-  const reports = runs.map(r => runReport(p.slug, r, byRun.get(r.id) ?? []))
+  const codeowners = parseCodeowners(p.codeownersText)
+  const reports = runs.map(r => runReport(p.slug, r, byRun.get(r.id) ?? [], undefined, codeowners))
   const entry: ProjectEntry = { id: p.slug, name: p.name, runs: runs.map(r => runSummary(p.slug, r)) }
   return { project: entry, histories: buildTestHistories(reports), clusters: buildFailureClusters(reports) }
 }

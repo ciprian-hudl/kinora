@@ -135,6 +135,28 @@ describe('dashboard reads', () => {
     expect(report.tests[0].title).toBe('completes a purchase')
   })
 
+  it('run includes matched code owners on tests', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    const payload = runPayload('web-app')
+    await ingest(key, payload)
+    await (await caller(a)).project.updateCodeowners({ projectId: 'web-app', text: '/tests/** @checkout @qa' })
+    const { runId } = await (await ingest(key, payload)).json() as { runId: string }
+
+    const report = await (await caller(a)).dashboard.run({ projectId: 'web-app', runId })
+    expect(report.tests[0].codeOwners).toEqual(['@checkout', '@qa'])
+  })
+
+  it('projectHistory includes matched code owners on histories', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    await ingest(key, runPayload('web-app'))
+    await (await caller(a)).project.updateCodeowners({ projectId: 'web-app', text: '*.spec.ts @qa' })
+
+    const h = await (await caller(a)).dashboard.projectHistory({ projectId: 'web-app' })
+    expect(h.histories[0].codeOwners).toEqual(['@qa'])
+  })
+
   it('run merges a signed artifact url onto the matching test attachment', async () => {
     const a = await createUser('a@test.dev')
     const key = await createApiKey(a.id)

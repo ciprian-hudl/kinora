@@ -3,7 +3,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from '@kinora/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@kinora/ui/card'
 import { Input } from '@kinora/ui/input'
+import { Textarea } from '@kinora/ui/textarea'
 import { ArrowLeft } from '@lucide/vue'
+import { useAsyncState } from '@vueuse/core'
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
@@ -12,6 +14,7 @@ import SlackAlertsCard from '@/components/project/SlackAlertsCard.vue'
 import { useDemo, useManifest } from '@/composables/queries'
 import { useOrg } from '@/composables/useOrg'
 import { useProjectAdmin } from '@/composables/useProjectAdmin'
+import { trpc } from '@/lib/trpc'
 
 const props = defineProps<{ projectId: string }>()
 
@@ -35,22 +38,36 @@ onMounted(() => {
 const { state: manifest, execute: refreshManifest } = useManifest()
 const project = computed(() => manifest.value?.projects.find(p => p.id === props.projectId))
 
-const { savingGeneral, deleting, saveGeneral, deleteProject } = useProjectAdmin(props.projectId)
+const { savingGeneral, savingCodeowners, deleting, saveGeneral, saveCodeowners, deleteProject } = useProjectAdmin(props.projectId)
+const { state: codeownersSettings, execute: refreshCodeowners } = useAsyncState(
+  () => trpc.project.codeowners.query({ projectId: props.projectId }),
+  { source: 'manual' as const, text: '' },
+  { immediate: true },
+)
 
 const labelClass = 'font-mono text-[11px] tracking-wider text-muted-foreground uppercase'
 
 const name = ref('')
 const description = ref('')
+const codeownersText = ref('')
 watch(project, (p) => {
   if (!p)
     return
   name.value = p.name
   description.value = p.description ?? ''
 }, { immediate: true })
+watch(codeownersSettings, (settings) => {
+  codeownersText.value = settings.text
+}, { immediate: true })
 
 async function onSaveGeneral(): Promise<void> {
   if (await saveGeneral({ name: name.value.trim(), description: description.value.trim() }))
     await refreshManifest()
+}
+
+async function onSaveCodeowners(): Promise<void> {
+  if (await saveCodeowners(codeownersText.value))
+    await refreshCodeowners()
 }
 
 const confirmName = ref('')
@@ -104,6 +121,32 @@ async function onDelete(): Promise<void> {
           </div>
           <Button type="submit" size="sm" class="w-fit font-mono text-xs" :disabled="savingGeneral || !name.trim() || isDemo">
             {{ savingGeneral ? 'Saving…' : 'Save' }}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+
+    <Card v-if="isAdmin">
+      <CardHeader>
+        <CardTitle>Code owners</CardTitle>
+        <CardDescription>Paste CODEOWNERS rules to route failures to the team or person who owns the test file. Repository sync can use the same cache later.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form class="flex flex-col gap-4" @submit.prevent="onSaveCodeowners">
+          <div class="grid gap-2">
+            <label :class="labelClass" for="project-codeowners">CODEOWNERS</label>
+            <Textarea
+              id="project-codeowners"
+              v-model="codeownersText"
+              class="min-h-52 font-mono text-xs"
+              placeholder="/tests/checkout/** @qa-team\n*.spec.ts @frontend"
+            />
+            <p class="text-xs text-muted-foreground">
+              Last matching rule wins. Owners are shown as labels and included in alerts.
+            </p>
+          </div>
+          <Button type="submit" size="sm" class="w-fit font-mono text-xs" :disabled="savingCodeowners || isDemo || codeownersText === codeownersSettings.text">
+            {{ savingCodeowners ? 'Saving…' : 'Save code owners' }}
           </Button>
         </form>
       </CardContent>

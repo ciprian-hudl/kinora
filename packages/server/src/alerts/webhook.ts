@@ -10,6 +10,7 @@ export interface WebhookBody {
   counts: Counts
   newlyFailing: string[]
   newlyFlaky: string[]
+  codeOwners?: Record<string, string[]>
 }
 
 export async function postWebhook(
@@ -23,6 +24,7 @@ export async function postWebhook(
     counts: p.counts,
     newlyFailing: p.newlyFailing,
     newlyFlaky: p.newlyFlaky,
+    codeOwners: p.codeOwners,
   }
   const res = await fetchImpl(url, {
     method: 'POST',

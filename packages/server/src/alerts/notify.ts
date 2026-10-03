@@ -5,6 +5,7 @@ import { and, eq, gt, isNull, or } from 'drizzle-orm'
 import { getEntitlements } from '../billing/entitlements'
 import { db } from '../db'
 import { alertChannel, project, slackIntegration, testQuarantine } from '../db/schemas/index'
+import { matchCodeowners, parseCodeowners } from '../lib/codeowners'
 import { env } from '../lib/env'
 import { logger } from '../lib/logger'
 import { sendMail } from '../lib/mailer'
@@ -66,15 +67,22 @@ export async function notifyRun(input: NotifyRunInput): Promise<void> {
 
   const projectRow = await db.query.project.findFirst({
     where: eq(project.id, input.projectId),
-    columns: { name: true, slug: true },
+    columns: { name: true, slug: true, codeownersText: true },
   })
   const slug = projectRow?.slug ?? input.projectId
+  const codeowners = parseCodeowners(projectRow?.codeownersText)
+  const codeOwners = Object.fromEntries(
+    [...newlyFailing, ...newlyFlaky]
+      .map(d => [d.title, matchCodeowners(codeowners, d.file)] as const)
+      .filter(([, owners]) => owners.length > 0),
+  )
   const payload: AlertPayload = {
     projectName: projectRow?.name ?? 'project',
     runUrl: `${env.WEB_ORIGIN}/projects/${slug}/runs/${input.runId}`,
     counts: countsFor(activeTests),
     newlyFailing: newlyFailing.map(d => d.title),
     newlyFlaky: newlyFlaky.map(d => d.title),
+    codeOwners,
   }
   const fires = (policy: AlertPolicy): boolean =>
     shouldFire(policy, payload.counts, payload.newlyFailing.length, payload.newlyFlaky.length)

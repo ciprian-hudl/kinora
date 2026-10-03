@@ -12,6 +12,9 @@ export const project = pgTable('project', {
   slug: text('slug').notNull(),
   name: text('name').notNull(),
   description: text('description'),
+  codeownersSource: text('codeowners_source').$type<'manual'>().notNull().default('manual'),
+  codeownersText: text('codeowners_text'),
+  codeownersSyncedAt: timestamp('codeowners_synced_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, table => [

@@ -8,6 +8,29 @@ import { adminProcedure, router } from '../trpc/index'
 import { ownedProject } from './dashboard'
 
 export const projectRouter = router({
+  codeowners: adminProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const p = await ownedProject(ctx.organizationId, input.projectId)
+      return {
+        source: p.codeownersSource,
+        text: p.codeownersText ?? '',
+        syncedAt: p.codeownersSyncedAt?.toISOString(),
+      }
+    }),
+
+  updateCodeowners: adminProcedure
+    .input(z.object({ projectId: z.string(), text: z.string().max(200_000) }))
+    .mutation(async ({ ctx, input }) => {
+      const p = await ownedProject(ctx.organizationId, input.projectId)
+      await db.update(project).set({
+        codeownersSource: 'manual',
+        codeownersText: input.text.trim() || null,
+        codeownersSyncedAt: null,
+      }).where(eq(project.id, p.id))
+      return { ok: true }
+    }),
+
   rename: adminProcedure
     .input(z.object({ projectId: z.string(), name: z.string().trim().min(1).max(100) }))
     .mutation(async ({ ctx, input }) => {

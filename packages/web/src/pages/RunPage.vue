@@ -301,6 +301,11 @@ const dateFmt = new Intl.DateTimeFormat(undefined, {
                   class="rounded border border-flaky/30 bg-flaky/10 px-1.5 py-0.5 font-mono text-[10px] text-flaky"
                 >Quarantined</span>
                 <span
+                  v-for="owner in t.codeOwners"
+                  :key="owner"
+                  class="rounded border border-signal/30 bg-signal/10 px-1.5 py-0.5 font-mono text-[10px] text-signal"
+                >{{ owner }}</span>
+                <span
                   v-for="(a, i) in t.annotations"
                   :key="`${a.type}-${i}`"
                   :title="a.description"

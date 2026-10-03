@@ -1,5 +1,6 @@
 import type { NormTest } from '@kinora/core'
 import { randomUUID } from 'node:crypto'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { notifyRun } from '../src/alerts/notify'
 import { db } from '../src/db'
@@ -86,6 +87,20 @@ describe('notifyRun', () => {
     expect(body.text).toContain('t1')
   })
 
+  it('includes code owners in regression alerts', async () => {
+    const user = await createUser()
+    const projectId = await seedProject(user.id)
+    await db.update(project).set({ codeownersText: '*.ts @frontend' }).where(eq(project.id, projectId))
+    await setChannel(projectId, 'on-regression')
+    await seedPrevRun(projectId, [normTest('t1', 'expected')], new Date(Date.now() - DAY))
+
+    const fetchMock = stubFetchOk()
+    await notifyRun({ organizationId: await ownedOrgId(user.id), projectId, runId: 'r2', startedAt: new Date(), counts: FAIL, tests: [normTest('t1', 'unexpected')] })
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(body.text).toContain('t1 (@frontend)')
+  })
+
   it('does not fire when there is no regression (on-regression)', async () => {
     const user = await createUser()
     const projectId = await seedProject(user.id)
@@ -137,7 +152,9 @@ describe('notifyRun webhook channel', () => {
   it('posts the alert payload to the webhook target', async () => {
     const user = await createUser()
     const projectId = await seedProject(user.id)
-    await setWebhookChannel(projectId, 'always')
+    await db.update(project).set({ codeownersText: '*.ts @frontend' }).where(eq(project.id, projectId))
+    await setWebhookChannel(projectId, 'on-regression')
+    await seedPrevRun(projectId, [normTest('t1', 'expected')], new Date(Date.now() - DAY))
 
     const fetchMock = stubFetchOk()
     await notifyRun({ organizationId: await ownedOrgId(user.id), projectId, runId: 'r1', startedAt: new Date(), counts: FAIL, tests: [normTest('t1', 'unexpected')] })
@@ -146,6 +163,7 @@ describe('notifyRun webhook channel', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(WEBHOOK_URL)
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
     expect(body.counts.unexpected).toBe(1)
+    expect(body.codeOwners).toEqual({ t1: ['@frontend'] })
     expect(body.runUrl).toContain('/projects/')
   })
 

@@ -38,6 +38,27 @@ describe('project router', () => {
     await expect((await caller(b)).project.rename({ projectId: 'web-app', name: 'x' })).rejects.toThrow(/not found/i)
   })
 
+  it('updates and reads project CODEOWNERS settings', async () => {
+    const u = await createUser()
+    await seedProject(u.id)
+
+    const api = await caller(u)
+    await api.project.updateCodeowners({ projectId: 'web-app', text: '*.spec.ts @qa' })
+
+    expect(await api.project.codeowners({ projectId: 'web-app' })).toMatchObject({
+      source: 'manual',
+      text: '*.spec.ts @qa',
+    })
+  })
+
+  it('rejects CODEOWNERS updates for another org project', async () => {
+    const a = await createUser('a@test.dev')
+    await seedProject(a.id)
+    const b = await createUser('b@test.dev')
+
+    await expect((await caller(b)).project.updateCodeowners({ projectId: 'web-app', text: '*.ts @qa' })).rejects.toThrow(/not found/i)
+  })
+
   it('delete removes the project and its artifact blobs', async () => {
     const u = await createUser()
     const key = await createApiKey(u.id)
