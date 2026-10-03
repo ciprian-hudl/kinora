@@ -28,7 +28,7 @@ export function usageAlertText(name: string | null, plan: string, level: UsageLe
   const included = usage.credited.toLocaleString('en-US')
   const rate = price ? ` at ${money(price.unitAmount, price.currency)} each` : ''
   if (level === 'reached')
-    return `${greeting}\n\nYour kinora workspace has used all ${included} test results included in your ${plan} plan for this billing period (${used} so far).\n\nNothing is blocked: your runs keep being ingested, and results past the included amount are billed${rate} on your next invoice.\n\nSee your usage and the overage so far: ${link}\n\nExpecting this volume every month? Write to hi@kinora.dev and we will find a plan that fits.`
+    return `${greeting}\n\nYour kinora workspace has used all ${included} test results included in your ${plan} plan for this billing period (${used} so far).\n\nNothing is blocked: your runs keep being ingested, and results past the included amount are billed${rate} on your next invoice.\n\nSee your usage and the overage so far: ${link}\n\nQuestions about your usage or your plan? Write to hi@kinora.dev.`
   return `${greeting}\n\nYour kinora workspace has used ${used} of the ${included} test results included in your ${plan} plan for this billing period.\n\nNothing will be blocked when you pass it: results past the included amount are billed${rate} on your next invoice.\n\nFollow your usage: ${link}`
 }
 
