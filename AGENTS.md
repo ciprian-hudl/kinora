@@ -72,7 +72,7 @@ A test result travels: **Playwright run -> reporter or CLI -> `@kinora/core` nor
 
 - `@kinora/core` is the shared contract layer. zod schemas in `src/contracts/` (`kinora.ts` = stored/dashboard shapes, `ingest.ts` = the wire payload, `playwright.ts` = raw report shape) plus pure helpers in `src/lib/` (`normalize`, `aggregate`, `history`, `compare`, `status`, `test-key`). Both ingest paths and the server depend on it, so a test keeps a stable identity regardless of how it was uploaded.
 - **`makeTestKey(file, titlePath, projectName)`** (`core/src/lib/test-key.ts`) is the cross-run identity. The reporter rebuilds it from the Playwright suite tree (`identity()` in `reporter/src/index.ts`); the CLI derives it via `normalize` from `results.json`. Both must produce the same key or history breaks.
-- **`SCHEMA_VERSION`** (`core/src/contracts/kinora.ts`) is stamped on `Manifest` and `RunReport`. Bump it when the stored/dashboard shape changes.
+- **`SCHEMA_VERSION`** (`core/src/contracts/kinora.ts`) is stamped on `Manifest` and `RunReport` and enforced by read clients such as `@kinora/mcp`. Bump it only for breaking or semantically incompatible dashboard/read shape changes: removed/renamed fields, changed meanings, stricter required fields, or parsing changes older clients cannot safely ignore. Do not bump for additive optional fields that older clients can ignore; this avoids forcing a coordinated server + MCP/read-client release.
 
 ### Two distinct auth paths on the server
 
