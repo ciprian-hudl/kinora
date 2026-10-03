@@ -109,6 +109,9 @@ const overCap = computed(() => {
   return !!b && b.includedResults != null && b.usedResults >= b.includedResults
 })
 
+// Past the included results a free plan is blocked (fail), a paid one just bills overage (brand tone).
+const blocked = computed(() => overCap.value && !isPaid.value)
+
 const storagePct = computed(() => {
   const b = billing.value
   if (!b || b.storageBytes == null)
@@ -256,18 +259,18 @@ function fmtDate(d: Date | string | null | undefined): string {
         <div class="flex flex-col gap-2">
           <div class="flex items-baseline justify-between">
             <span :class="labelClass">Test results · {{ billing.usagePeriod === 'cycle' ? 'this billing period' : 'this month' }}</span>
-            <span class="font-mono text-xs tabular-nums" :class="overCap ? 'text-fail' : 'text-muted-foreground'">
+            <span class="font-mono text-xs tabular-nums" :class="blocked ? 'text-fail' : overCap ? 'text-signal' : 'text-muted-foreground'">
               {{ billing.usedResults.toLocaleString() }}<template v-if="billing.includedResults != null"> / {{ billing.includedResults.toLocaleString() }}</template><template v-else> · unlimited</template>
             </span>
           </div>
           <div v-if="billing.includedResults != null" class="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
               class="h-full rounded-full transition-all duration-500"
-              :class="overCap ? 'bg-fail' : 'bg-signal'"
+              :class="blocked ? 'bg-fail' : 'bg-signal'"
               :style="{ width: `${usagePct}%` }"
             />
           </div>
-          <p v-if="overCap && isPaid" class="font-mono text-[11px] text-fail">
+          <p v-if="overCap && isPaid" class="font-mono text-[11px] text-signal">
             Included results used up - extra results are billed as overage{{ overageNote }}.
           </p>
           <p v-else-if="overCap" class="font-mono text-[11px] text-fail">
