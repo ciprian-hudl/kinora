@@ -65,7 +65,7 @@ describe('notifyUsageAlerts', () => {
     const org = await proWorkspace()
     meter.mockResolvedValue({ consumed: 20_000, credited: 50_000 })
 
-    expect(await notifyUsageAlerts()).toEqual({ checked: 1, sent: 0 })
+    expect(await notifyUsageAlerts()).toEqual({ checked: 1, sent: 0, undelivered: 0 })
     expect(mail).not.toHaveBeenCalled()
     expect(await alerted(org)).toBeNull()
   })
@@ -104,9 +104,9 @@ describe('notifyUsageAlerts', () => {
     meter.mockResolvedValue({ consumed: 41_000, credited: 50_000 })
     mail.mockResolvedValueOnce(false)
 
-    expect((await notifyUsageAlerts()).sent).toBe(0)
+    expect(await notifyUsageAlerts()).toEqual({ checked: 1, sent: 0, undelivered: 1 })
     expect(await alerted(org)).toBeNull()
-    expect((await notifyUsageAlerts()).sent).toBe(1)
+    expect(await notifyUsageAlerts()).toEqual({ checked: 1, sent: 1, undelivered: 0 })
   })
 
   it('skips free, inactive and admin-owned workspaces', async () => {
@@ -117,7 +117,7 @@ describe('notifyUsageAlerts', () => {
     await db.update(user).set({ role: 'admin' }).where(eq(user.email, 'admin@test.dev'))
     meter.mockResolvedValue({ consumed: 60_000, credited: 50_000 })
 
-    expect(await notifyUsageAlerts()).toEqual({ checked: 0, sent: 0 })
+    expect(await notifyUsageAlerts()).toEqual({ checked: 0, sent: 0, undelivered: 0 })
     expect(mail).not.toHaveBeenCalled()
   })
 })

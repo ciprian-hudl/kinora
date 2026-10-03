@@ -19,18 +19,26 @@ function cutoff(now: Date, days: number): Date {
   return new Date(now.getTime() - days * DAY_MS)
 }
 
-async function deleteBlobs(keys: string[]): Promise<void> {
+// Counts the blobs a sweep could not delete. Their rows are removed regardless, so those objects
+// stay orphaned in storage: the caller reports the total instead of one error per key.
+export interface PurgeStats {
+  blobFailures: number
+}
+
+async function deleteBlobs(keys: string[], stats?: PurgeStats): Promise<void> {
   for (const key of keys) {
     try {
       await storage.delete(key)
     }
     catch (error) {
       logger.error({ error, key }, 'retention: blob delete failed')
+      if (stats)
+        stats.blobFailures++
     }
   }
 }
 
-export async function purgeScope(before: Date, scope: Scope): Promise<number> {
+export async function purgeScope(before: Date, scope: Scope, stats?: PurgeStats): Promise<number> {
   // A tier with no users on it: nothing to do.
   if (scope.includeOrgs && scope.includeOrgs.length === 0)
     return 0
@@ -64,7 +72,7 @@ export async function purgeScope(before: Date, scope: Scope): Promise<number> {
       .select({ key: artifact.storageKey })
       .from(artifact)
       .where(inArray(artifact.runId, ids))
-    await deleteBlobs(blobs.map(b => b.key))
+    await deleteBlobs(blobs.map(b => b.key), stats)
 
     await db.delete(run).where(inArray(run.id, ids))
     total += fetched
@@ -75,7 +83,7 @@ export async function purgeScope(before: Date, scope: Scope): Promise<number> {
 
 // Drop the blobs of older runs but keep the rows: pass rates, trends and flaky history survive,
 // the attachment just loses its URL at read time.
-export async function purgeArtifactsBefore(before: Date): Promise<number> {
+export async function purgeArtifactsBefore(before: Date, stats?: PurgeStats): Promise<number> {
   let total = 0
   let fetched = BATCH
   while (fetched === BATCH) {
@@ -90,7 +98,7 @@ export async function purgeArtifactsBefore(before: Date): Promise<number> {
     if (fetched === 0)
       break
 
-    await deleteBlobs(batch.map(b => b.key))
+    await deleteBlobs(batch.map(b => b.key), stats)
     await db.delete(artifact).where(inArray(artifact.id, batch.map(b => b.id)))
     total += fetched
   }
@@ -99,7 +107,7 @@ export async function purgeArtifactsBefore(before: Date): Promise<number> {
 }
 
 // Keep the newest `keep` runs of every project. Runs sharing the boundary timestamp are all kept.
-export async function purgeBeyondLastRuns(keep: number): Promise<number> {
+export async function purgeBeyondLastRuns(keep: number, stats?: PurgeStats): Promise<number> {
   if (keep <= 0)
     return 0
 
@@ -115,28 +123,29 @@ export async function purgeBeyondLastRuns(keep: number): Promise<number> {
       .limit(1)
     if (!boundary)
       continue
-    deleted += await purgeScope(boundary.startedAt, { projectIds: [p.id] })
+    deleted += await purgeScope(boundary.startedAt, { projectIds: [p.id] }, stats)
   }
 
   return deleted
 }
 
-export interface PurgeResult {
+export interface PurgeResult extends PurgeStats {
   deleted: number
   artifacts: number
 }
 
 async function purgeSelfHost(now: Date): Promise<PurgeResult> {
   if (!retentionPolicy)
-    return { deleted: 0, artifacts: 0 } // unconfigured self-host keeps everything
+    return { deleted: 0, artifacts: 0, blobFailures: 0 } // unconfigured self-host keeps everything
 
   const { runDays, keepLastRuns, artifactDays } = retentionPolicy
+  const stats: PurgeStats = { blobFailures: 0 }
   let deleted = 0
   if (runDays > 0)
-    deleted += await purgeScope(cutoff(now, runDays), {})
-  deleted += await purgeBeyondLastRuns(keepLastRuns)
-  const artifacts = artifactDays > 0 ? await purgeArtifactsBefore(cutoff(now, artifactDays)) : 0
-  return { deleted, artifacts }
+    deleted += await purgeScope(cutoff(now, runDays), {}, stats)
+  deleted += await purgeBeyondLastRuns(keepLastRuns, stats)
+  const artifacts = artifactDays > 0 ? await purgeArtifactsBefore(cutoff(now, artifactDays), stats) : 0
+  return { deleted, artifacts, ...stats }
 }
 
 // Delete runs (cascading tests + artifacts + their blobs) past each tier's retention window.
@@ -154,11 +163,12 @@ export async function purgeExpiredRuns(now: Date): Promise<PurgeResult> {
     .filter(s => s.tier === 'team' || s.tier === 'pro' || s.tier === 'enterprise')
     .map(s => s.organizationId)
 
+  const stats: PurgeStats = { blobFailures: 0 }
   let deleted = 0
   // free = everyone not on a paid plan (covers no subscription + tier 'free').
-  deleted += await purgeScope(cutoff(now, retentionDaysFor('free')), { excludeOrgs: paidOrgs })
-  deleted += await purgeScope(cutoff(now, retentionDaysFor('team')), { includeOrgs: teamOrgs })
-  deleted += await purgeScope(cutoff(now, retentionDaysFor('pro')), { includeOrgs: proOrgs })
+  deleted += await purgeScope(cutoff(now, retentionDaysFor('free')), { excludeOrgs: paidOrgs }, stats)
+  deleted += await purgeScope(cutoff(now, retentionDaysFor('team')), { includeOrgs: teamOrgs }, stats)
+  deleted += await purgeScope(cutoff(now, retentionDaysFor('pro')), { includeOrgs: proOrgs }, stats)
   // enterprise retention is unlimited: never purged.
-  return { deleted, artifacts: 0 }
+  return { deleted, artifacts: 0, ...stats }
 }

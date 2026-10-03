@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { purgeArtifactsBefore, purgeBeyondLastRuns, purgeExpiredRuns, purgeScope } from '../src/billing/retention'
 import { storageBytes } from '../src/billing/usage'
 import { db } from '../src/db'
@@ -157,6 +157,22 @@ describe('purgeArtifactsBefore', () => {
   })
 })
 
+describe('blob delete failures', () => {
+  it('counts the blobs it could not delete and still removes the run', async () => {
+    const u = await createUser()
+    const runId = await seedRun(u.id, new Date(Date.now() - 100 * DAY))
+    await seedArtifact(runId, 'trace.zip')
+    const spy = vi.spyOn(storage, 'delete').mockRejectedValueOnce(new Error('storage down'))
+
+    const stats = { blobFailures: 0 }
+    expect(await purgeScope(new Date(), {}, stats)).toBe(1)
+    spy.mockRestore()
+
+    expect(stats.blobFailures).toBe(1)
+    expect(await exists(runId)).toBeFalsy()
+  })
+})
+
 describe('retention and the storage quota', () => {
   it('frees quota: purged artifacts stop counting against the org', async () => {
     const u = await createUser()
@@ -174,6 +190,6 @@ describe('purgeExpiredRuns', () => {
   it('is a no-op on self-host with no retention policy set', async () => {
     const a = await createUser()
     await seedRun(a.id, new Date(Date.now() - 1000 * DAY))
-    expect(await purgeExpiredRuns(new Date())).toEqual({ deleted: 0, artifacts: 0 })
+    expect(await purgeExpiredRuns(new Date())).toEqual({ deleted: 0, artifacts: 0, blobFailures: 0 })
   })
 })

@@ -1,5 +1,6 @@
 import { checkout, polar, portal, usage, webhooks } from '@polar-sh/better-auth'
 import { Polar } from '@polar-sh/sdk'
+import * as Sentry from '@sentry/node'
 import { cloud, env } from '../lib/env'
 import { logger } from '../lib/logger'
 import { syncCustomerState } from './entitlements'
@@ -70,6 +71,8 @@ export async function meteredResults(externalCustomerId: string): Promise<Metere
   }
   catch (error) {
     logger.error({ error, externalCustomerId }, 'polar customer meter read failed')
+    // Swallowed so the page still renders: report it, or a broken billing read goes unnoticed.
+    Sentry.captureException(error, { tags: { area: 'billing' }, extra: { externalCustomerId } })
     return null
   }
 }
@@ -109,6 +112,7 @@ export async function overagePrice(productId: string): Promise<OveragePrice | nu
   }
   catch (error) {
     logger.error({ error, productId }, 'polar product price read failed')
+    Sentry.captureException(error, { tags: { area: 'billing' }, extra: { productId } })
     return null
   }
 }

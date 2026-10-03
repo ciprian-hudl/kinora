@@ -35,6 +35,8 @@ export function usageAlertText(name: string | null, plan: string, level: UsageLe
 export interface UsageAlertResult {
   checked: number
   sent: number
+  // Alerts that were due but whose mail did not leave; they are retried on the next run.
+  undelivered: number
 }
 
 // Email paid workspaces when their billing cycle crosses 80% / 100% of the included results.
@@ -46,6 +48,7 @@ export async function notifyUsageAlerts(): Promise<UsageAlertResult> {
 
   let checked = 0
   let sent = 0
+  let undelivered = 0
   for (const sub of subs) {
     if (!isActivePaid(sub.tier, sub.status) || (sub.tier !== 'team' && sub.tier !== 'pro'))
       continue
@@ -75,8 +78,10 @@ export async function notifyUsageAlerts(): Promise<UsageAlertResult> {
         text: usageAlertText(owner.name, plan, level, usage, productId ? await overagePrice(productId) : null, `${env.WEB_ORIGIN}/settings/workspace`),
       })
       // Only record what actually left, so a mail outage is retried on the next run.
-      if (!delivered)
+      if (!delivered) {
+        undelivered++
         continue
+      }
       sent++
       next = level
       logger.info({ orgId: sub.organizationId, level, consumed: usage.consumed, credited: usage.credited }, 'usage alert sent')
@@ -90,5 +95,5 @@ export async function notifyUsageAlerts(): Promise<UsageAlertResult> {
       await db.update(subscription).set({ usageAlertLevel: next }).where(eq(subscription.organizationId, sub.organizationId))
   }
 
-  return { checked, sent }
+  return { checked, sent, undelivered }
 }
