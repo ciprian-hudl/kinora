@@ -1,12 +1,12 @@
 import * as Sentry from '@sentry/node'
-import pkg from '../package.json'
 import { env } from './lib/env'
+import { version } from './lib/version'
 
 if (env.KINORA_CLOUD && env.NODE_ENV === 'production' && env.SENTRY_DSN) {
   Sentry.init({
     dsn: env.SENTRY_DSN,
     environment: 'production',
-    release: `@kinora/server@${pkg.version}`,
+    release: `@kinora/server@${version}`,
     tracesSampleRate: 0.1,
     sendDefaultPii: false,
     beforeSend(event) {

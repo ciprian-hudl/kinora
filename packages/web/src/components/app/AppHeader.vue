@@ -16,6 +16,7 @@ const user = session.user
 const { state: serverConfig } = useServerConfig()
 const feedbackEnabled = computed(() => serverConfig.value?.feedbackEnabled ?? false)
 const feedbackOpen = ref(false)
+const version = computed(() => serverConfig.value?.version)
 
 const isAdmin = computed(() => (serverConfig.value?.adminEnabled ?? false) && user.value?.role === 'admin')
 const SUPPORT_HREF = 'mailto:hi@kinora.dev?subject=kinora%20support'
@@ -136,6 +137,12 @@ async function signOut(): Promise<void> {
               <LogOut class="size-4" />
               Sign out
             </DropdownMenuItem>
+            <template v-if="version">
+              <DropdownMenuSeparator />
+              <div class="px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                v{{ version }}
+              </div>
+            </template>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
