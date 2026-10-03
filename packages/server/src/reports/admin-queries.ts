@@ -1,8 +1,11 @@
 import type { AnyColumn } from 'drizzle-orm'
-import { and, count, desc, eq, gte, inArray, max, notInArray, sql } from 'drizzle-orm'
-import { isActivePaid } from '../billing/entitlements'
+import { and, count, desc, eq, gte, inArray, max, notInArray, sql, sum } from 'drizzle-orm'
+import { isActivePaid, planLimits } from '../billing/entitlements'
+import { meteredResults, overageCents, overagePrice, planPriceCents } from '../billing/polar'
+import { periodKey } from '../billing/usage'
 import { db } from '../db'
-import { member, organization, project, run, subscription, test, user } from '../db/schemas/index'
+import { artifact, member, organization, project, run, subscription, test, usagePeriod, user } from '../db/schemas/index'
+import { cloud } from '../lib/env'
 
 // Cross-org operator analytics: unscoped, read-everything. Only ever reached via
 // platformAdminProcedure - never import this from a user-facing router.
@@ -32,6 +35,27 @@ export interface AccountRow {
   plan: string
   projects: number
   lastRunAt: string | null
+  // Raw billing state; `plan` above collapses anything that is not an active paid plan to 'free'.
+  subscription: { tier: string, status: string | null, currentPeriodEnd: string | null, cancelAtPeriodEnd: boolean } | null
+  // Owner is a platform admin: the workspace has no caps whatever its plan.
+  unlimited: boolean
+  usedResults: number
+  // null = unlimited.
+  includedResults: number | null
+  usagePct: number | null
+  // 'cycle' = Polar's billed figure for the subscription cycle; 'month' = local calendar-month counter.
+  usagePeriod: 'cycle' | 'month'
+  overageResults: number
+  overageCents: number | null
+  planPriceCents: number | null
+  prevMonthResults: number
+  runs30d: number
+  storageBytes: number
+  storageLimitBytes: number | null
+}
+
+function finiteOrNull(n: number): number | null {
+  return Number.isFinite(n) ? n : null
 }
 
 // Internal orgs and the users who own them, excluded from real-adoption metrics.
@@ -107,13 +131,17 @@ export async function runsPerDay(days = 30): Promise<Bucket[]> {
 }
 
 export async function listAccounts(): Promise<AccountRow[]> {
-  const [orgs, owners, memberCounts, projectCounts, lastRuns, subs] = await Promise.all([
+  const now = new Date()
+  const period = periodKey(now)
+  const prevPeriod = periodKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)))
+
+  const [orgs, owners, memberCounts, projectCounts, lastRuns, subs, usage, recentRuns, storage] = await Promise.all([
     db
       .select({ id: organization.id, name: organization.name })
       .from(organization)
       .where(eq(organization.internal, false)),
     db
-      .select({ orgId: member.organizationId, email: user.email })
+      .select({ orgId: member.organizationId, userId: user.id, email: user.email, role: user.role })
       .from(member)
       .innerJoin(user, eq(member.userId, user.id))
       .where(eq(member.role, 'owner'))
@@ -126,36 +154,92 @@ export async function listAccounts(): Promise<AccountRow[]> {
       .from(run)
       .innerJoin(project, eq(run.projectId, project.id))
       .groupBy(project.organizationId),
-    db.select({ orgId: subscription.organizationId, tier: subscription.tier, status: subscription.status }).from(subscription),
+    db
+      .select({
+        orgId: subscription.organizationId,
+        tier: subscription.tier,
+        status: subscription.status,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+      })
+      .from(subscription),
+    db
+      .select({ orgId: usagePeriod.organizationId, period: usagePeriod.period, results: usagePeriod.results })
+      .from(usagePeriod)
+      .where(inArray(usagePeriod.period, [period, prevPeriod])),
+    db
+      .select({ orgId: project.organizationId, n: count() })
+      .from(run)
+      .innerJoin(project, eq(run.projectId, project.id))
+      .where(gte(run.startedAt, new Date(now.getTime() - 30 * DAY)))
+      .groupBy(project.organizationId),
+    db
+      .select({ orgId: project.organizationId, bytes: sum(artifact.size) })
+      .from(artifact)
+      .innerJoin(project, eq(artifact.projectId, project.id))
+      .groupBy(project.organizationId),
   ])
 
-  const ownerByOrg = new Map(owners.map(o => [o.orgId, o.email]))
+  const ownerByOrg = new Map(owners.map(o => [o.orgId, o]))
   const membersByOrg = new Map(memberCounts.map(m => [m.orgId, m.n]))
   const projectsByOrg = new Map(projectCounts.map(p => [p.orgId, p.n]))
   const lastByOrg = new Map(lastRuns.map(r => [r.orgId, r.last]))
-  // Only an active paid subscription counts as its tier; canceled/past-due collapses to free.
-  const planByOrg = new Map(subs.map(s => [s.orgId, isActivePaid(s.tier, s.status) ? s.tier : 'free']))
+  const subByOrg = new Map(subs.map(s => [s.orgId, s]))
+  const usageByOrg = new Map(usage.filter(u => u.period === period).map(u => [u.orgId, u.results]))
+  const prevUsageByOrg = new Map(usage.filter(u => u.period === prevPeriod).map(u => [u.orgId, u.results]))
+  const runsByOrg = new Map(recentRuns.map(r => [r.orgId, r.n]))
+  const storageByOrg = new Map(storage.map(s => [s.orgId, Number(s.bytes ?? 0)]))
 
-  return orgs
-    .map((o) => {
-      const last = lastByOrg.get(o.id)
-      return {
-        orgId: o.id,
-        name: o.name,
-        ownerEmail: ownerByOrg.get(o.id) ?? null,
-        members: membersByOrg.get(o.id) ?? 0,
-        plan: planByOrg.get(o.id) ?? 'free',
-        projects: projectsByOrg.get(o.id) ?? 0,
-        lastRunAt: last ? last.toISOString() : null,
-      }
-    })
-    .sort((a, b) => {
-      if (a.lastRunAt === b.lastRunAt)
-        return 0
-      if (a.lastRunAt === null)
-        return 1
-      if (b.lastRunAt === null)
-        return -1
-      return a.lastRunAt < b.lastRunAt ? 1 : -1
-    })
+  const rows = await Promise.all(orgs.map(async (o): Promise<AccountRow> => {
+    const owner = ownerByOrg.get(o.id)
+    const sub = subByOrg.get(o.id)
+    // Only an active paid subscription counts as its tier; canceled/past-due collapses to free.
+    const plan = sub && isActivePaid(sub.tier, sub.status) ? sub.tier : 'free'
+    const limits = planLimits(plan)
+    const unlimited = owner?.role === 'admin'
+    const productId = plan === 'pro' ? cloud?.proProductId : plan === 'team' ? cloud?.teamProductId : undefined
+
+    // Paid plans are billed by Polar on the subscription cycle: show that figure, as their settings do.
+    const metered = productId && owner ? await meteredResults(owner.userId) : null
+    const usedResults = metered?.consumed ?? usageByOrg.get(o.id) ?? 0
+    const includedResults = unlimited ? null : metered?.credited || finiteOrNull(limits.includedResults)
+    const overageResults = productId && includedResults != null ? Math.max(0, usedResults - includedResults) : 0
+    const price = productId && overageResults > 0 ? await overagePrice(productId) : null
+    const last = lastByOrg.get(o.id)
+
+    return {
+      orgId: o.id,
+      name: o.name,
+      ownerEmail: owner?.email ?? null,
+      members: membersByOrg.get(o.id) ?? 0,
+      plan,
+      projects: projectsByOrg.get(o.id) ?? 0,
+      lastRunAt: last ? last.toISOString() : null,
+      subscription: sub
+        ? { tier: sub.tier, status: sub.status, currentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null, cancelAtPeriodEnd: sub.cancelAtPeriodEnd }
+        : null,
+      unlimited,
+      usedResults,
+      includedResults,
+      usagePct: includedResults ? Math.round((usedResults / includedResults) * 100) : null,
+      usagePeriod: metered ? 'cycle' : 'month',
+      overageResults,
+      overageCents: price && includedResults != null ? overageCents({ consumed: usedResults, credited: includedResults }, price) : null,
+      planPriceCents: productId ? await planPriceCents(productId) : null,
+      prevMonthResults: prevUsageByOrg.get(o.id) ?? 0,
+      runs30d: runsByOrg.get(o.id) ?? 0,
+      storageBytes: storageByOrg.get(o.id) ?? 0,
+      storageLimitBytes: unlimited ? null : finiteOrNull(limits.storageBytes),
+    }
+  }))
+
+  return rows.sort((a, b) => {
+    if (a.lastRunAt === b.lastRunAt)
+      return 0
+    if (a.lastRunAt === null)
+      return 1
+    if (b.lastRunAt === null)
+      return -1
+    return a.lastRunAt < b.lastRunAt ? 1 : -1
+  })
 }

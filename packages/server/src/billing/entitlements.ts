@@ -33,6 +33,11 @@ const LIMITS: Record<Tier, Omit<Entitlements, 'tier'>> = {
   selfhost: UNLIMITED,
 }
 
+// The plan's own limits, ignoring deployment mode and the admin bypass (see getEntitlements for those).
+export function planLimits(tier: Tier): Omit<Entitlements, 'tier'> {
+  return LIMITS[tier]
+}
+
 export function retentionDaysFor(tier: Tier): number {
   return LIMITS[tier].retentionDays
 }
