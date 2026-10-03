@@ -13,7 +13,7 @@ vi.resetModules()
 const { reportPendingUsage } = await import('../src/billing/metering')
 const { meterTestResults } = await import('../src/billing/polar')
 const { db } = await import('../src/db')
-const { run } = await import('../src/db/schemas/index')
+const { organization, run } = await import('../src/db/schemas/index')
 const { createApiKey, createUser, ingest, resetDb, runPayload } = await import('./helpers')
 
 beforeEach(resetDb)
@@ -70,7 +70,18 @@ describe('usage metering', () => {
     expect(await pendingRuns()).toHaveLength(1)
   })
 
-  it('never marks a run from a past period as pending', async () => {
+  it('meters a backdated run when it postdates the workspace', async () => {
+    const user = await createUser()
+    await db.update(organization).set({ createdAt: new Date(Date.UTC(2019, 0, 1)) })
+    const backdated = runPayload()
+    backdated.run.startedAt = new Date(Date.UTC(2020, 0, 15)).toISOString()
+    const res = await ingest(await createApiKey(user.id), backdated)
+    const { runId } = await res.json() as { runId: string }
+
+    expect(meter).toHaveBeenCalledExactlyOnceWith(user.id, 1, runId)
+  })
+
+  it('never meters a run that predates the workspace', async () => {
     const user = await createUser()
     const old = runPayload()
     old.run.startedAt = new Date(Date.UTC(2020, 0, 15)).toISOString()

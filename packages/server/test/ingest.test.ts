@@ -1,6 +1,8 @@
+import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { currentPeriodResults } from '../src/billing/usage'
 import { db } from '../src/db'
+import { organization } from '../src/db/schemas/index'
 import { createApiKey, createUser, ingest, ownedOrgId, runPayload } from './helpers'
 
 describe('ingest /api/v1/runs', () => {
@@ -36,19 +38,30 @@ describe('ingest /api/v1/runs', () => {
     expect(tests[0].tags).toEqual(['@smoke'])
   })
 
-  it('records usage for the current month, and not for a run that executed earlier', async () => {
+  it('counts a run when it is received, whatever date it carries', async () => {
+    const user = await createUser()
+    const key = await createApiKey(user.id)
+    const org = await ownedOrgId(user.id)
+    await db.update(organization).set({ createdAt: new Date(Date.UTC(2019, 0, 1)) }).where(eq(organization.id, org))
+
+    await ingest(key)
+    // Dated years back, but after the workspace was created: still current usage.
+    const backdated = runPayload()
+    backdated.run.startedAt = new Date(Date.UTC(2020, 0, 15)).toISOString()
+    await ingest(key, backdated)
+    expect(await currentPeriodResults(org)).toBe(2)
+  })
+
+  it('treats a run that predates the workspace as free history', async () => {
     const user = await createUser()
     const key = await createApiKey(user.id)
     const org = await ownedOrgId(user.id)
 
     await ingest(key)
-    await ingest(key)
-    expect(await currentPeriodResults(org)).toBe(2)
-
     const old = runPayload()
     old.run.startedAt = new Date(Date.UTC(2020, 0, 15)).toISOString()
-    await ingest(key, old)
-    expect(await currentPeriodResults(org)).toBe(2)
+    expect((await ingest(key, old)).status).toBe(201)
+    expect(await currentPeriodResults(org)).toBe(1)
   })
 
   it('reuses the project on a second run for the same slug', async () => {

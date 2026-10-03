@@ -11,9 +11,9 @@ import { notifyRun } from '../alerts/notify'
 import { getEntitlements, ingestCapError, quotaCrossing, quotaWarningText, storageCapError } from '../billing/entitlements'
 import { meterRun } from '../billing/metering'
 import { polarClient } from '../billing/polar'
-import { currentPeriodResults, projectCount, recordResults, startOfMonthUtc, storageBytes } from '../billing/usage'
+import { currentPeriodResults, isHistory, projectCount, recordResults, storageBytes } from '../billing/usage'
 import { db } from '../db'
-import { artifact, member, project, run, test, user } from '../db/schemas/index'
+import { artifact, member, organization, project, run, test, user } from '../db/schemas/index'
 import { auth } from '../lib/auth'
 import { env } from '../lib/env'
 import { logger } from '../lib/logger'
@@ -57,7 +57,7 @@ const ingestJsonLimit = bodyLimit({
 publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), async (c) => {
   const orgId = c.get('orgId')
   const input = c.req.valid('json')
-  // Backfill only suppresses alerts (anti-spam); billing/cap follow run.startedAt, so old runs are free.
+  // Backfill only suppresses alerts (anti-spam); what is billed is decided by `history` below.
   const backfill = c.req.query('backfill') === '1'
 
   const entitlements = await getEntitlements(orgId)
@@ -74,8 +74,10 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
   if (cap)
     return c.json(cap, 402)
 
-  // Meter only runs that executed in the current period; historical backfill stays unmetered.
-  const billable = Boolean(polarClient) && input.tests.length > 0 && new Date(input.run.startedAt) >= startOfMonthUtc()
+  const startedAt = new Date(input.run.startedAt)
+  const org = await db.query.organization.findFirst({ where: eq(organization.id, orgId), columns: { createdAt: true } })
+  const history = !!org && isHistory(startedAt, org.createdAt)
+  const billable = Boolean(polarClient) && input.tests.length > 0 && !history
 
   const result = await db.transaction(async (tx) => {
     let projectId = existing?.id
@@ -97,7 +99,7 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
     await tx.insert(run).values({
       id: runId,
       projectId,
-      startedAt: new Date(input.run.startedAt),
+      startedAt,
       // Playwright reports fractional ms; the column is integer.
       duration: Math.round(input.run.duration),
       counts: input.run.counts,
@@ -132,7 +134,7 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
       })))
     }
 
-    await recordResults(tx, orgId, new Date(input.run.startedAt), input.tests.length)
+    await recordResults(tx, orgId, history ? startedAt : new Date(), input.tests.length)
 
     return { projectId, runId, tests: input.tests.length }
   })
@@ -154,7 +156,7 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
   }
 
   // Free-tier usage warning, fired on the ingest that crosses 80% / 100% of the monthly cap.
-  if (!backfill && entitlements.tier === 'free' && result.tests > 0) {
+  if (!backfill && !history && entitlements.tier === 'free' && result.tests > 0) {
     const kind = quotaCrossing(usedResults, usedResults + result.tests, entitlements.includedResults)
     if (kind) {
       try {

@@ -2,23 +2,24 @@ import { and, count, eq, sql, sum } from 'drizzle-orm'
 import { db } from '../db'
 import { artifact, project, usagePeriod } from '../db/schemas/index'
 
-export function startOfMonthUtc(): Date {
-  const now = new Date()
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-}
-
 export function periodKey(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
-// Usage is attributed to when tests ran (run.startedAt), not upload time, so historical
-// backfill imports land in past periods and don't consume the current month's quota.
-export async function recordResults(executor: Pick<typeof db, 'insert'>, organizationId: string, startedAt: Date, results: number): Promise<void> {
+// A run that executed before the workspace existed is imported history: free, never metered and
+// never counted against the current period. Anything dated later counts when it is received, so
+// the client-supplied date cannot be used to dodge the quota or billing.
+export function isHistory(startedAt: Date, organizationCreatedAt: Date): boolean {
+  return startedAt < organizationCreatedAt
+}
+
+// `at` picks the period: the reception time for billable runs, the run's own date for history.
+export async function recordResults(executor: Pick<typeof db, 'insert'>, organizationId: string, at: Date, results: number): Promise<void> {
   if (results <= 0)
     return
   await executor
     .insert(usagePeriod)
-    .values({ organizationId, period: periodKey(startedAt), results })
+    .values({ organizationId, period: periodKey(at), results })
     .onConflictDoUpdate({
       target: [usagePeriod.organizationId, usagePeriod.period],
       set: { results: sql`${usagePeriod.results} + excluded.results`, updatedAt: new Date() },
