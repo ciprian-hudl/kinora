@@ -34,7 +34,9 @@ RUN pnpm install --frozen-lockfile --filter @kinora/web... --filter @kinora/trac
 RUN --mount=type=secret,id=sentry_auth_token \
     SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
     pnpm --filter @kinora/web build
-RUN pnpm --filter @kinora/trace-viewer build
+RUN --mount=type=secret,id=sentry_auth_token \
+    SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
+    pnpm --filter @kinora/trace-viewer build
 
 FROM nginx:1.27-alpine AS runtime
 # Default = cloud (static-only, API is a separate origin). The published self-host image and the
