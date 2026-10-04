@@ -70,7 +70,10 @@ export const auth = betterAuth({
     ...(githubOauthEnabled ? { github: { clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET } } : {}),
   },
   // Okta asserts the email, so an existing password account links on first SSO sign-in instead of erroring.
-  ...(oktaEnabled ? { account: { accountLinking: { trustedProviders: ['okta'] } } } : {}),
+  // Without SMTP those accounts were never email-verified; with password signup off no new unverified ones can appear.
+  ...(oktaEnabled
+    ? { account: { accountLinking: { trustedProviders: ['okta'], requireLocalEmailVerified: passwordLoginEnabled } } }
+    : {}),
   user: {
     deleteUser: {
       enabled: true,
