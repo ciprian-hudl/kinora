@@ -83,7 +83,9 @@ const labelClass = 'font-mono text-[11px] tracking-wider text-muted-foreground u
   <AuthLayout v-if="oktaOnly" tag="Sign in to continue">
     <div class="space-y-4 text-center">
       <p v-if="ssoError || serverError" class="rounded-md border border-fail/30 bg-fail/10 px-3 py-2 text-xs text-fail">
-        {{ serverError || 'Okta sign-in failed. Make sure you are assigned to kinora in Okta.' }}
+        {{ serverError || (ssoError === 'access_denied'
+          ? 'Okta denied access. Make sure you are assigned to kinora in Okta.'
+          : `Okta sign-in failed (${ssoError}).`) }}
       </p>
       <p v-else class="font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
         Redirecting to Okta…
