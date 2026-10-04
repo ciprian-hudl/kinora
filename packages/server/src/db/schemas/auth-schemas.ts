@@ -107,6 +107,8 @@ export const organization = pgTable('organization', {
   metadata: text('metadata'),
   // Operator flag: dogfood/test orgs, excluded from platform-admin metrics by default.
   internal: boolean('internal').default(false).notNull(),
+  usageNearEmailEnabled: boolean('usage_near_email_enabled').default(true).notNull(),
+  usageLimitEmailEnabled: boolean('usage_limit_email_enabled').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()),
 })

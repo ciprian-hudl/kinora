@@ -16,7 +16,7 @@ vi.resetModules()
 const { meteredResults } = await import('../src/billing/polar')
 const { notifyUsageAlerts, usageAlertText, usageLevel } = await import('../src/billing/usage-alerts')
 const { db } = await import('../src/db')
-const { subscription, user } = await import('../src/db/schemas/index')
+const { organization, subscription, user } = await import('../src/db/schemas/index')
 const { deliverMail } = await import('../src/lib/mailer')
 const { createUser, ownedOrgId, resetDb } = await import('./helpers')
 
@@ -57,6 +57,7 @@ describe('usageAlertText', () => {
     expect(text).toContain('all 50,000 test results')
     expect(text).toContain('$0.004 each')
     expect(text).toContain('Nothing is blocked')
+    expect(text).toContain('Manage usage emails in Settings -> Workspace')
   })
 })
 
@@ -107,6 +108,29 @@ describe('notifyUsageAlerts', () => {
     expect(await notifyUsageAlerts()).toEqual({ checked: 1, sent: 0, undelivered: 1 })
     expect(await alerted(org)).toBeNull()
     expect(await notifyUsageAlerts()).toEqual({ checked: 1, sent: 1, undelivered: 0 })
+  })
+
+  it('honors workspace usage email settings without marking the level sent', async () => {
+    const org = await proWorkspace()
+    meter.mockResolvedValue({ consumed: 41_000, credited: 50_000 })
+    await db.update(organization).set({ usageNearEmailEnabled: false }).where(eq(organization.id, org))
+
+    expect(await notifyUsageAlerts()).toEqual({ checked: 1, sent: 0, undelivered: 0 })
+    expect(mail).not.toHaveBeenCalled()
+    expect(await alerted(org)).toBeNull()
+
+    await db.update(organization).set({ usageNearEmailEnabled: true }).where(eq(organization.id, org))
+    expect(await notifyUsageAlerts()).toEqual({ checked: 1, sent: 1, undelivered: 0 })
+  })
+
+  it('lets paid workspaces disable the 100% usage email', async () => {
+    const org = await proWorkspace()
+    meter.mockResolvedValue({ consumed: 52_000, credited: 50_000 })
+    await db.update(organization).set({ usageLimitEmailEnabled: false }).where(eq(organization.id, org))
+
+    expect(await notifyUsageAlerts()).toEqual({ checked: 1, sent: 0, undelivered: 0 })
+    expect(mail).not.toHaveBeenCalled()
+    expect(await alerted(org)).toBeNull()
   })
 
   it('skips free, inactive and admin-owned workspaces', async () => {

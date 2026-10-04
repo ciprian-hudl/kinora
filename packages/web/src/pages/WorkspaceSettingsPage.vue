@@ -70,7 +70,15 @@ async function copyMcp(): Promise<void> {
 }
 
 // --- Plan & billing ---
-const { summary: billing, refresh: refreshBilling, pending: billingPending, checkout, openPortal } = useBilling()
+const {
+  summary: billing,
+  refresh: refreshBilling,
+  pending: billingPending,
+  usageEmailPending,
+  checkout,
+  openPortal,
+  updateUsageEmailSettings,
+} = useBilling()
 const route = useRoute()
 const router = useRouter()
 
@@ -141,6 +149,17 @@ function startUpgrade(opt: UpgradeOption): Promise<void> {
 
 function upgradePending(opt: UpgradeOption): boolean {
   return billingPending.value === (opt.action === 'portal' ? 'portal' : opt.slug)
+}
+
+function onUsageEmailToggle(kind: 'near' | 'limit', event: Event): void {
+  const target = event.target as HTMLInputElement
+  const current = billing.value
+  if (!current)
+    return
+  void updateUsageEmailSettings({
+    usageNearEmailEnabled: kind === 'near' ? target.checked : current.usageNearEmailEnabled,
+    usageLimitEmailEnabled: kind === 'limit' ? target.checked : current.usageLimitEmailEnabled,
+  })
 }
 
 const PLAN_COLUMNS = [
@@ -263,6 +282,38 @@ function fmtDate(d: Date | string | null | undefined): string {
           </p>
           <p class="font-mono text-[11px] text-muted-foreground">
             {{ billing.retentionDays != null ? `${billing.retentionDays}-day history` : 'Unlimited history' }}
+          </p>
+        </div>
+
+        <div v-if="billing.includedResults != null" class="flex flex-col gap-3 rounded-md border border-border/70 bg-background/40 px-4 py-3">
+          <div class="flex flex-col gap-1">
+            <span :class="labelClass">Usage emails</span>
+            <p class="font-mono text-[11px] text-muted-foreground">
+              Control the emails sent when this workspace gets close to its included result usage.
+            </p>
+          </div>
+          <label class="flex items-start gap-2.5 font-mono text-xs text-foreground">
+            <input
+              type="checkbox"
+              class="mt-0.5 size-3.5 accent-current"
+              :checked="billing.usageNearEmailEnabled"
+              :disabled="usageEmailPending || !isAdmin || isDemo"
+              @change="onUsageEmailToggle('near', $event)"
+            >
+            <span>Email at 80% of included results</span>
+          </label>
+          <label v-if="isPaid" class="flex items-start gap-2.5 font-mono text-xs text-foreground">
+            <input
+              type="checkbox"
+              class="mt-0.5 size-3.5 accent-current"
+              :checked="billing.usageLimitEmailEnabled"
+              :disabled="usageEmailPending || !isAdmin || isDemo"
+              @change="onUsageEmailToggle('limit', $event)"
+            >
+            <span>Email when included results are used up</span>
+          </label>
+          <p v-if="!isAdmin" class="font-mono text-[11px] text-muted-foreground">
+            Only admins can change usage email settings.
           </p>
         </div>
 

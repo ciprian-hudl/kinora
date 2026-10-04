@@ -8,7 +8,7 @@ import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { notifyRun } from '../alerts/notify'
-import { getEntitlements, ingestCapError, quotaCrossing, quotaWarningText, storageCapError } from '../billing/entitlements'
+import { getEntitlements, ingestCapError, quotaCrossing, quotaWarningText, storageCapError, usageEmailEnabled } from '../billing/entitlements'
 import { meterRun } from '../billing/metering'
 import { polarClient } from '../billing/polar'
 import { currentPeriodResults, isHistory, projectCount, recordResults, storageBytes } from '../billing/usage'
@@ -75,7 +75,10 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
     return c.json(cap, 402)
 
   const startedAt = new Date(input.run.startedAt)
-  const org = await db.query.organization.findFirst({ where: eq(organization.id, orgId), columns: { createdAt: true } })
+  const org = await db.query.organization.findFirst({
+    where: eq(organization.id, orgId),
+    columns: { createdAt: true, usageNearEmailEnabled: true, usageLimitEmailEnabled: true },
+  })
   const history = !!org && isHistory(startedAt, org.createdAt)
   const billable = Boolean(polarClient) && input.tests.length > 0 && !history
 
@@ -158,7 +161,7 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
   // Free-tier usage warning, fired on the ingest that crosses 80% / 100% of the monthly cap.
   if (!backfill && !history && entitlements.tier === 'free' && result.tests > 0) {
     const kind = quotaCrossing(usedResults, usedResults + result.tests, entitlements.includedResults)
-    if (kind) {
+    if (kind && usageEmailEnabled(entitlements.tier, kind, org ?? {})) {
       try {
         const owner = await db.query.member.findFirst({
           where: and(eq(member.organizationId, orgId), eq(member.role, 'owner')),
@@ -171,7 +174,7 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
           sendMail({
             to: u.email,
             subject: kind === 'reached' ? 'You\'ve hit your kinora free limit' : 'You\'re nearing your kinora free limit',
-            text: quotaWarningText(u.name, kind, usedResults + result.tests, entitlements.includedResults, env.WEB_ORIGIN),
+            text: quotaWarningText(u.name, kind, usedResults + result.tests, entitlements.includedResults, `${env.WEB_ORIGIN}/settings/workspace`),
           })
         }
       }

@@ -1,11 +1,12 @@
 import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
 import { getEntitlements, getSubscription, isActivePaid } from '../billing/entitlements'
 import { meteredResults, overageCents, overagePrice } from '../billing/polar'
 import { currentPeriodResults, storageBytes } from '../billing/usage'
 import { db } from '../db'
-import { member } from '../db/schemas/index'
+import { member, organization } from '../db/schemas/index'
 import { cloud } from '../lib/env'
-import { orgProcedure, router } from '../trpc/index'
+import { adminProcedure, orgProcedure, router } from '../trpc/index'
 
 // Infinity doesn't survive JSON: unlimited limits go over the wire as null.
 function finiteOrNull(n: number): number | null {
@@ -26,9 +27,13 @@ async function billedUsage(organizationId: string) {
 export const billingRouter = router({
   summary: orgProcedure.query(async ({ ctx }) => {
     const organizationId = ctx.organizationId
-    const [entitlements, sub, localResults, usedStorageBytes] = await Promise.all([
+    const [entitlements, sub, org, localResults, usedStorageBytes] = await Promise.all([
       getEntitlements(organizationId),
       getSubscription(organizationId),
+      db.query.organization.findFirst({
+        where: eq(organization.id, organizationId),
+        columns: { usageNearEmailEnabled: true, usageLimitEmailEnabled: true },
+      }),
       currentPeriodResults(organizationId),
       storageBytes(organizationId),
     ])
@@ -58,6 +63,22 @@ export const billingRouter = router({
       status: sub?.status ?? null,
       currentPeriodEnd: sub?.currentPeriodEnd?.toISOString() ?? null,
       cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? false,
+      usageNearEmailEnabled: org?.usageNearEmailEnabled ?? true,
+      usageLimitEmailEnabled: org?.usageLimitEmailEnabled ?? true,
     }
   }),
+
+  updateUsageEmailSettings: adminProcedure
+    .input(z.object({ usageNearEmailEnabled: z.boolean(), usageLimitEmailEnabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await db
+        .update(organization)
+        .set(input)
+        .where(eq(organization.id, ctx.organizationId))
+        .returning({
+          usageNearEmailEnabled: organization.usageNearEmailEnabled,
+          usageLimitEmailEnabled: organization.usageLimitEmailEnabled,
+        })
+      return row ?? input
+    }),
 })

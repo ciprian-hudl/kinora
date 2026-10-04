@@ -14,6 +14,7 @@ export function useBilling() {
 
   // Which billing action is mid-flight, so the buttons can disable + show progress.
   const pending = ref<'team' | 'pro' | 'portal' | null>(null)
+  const usageEmailPending = ref(false)
 
   async function checkout(slug: 'team' | 'pro'): Promise<void> {
     pending.value = slug
@@ -40,5 +41,21 @@ export function useBilling() {
     }
   }
 
-  return { summary, isLoading, refresh, pending, checkout, openPortal }
+  async function updateUsageEmailSettings(input: { usageNearEmailEnabled: boolean, usageLimitEmailEnabled: boolean }): Promise<void> {
+    usageEmailPending.value = true
+    try {
+      const next = await trpc.billing.updateUsageEmailSettings.mutate(input)
+      if (summary.value)
+        summary.value = { ...summary.value, ...next }
+      toast.success('Usage email settings saved')
+    }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save usage email settings')
+    }
+    finally {
+      usageEmailPending.value = false
+    }
+  }
+
+  return { summary, isLoading, refresh, pending, usageEmailPending, checkout, openPortal, updateUsageEmailSettings }
 }

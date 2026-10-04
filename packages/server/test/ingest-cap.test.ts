@@ -1,6 +1,6 @@
 import type { Entitlements } from '../src/billing/entitlements'
 import { describe, expect, it } from 'vitest'
-import { formatBytes, ingestCapError, quotaCrossing, quotaWarningText, storageCapError } from '../src/billing/entitlements'
+import { formatBytes, ingestCapError, quotaCrossing, quotaWarningText, storageCapError, usageEmailEnabled } from '../src/billing/entitlements'
 import { overageCents, pickResultsMeter } from '../src/billing/polar'
 
 const free: Entitlements = { tier: 'free', includedResults: 2500, maxProjects: 1, retentionDays: 7, storageBytes: 2 * 1024 ** 3, alerts: false }
@@ -83,14 +83,29 @@ describe('quotaCrossing', () => {
 })
 
 describe('quotaWarningText', () => {
-  it('reached: states the limit and an upgrade link', () => {
-    const text = quotaWarningText('Joris', 'reached', 2510, 2500, 'https://app.kinora.dev')
+  it('reached: states the limit and an upgrade link without opt-out copy', () => {
+    const text = quotaWarningText('Joris', 'reached', 2510, 2500, 'https://app.kinora.dev/settings/workspace')
     expect(text).toContain('hit its monthly free limit of 2,500')
-    expect(text).toContain('https://app.kinora.dev')
+    expect(text).toContain('https://app.kinora.dev/settings/workspace')
+    expect(text).not.toContain('turn off')
   })
 
-  it('near: states usage out of the limit', () => {
-    expect(quotaWarningText(null, 'near', 2000, 2500, 'x')).toContain('2,000 of its 2,500')
+  it('near: states usage out of the limit and where to disable it', () => {
+    const text = quotaWarningText(null, 'near', 2000, 2500, 'x')
+    expect(text).toContain('2,000 of its 2,500')
+    expect(text).toContain('turn off this 80% email')
+  })
+})
+
+describe('usageEmailEnabled', () => {
+  it('lets every tier disable the 80% email', () => {
+    expect(usageEmailEnabled('free', 'near', { usageNearEmailEnabled: false })).toBe(false)
+    expect(usageEmailEnabled('team', 'near', { usageNearEmailEnabled: false })).toBe(false)
+  })
+
+  it('keeps the free 100% email enabled but lets paid plans disable it', () => {
+    expect(usageEmailEnabled('free', 'reached', { usageLimitEmailEnabled: false })).toBe(true)
+    expect(usageEmailEnabled('team', 'reached', { usageLimitEmailEnabled: false })).toBe(false)
   })
 })
 
