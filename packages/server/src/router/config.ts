@@ -1,6 +1,7 @@
 import { cloud, demo, githubOauthEnabled, googleOauthEnabled, oktaEnabled, passwordLoginEnabled, slackApp } from '../lib/env'
 import { feedbackEnabled } from '../lib/feedback-tracker'
 import { mailerEnabled } from '../lib/mailer'
+import { version } from '../lib/version'
 import { publicProcedure, router } from '../trpc/index'
 
 // App-level server capabilities the dashboard gates UI on: static per deployment, not per-user.
@@ -22,5 +23,7 @@ export const configRouter = router({
     feedbackEnabled,
     // Cloud deployment? front shows the platform-admin nav entry to admin-role users.
     adminEnabled: cloud !== null,
+    // Release version this server was built from; shown in the dashboard's user menu.
+    version,
   })),
 })

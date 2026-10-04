@@ -1,11 +1,11 @@
 import type { MeteredUsage, OveragePrice } from './polar'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../db'
-import { member, subscription, user } from '../db/schemas/index'
+import { member, organization, subscription, user } from '../db/schemas/index'
 import { cloud, env } from '../lib/env'
 import { logger } from '../lib/logger'
 import { deliverMail } from '../lib/mailer'
-import { isActivePaid, ownerIsAdmin, quotaCrossing } from './entitlements'
+import { isActivePaid, ownerIsAdmin, quotaCrossing, usageEmailEnabled } from './entitlements'
 import { meteredResults, overagePrice } from './polar'
 
 export type UsageLevel = 'near' | 'reached'
@@ -27,25 +27,37 @@ export function usageAlertText(name: string | null, plan: string, level: UsageLe
   const used = usage.consumed.toLocaleString('en-US')
   const included = usage.credited.toLocaleString('en-US')
   const rate = price ? ` at ${money(price.unitAmount, price.currency)} each` : ''
+  const manageLine = `Manage usage emails in Settings -> Workspace: ${link}`
   if (level === 'reached')
-    return `${greeting}\n\nYour kinora workspace has used all ${included} test results included in your ${plan} plan for this billing period (${used} so far).\n\nNothing is blocked: your runs keep being ingested, and results past the included amount are billed${rate} on your next invoice.\n\nSee your usage and the overage so far: ${link}\n\nExpecting this volume every month? Write to hi@kinora.dev and we will find a plan that fits.`
-  return `${greeting}\n\nYour kinora workspace has used ${used} of the ${included} test results included in your ${plan} plan for this billing period.\n\nNothing will be blocked when you pass it: results past the included amount are billed${rate} on your next invoice.\n\nFollow your usage: ${link}`
+    return `${greeting}\n\nYour kinora workspace has used all ${included} test results included in your ${plan} plan for this billing period (${used} so far).\n\nNothing is blocked: your runs keep being ingested, and results past the included amount are billed${rate} on your next invoice.\n\nSee your usage and the overage so far: ${link}\n\nQuestions about your usage or your plan? Write to hi@kinora.dev.\n\n${manageLine}`
+  return `${greeting}\n\nYour kinora workspace has used ${used} of the ${included} test results included in your ${plan} plan for this billing period.\n\nNothing will be blocked when you pass it: results past the included amount are billed${rate} on your next invoice.\n\nFollow your usage: ${link}\n\n${manageLine}`
 }
 
 export interface UsageAlertResult {
   checked: number
   sent: number
+  // Alerts that were due but whose mail did not leave; they are retried on the next run.
+  undelivered: number
 }
 
 // Email paid workspaces when their billing cycle crosses 80% / 100% of the included results.
 // Run from a cron: usage is read from Polar (the billed figure), which is too slow for the ingest path.
 export async function notifyUsageAlerts(): Promise<UsageAlertResult> {
   const subs = await db
-    .select({ organizationId: subscription.organizationId, tier: subscription.tier, status: subscription.status, alerted: subscription.usageAlertLevel })
+    .select({
+      organizationId: subscription.organizationId,
+      tier: subscription.tier,
+      status: subscription.status,
+      alerted: subscription.usageAlertLevel,
+      usageNearEmailEnabled: organization.usageNearEmailEnabled,
+      usageLimitEmailEnabled: organization.usageLimitEmailEnabled,
+    })
     .from(subscription)
+    .innerJoin(organization, eq(subscription.organizationId, organization.id))
 
   let checked = 0
   let sent = 0
+  let undelivered = 0
   for (const sub of subs) {
     if (!isActivePaid(sub.tier, sub.status) || (sub.tier !== 'team' && sub.tier !== 'pro'))
       continue
@@ -66,7 +78,7 @@ export async function notifyUsageAlerts(): Promise<UsageAlertResult> {
 
     const level = usageLevel(usage)
     let next = sub.alerted
-    if (level && rank(level) > rank(sub.alerted)) {
+    if (level && rank(level) > rank(sub.alerted) && usageEmailEnabled(sub.tier, level, sub)) {
       const plan = sub.tier === 'team' ? 'Team' : 'Pro'
       const productId = sub.tier === 'team' ? cloud?.teamProductId : cloud?.proProductId
       const delivered = await deliverMail({
@@ -75,8 +87,10 @@ export async function notifyUsageAlerts(): Promise<UsageAlertResult> {
         text: usageAlertText(owner.name, plan, level, usage, productId ? await overagePrice(productId) : null, `${env.WEB_ORIGIN}/settings/workspace`),
       })
       // Only record what actually left, so a mail outage is retried on the next run.
-      if (!delivered)
+      if (!delivered) {
+        undelivered++
         continue
+      }
       sent++
       next = level
       logger.info({ orgId: sub.organizationId, level, consumed: usage.consumed, credited: usage.credited }, 'usage alert sent')
@@ -90,5 +104,5 @@ export async function notifyUsageAlerts(): Promise<UsageAlertResult> {
       await db.update(subscription).set({ usageAlertLevel: next }).where(eq(subscription.organizationId, sub.organizationId))
   }
 
-  return { checked, sent }
+  return { checked, sent, undelivered }
 }

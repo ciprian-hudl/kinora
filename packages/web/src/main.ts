@@ -15,6 +15,7 @@ if (import.meta.env.PROD && import.meta.env.VITE_KINORA_CLOUD === 'true' && env.
     app,
     dsn: env.sentryDsn,
     environment: 'production',
+    release: __KINORA_RELEASE__,
     integrations: [Sentry.browserTracingIntegration({ router })],
     tracesSampleRate: 0.1,
     sendDefaultPii: false,

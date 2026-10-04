@@ -12,6 +12,7 @@ import { useApiTokens } from '@/composables/useApiTokens'
 import { useBilling } from '@/composables/useBilling'
 import { useOrg } from '@/composables/useOrg'
 import { env, isSelfHost } from '@/lib/env'
+import { formatBytes, money } from '@/lib/format'
 
 const labelClass = 'font-mono text-[11px] tracking-wider text-muted-foreground uppercase'
 
@@ -69,7 +70,15 @@ async function copyMcp(): Promise<void> {
 }
 
 // --- Plan & billing ---
-const { summary: billing, refresh: refreshBilling, pending: billingPending, checkout, openPortal } = useBilling()
+const {
+  summary: billing,
+  refresh: refreshBilling,
+  pending: billingPending,
+  usageEmailPending,
+  checkout,
+  openPortal,
+  updateUsageEmailSettings,
+} = useBilling()
 const route = useRoute()
 const router = useRouter()
 
@@ -86,11 +95,6 @@ const SUPPORT_EMAIL = 'hi@kinora.dev'
 const SUPPORT_HREF = `mailto:${SUPPORT_EMAIL}?subject=kinora%20support`
 
 const isPaid = computed(() => ['team', 'pro', 'enterprise'].includes(billing.value?.tier ?? ''))
-
-// Polar amounts are in cents and can be fractions of one (a $0.004 unit price).
-function money(cents: number, currency: string): string {
-  return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: currency.toUpperCase(), minimumFractionDigits: 2, maximumFractionDigits: 4 })
-}
 
 const overageNote = computed(() => {
   const o = billing.value?.overage
@@ -124,17 +128,6 @@ const overStorageCap = computed(() => {
   return !!b && b.storageBytes != null && b.usedStorageBytes >= b.storageBytes
 })
 
-function formatBytes(bytes: number): string {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit++
-  }
-  return `${Math.round(value * 10) / 10} ${units[unit]}`
-}
-
 interface UpgradeOption { slug: 'team' | 'pro', label: string, featured: boolean, action: 'checkout' | 'portal' }
 
 const upgradeOptions = computed<UpgradeOption[]>(() => {
@@ -156,6 +149,17 @@ function startUpgrade(opt: UpgradeOption): Promise<void> {
 
 function upgradePending(opt: UpgradeOption): boolean {
   return billingPending.value === (opt.action === 'portal' ? 'portal' : opt.slug)
+}
+
+function onUsageEmailToggle(kind: 'near' | 'limit', event: Event): void {
+  const target = event.target as HTMLInputElement
+  const current = billing.value
+  if (!current)
+    return
+  void updateUsageEmailSettings({
+    usageNearEmailEnabled: kind === 'near' ? target.checked : current.usageNearEmailEnabled,
+    usageLimitEmailEnabled: kind === 'limit' ? target.checked : current.usageLimitEmailEnabled,
+  })
 }
 
 const PLAN_COLUMNS = [
@@ -278,6 +282,38 @@ function fmtDate(d: Date | string | null | undefined): string {
           </p>
           <p class="font-mono text-[11px] text-muted-foreground">
             {{ billing.retentionDays != null ? `${billing.retentionDays}-day history` : 'Unlimited history' }}
+          </p>
+        </div>
+
+        <div v-if="billing.includedResults != null" class="flex flex-col gap-3 rounded-md border border-border/70 bg-background/40 px-4 py-3">
+          <div class="flex flex-col gap-1">
+            <span :class="labelClass">Usage emails</span>
+            <p class="font-mono text-[11px] text-muted-foreground">
+              Control the emails sent when this workspace gets close to its included result usage.
+            </p>
+          </div>
+          <label class="flex items-start gap-2.5 font-mono text-xs text-foreground">
+            <input
+              type="checkbox"
+              class="mt-0.5 size-3.5 accent-current"
+              :checked="billing.usageNearEmailEnabled"
+              :disabled="usageEmailPending || !isAdmin || isDemo"
+              @change="onUsageEmailToggle('near', $event)"
+            >
+            <span>Email at 80% of included results</span>
+          </label>
+          <label v-if="isPaid" class="flex items-start gap-2.5 font-mono text-xs text-foreground">
+            <input
+              type="checkbox"
+              class="mt-0.5 size-3.5 accent-current"
+              :checked="billing.usageLimitEmailEnabled"
+              :disabled="usageEmailPending || !isAdmin || isDemo"
+              @change="onUsageEmailToggle('limit', $event)"
+            >
+            <span>Email when included results are used up</span>
+          </label>
+          <p v-if="!isAdmin" class="font-mono text-[11px] text-muted-foreground">
+            Only admins can change usage email settings.
           </p>
         </div>
 

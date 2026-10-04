@@ -33,6 +33,11 @@ const LIMITS: Record<Tier, Omit<Entitlements, 'tier'>> = {
   selfhost: UNLIMITED,
 }
 
+// The plan's own limits, ignoring deployment mode and the admin bypass (see getEntitlements for those).
+export function planLimits(tier: Tier): Omit<Entitlements, 'tier'> {
+  return LIMITS[tier]
+}
+
 export function retentionDaysFor(tier: Tier): number {
   return LIMITS[tier].retentionDays
 }
@@ -213,7 +218,20 @@ export function quotaWarningText(name: string | null, kind: 'reached' | 'near', 
   const l = limit.toLocaleString('en-US')
   if (kind === 'reached')
     return `${greeting}\n\nYour kinora workspace hit its monthly free limit of ${l} test results. New results are rejected until the monthly reset.\n\nUpgrade to keep ingesting: ${link}`
-  return `${greeting}\n\nYour kinora workspace has used ${used.toLocaleString('en-US')} of its ${l} monthly free test results. Upgrade to avoid hitting the cap and dropping results: ${link}`
+  return `${greeting}\n\nYour kinora workspace has used ${used.toLocaleString('en-US')} of its ${l} monthly free test results. Upgrade to avoid hitting the cap and dropping results: ${link}\n\nYou can turn off this 80% email in Settings -> Workspace: ${link}`
+}
+
+export interface UsageEmailSettings {
+  usageNearEmailEnabled?: boolean | null
+  usageLimitEmailEnabled?: boolean | null
+}
+
+export function usageEmailEnabled(tier: Tier, kind: 'reached' | 'near', settings: UsageEmailSettings): boolean {
+  if (kind === 'near')
+    return settings.usageNearEmailEnabled !== false
+  if (tier === 'free')
+    return true
+  return settings.usageLimitEmailEnabled !== false
 }
 
 export interface IngestCap {

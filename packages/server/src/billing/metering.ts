@@ -10,6 +10,8 @@ const IN_FLIGHT_MS = 5 * 60 * 1000
 
 // Report one run's results to Polar and clear its pending flag. Never throws: a failure leaves the
 // flag set for report-pending-usage to retry, so billable usage is delayed rather than lost.
+// Not reported to Sentry here: a transient failure heals on the next retry, and the cron raises one
+// summary for the runs that stay pending.
 export async function meterRun(runId: string, organizationId: string, results: number): Promise<boolean> {
   try {
     // Polar customer = the org owner; meter usage against them.

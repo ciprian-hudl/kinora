@@ -66,7 +66,7 @@ describe('purgeExpiredRuns on a configured self-host', () => {
     await seedArtifact(fresh, oldEnoughForBlobSweep)
     await seedArtifact(fresh, recent)
 
-    expect(await purgeExpiredRuns(new Date())).toEqual({ deleted: 2, artifacts: 1 })
+    expect(await purgeExpiredRuns(new Date())).toEqual({ deleted: 2, artifacts: 1, blobFailures: 0 })
 
     expect(await runExists(tooOld)).toBeFalsy() // past 30 days
     expect(await runExists(beyondCap)).toBeFalsy() // 3rd newest of its project
@@ -86,6 +86,6 @@ describe('purgeExpiredRuns on a configured self-host', () => {
     await seedRun(p, 1)
 
     await purgeExpiredRuns(new Date())
-    expect(await purgeExpiredRuns(new Date())).toEqual({ deleted: 0, artifacts: 0 })
+    expect(await purgeExpiredRuns(new Date())).toEqual({ deleted: 0, artifacts: 0, blobFailures: 0 })
   })
 })

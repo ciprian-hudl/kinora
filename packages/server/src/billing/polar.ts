@@ -1,5 +1,6 @@
 import { checkout, polar, portal, usage, webhooks } from '@polar-sh/better-auth'
 import { Polar } from '@polar-sh/sdk'
+import * as Sentry from '@sentry/node'
 import { cloud, env } from '../lib/env'
 import { logger } from '../lib/logger'
 import { syncCustomerState } from './entitlements'
@@ -70,6 +71,8 @@ export async function meteredResults(externalCustomerId: string): Promise<Metere
   }
   catch (error) {
     logger.error({ error, externalCustomerId }, 'polar customer meter read failed')
+    // Swallowed so the page still renders: report it, or a broken billing read goes unnoticed.
+    Sentry.captureException(error, { tags: { area: 'billing' }, extra: { externalCustomerId } })
     return null
   }
 }
@@ -88,29 +91,52 @@ export function overageCents(usage: MeteredUsage, price: OveragePrice): number {
 }
 
 const PRICE_TTL_MS = 60 * 60 * 1000
-const priceCache = new Map<string, { at: number, price: OveragePrice | null }>()
 
-// The product's metered price. Cached: it only changes when the plan is edited in Polar, and the
-// billing summary would otherwise pay a second Polar round-trip on every load.
-export async function overagePrice(productId: string): Promise<OveragePrice | null> {
+interface ProductPricing {
+  // The recurring fixed price, in cents.
+  fixedAmount: number | null
+  overage: OveragePrice | null
+}
+
+const pricingCache = new Map<string, { at: number, pricing: ProductPricing }>()
+
+// A product's prices. Cached: they only change when the plan is edited in Polar, and callers would
+// otherwise pay a second Polar round-trip on every load.
+async function productPricing(productId: string): Promise<ProductPricing | null> {
   if (!polarClient)
     return null
-  const hit = priceCache.get(productId)
+  const hit = pricingCache.get(productId)
   if (hit && Date.now() - hit.at < PRICE_TTL_MS)
-    return hit.price
+    return hit.pricing
   try {
     const product = await polarClient.products.get({ id: productId })
-    const metered = product.prices.find(p => 'amountType' in p && p.amountType === 'metered_unit' && !p.isArchived)
-    const price = metered && 'unitAmount' in metered
-      ? { unitAmount: Number(metered.unitAmount), capAmount: metered.capAmount, currency: metered.priceCurrency }
-      : null
-    priceCache.set(productId, { at: Date.now(), price })
-    return price
+    const live = product.prices.filter(p => !p.isArchived)
+    const metered = live.find(p => 'amountType' in p && p.amountType === 'metered_unit')
+    const fixed = live.find(p => 'amountType' in p && p.amountType === 'fixed')
+    const pricing: ProductPricing = {
+      fixedAmount: fixed && 'priceAmount' in fixed ? fixed.priceAmount : null,
+      overage: metered && 'unitAmount' in metered
+        ? { unitAmount: Number(metered.unitAmount), capAmount: metered.capAmount, currency: metered.priceCurrency }
+        : null,
+    }
+    pricingCache.set(productId, { at: Date.now(), pricing })
+    return pricing
   }
   catch (error) {
     logger.error({ error, productId }, 'polar product price read failed')
+    Sentry.captureException(error, { tags: { area: 'billing' }, extra: { productId } })
     return null
   }
+}
+
+// The product's metered price: what a result past the included credits costs.
+export async function overagePrice(productId: string): Promise<OveragePrice | null> {
+  return (await productPricing(productId))?.overage ?? null
+}
+
+// The product's recurring price in cents, for revenue reporting.
+export async function planPriceCents(productId: string): Promise<number | null> {
+  return (await productPricing(productId))?.fixedAmount ?? null
 }
 
 export function polarAuthPlugin() {

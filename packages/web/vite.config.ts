@@ -6,8 +6,13 @@ import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 import { z } from 'zod'
+import pkg from '../../package.json'
+
+// Release version = the root package.json, the one the Release workflow bumps.
+const release = `@kinora/web@${pkg.version}`
 
 export default defineConfig({
+  define: { __KINORA_RELEASE__: JSON.stringify(release) },
   build: {
     // Maps emitted only for the Sentry upload; the plugin deletes them after, so none ship to users.
     sourcemap: process.env.SENTRY_AUTH_TOKEN ? 'hidden' : false,
@@ -32,6 +37,7 @@ export default defineConfig({
           org: process.env.SENTRY_ORG,
           project: process.env.SENTRY_PROJECT,
           authToken: process.env.SENTRY_AUTH_TOKEN,
+          release: { name: release },
           // Delete maps after upload so they never ship in the nginx image.
           sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
         })

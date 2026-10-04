@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
+import { recordResults } from '../src/billing/usage'
 import { db } from '../src/db'
-import { organization } from '../src/db/schemas/index'
+import { artifact, organization, subscription, user } from '../src/db/schemas/index'
 import { adminOverview, listAccounts, runsPerDay, signupsPerWeek } from '../src/reports/admin-queries'
 import { caller, createApiKey, createUser, ingest, ownedOrgId, runPayload } from './helpers'
 
@@ -43,6 +44,55 @@ describe('admin analytics queries', () => {
     expect(idle.ownerEmail).toBe('idle@test.dev')
     expect(idle.projects).toBe(0)
     expect(idle.lastRunAt).toBeNull()
+  })
+
+  it('listAccounts reports usage, activity, storage and billing state per org', async () => {
+    const a = await createUser('usage@test.dev')
+    const org = await ownedOrgId(a.id)
+    const key = await createApiKey(a.id)
+    await ingest(key, runPayload('web-app'))
+    await ingest(key, runPayload('web-app'))
+    const now = new Date()
+    const prevMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15))
+    await recordResults(db, org, prevMonth, 40)
+    const r = (await db.query.run.findMany())[0]
+    await db.insert(artifact).values({ id: 'art-1', projectId: r.projectId, runId: r.id, name: 'trace', contentType: 'application/zip', storageKey: 'k', size: 2048 })
+
+    const [row] = await listAccounts()
+    expect(row).toMatchObject({
+      plan: 'free',
+      subscription: null,
+      unlimited: false,
+      usedResults: 2,
+      includedResults: 2500,
+      usagePct: 0,
+      usagePeriod: 'month',
+      overageResults: 0,
+      overageCents: null,
+      prevMonthResults: 40,
+      runs30d: 2,
+      storageBytes: 2048,
+      storageLimitBytes: 2 * 1024 ** 3,
+    })
+  })
+
+  it('listAccounts keeps the raw subscription state when it collapses the plan to free', async () => {
+    const a = await createUser('pastdue@test.dev')
+    const org = await ownedOrgId(a.id)
+    const end = new Date(Date.UTC(2030, 0, 1))
+    await db.insert(subscription).values({ organizationId: org, polarCustomerId: 'cus', tier: 'pro', status: 'past_due', currentPeriodEnd: end, cancelAtPeriodEnd: true })
+
+    const [row] = await listAccounts()
+    expect(row.plan).toBe('free')
+    expect(row.subscription).toEqual({ tier: 'pro', status: 'past_due', currentPeriodEnd: end.toISOString(), cancelAtPeriodEnd: true })
+  })
+
+  it('listAccounts lifts the caps of a workspace owned by a platform admin', async () => {
+    const a = await createUser('boss@test.dev')
+    await db.update(user).set({ role: 'admin' }).where(eq(user.id, a.id))
+
+    const [row] = await listAccounts()
+    expect(row).toMatchObject({ unlimited: true, includedResults: null, usagePct: null, storageLimitBytes: null })
   })
 
   it('listAccounts sorts by lastRunAt desc, nulls last', async () => {

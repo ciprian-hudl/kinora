@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+// Sentry release name, injected by vite.config.ts (`define`).
+declare const __KINORA_RELEASE__: string
+
 // Strict import.meta.env: only the keys declared below (+ Vite built-ins) are
 // allowed; unknown VITE_* access becomes a type error.
 interface ViteTypeOptions {

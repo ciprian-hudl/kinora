@@ -42,6 +42,19 @@ describe('billing.summary', () => {
     expect(s).toHaveProperty('usedResults')
     expect(s).toHaveProperty('maxProjects')
     expect(s).toHaveProperty('retentionDays')
+    expect(s.usageNearEmailEnabled).toBe(true)
+    expect(s.usageLimitEmailEnabled).toBe(true)
+  })
+
+  it('updates workspace usage email settings', async () => {
+    const u = await createUser()
+    const api = await caller(u)
+
+    await api.billing.updateUsageEmailSettings({ usageNearEmailEnabled: false, usageLimitEmailEnabled: false })
+
+    const s = await api.billing.summary()
+    expect(s.usageNearEmailEnabled).toBe(false)
+    expect(s.usageLimitEmailEnabled).toBe(false)
   })
 
   it('reports the bytes an uploaded artifact takes, and null for an unlimited plan', async () => {
