@@ -158,7 +158,7 @@ Two per-package Dockerfiles, both built from the **repo root** (workspace contex
 
 ### Dependency updates
 
-Renovate runs **self-hosted** from `.github/workflows/renovate.yml` (every 6 hours, also manual with a dry-run option), reading `renovate.json`. Renovate and the Playwright Update workflow both act as the **kinora-bot** GitHub App (installed on this repo only; its public client ID is in the workflows and its key in the `KINORA_BOT_APP_PRIVATE_KEY` secret, short-lived tokens from `actions/create-github-app-token`), so their pull requests come from `kinora-bot[bot]` and trigger CI. The Mend-hosted Renovate app is disabled for this repo: it ran out of memory regenerating the root pnpm lockfile and silently stopped for two months. Do not re-enable it alongside the workflow, both would push to the same `renovate/*` branches. Playwright is excluded from Renovate and owned by the Playwright Update workflow (see Trace viewer).
+Renovate runs **self-hosted** from `.github/workflows/renovate.yml` (every 6 hours, also manual with a dry-run option), reading `renovate.json`. Renovate and the Playwright Update workflow both act as the **kinora-bot** GitHub App (installed on this repo only; secrets `KINORA_BOT_APP_CLIENT_ID` and `KINORA_BOT_APP_PRIVATE_KEY`, short-lived tokens from `actions/create-github-app-token`), so their pull requests come from `kinora-bot[bot]` and trigger CI. The Mend-hosted Renovate app is disabled for this repo: it ran out of memory regenerating the root pnpm lockfile and silently stopped for two months. Do not re-enable it alongside the workflow, both would push to the same `renovate/*` branches. Playwright is excluded from Renovate and owned by the Playwright Update workflow (see Trace viewer).
 
 ## Required workflow
 
