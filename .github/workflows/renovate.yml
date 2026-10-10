@@ -6,6 +6,8 @@ name: Renovate
 # Reads the same renovate.json. The Mend app must stay disabled for this repo, or both would
 # push to the same `renovate/*` branches.
 on:
+  # Every 6 hours. renovate.json lifts Renovate's default of 2 new PRs per hour (it would cap
+  # each run at 2) and keeps at most 10 open at once.
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
