@@ -25,17 +25,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # A personal token, not the default one: pull requests opened with the default token do
-      # not trigger CI, and this update must not merge unchecked.
-      GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || github.token }}
-      # Who to tell. GitHub does not notify people of what their own token does, and not everyone
-      # watches the repo, so the pull request and the alert issue reach this user through a mention
-      # or an assignment made by the workflow's own bot token.
+      # Who to tell: not everyone watches the repo, so the pull request and the alert issue reach
+      # this user through a mention or an assignment.
       NOTIFY_USER: joris-gallot
     steps:
+      # Short-lived token of the kinora-bot GitHub App: pull requests are opened as kinora-bot[bot],
+      # still trigger CI (unlike the default token), and nothing expires.
+      - name: Get the kinora-bot token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.KINORA_BOT_APP_ID }}
+          private-key: ${{ secrets.KINORA_BOT_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          token: ${{ secrets.AUTOMATION_TOKEN || github.token }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
 
@@ -46,6 +51,8 @@ jobs:
 
       - name: Compare with the latest Playwright
         id: version
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           current=$(node -p "require('./packages/trace-viewer/package.json').devDependencies['@playwright/test'].replace(/^[^0-9]*/, '')")
           latest=$(npm view @playwright/test version)
@@ -82,11 +89,15 @@ jobs:
           pnpm --filter @kinora/trace-viewer typecheck
           pnpm --filter @kinora/trace-viewer build
 
+      # The app token, not the default one: pull requests opened with the default token do not
+      # trigger CI, and this update must not merge unchecked.
       - name: Open the pull request
         if: steps.version.outputs.update == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "kinora-bot[bot]"
+          git config user.email "340689985+kinora-bot[bot]@users.noreply.github.com"
           git checkout -b "${{ steps.version.outputs.branch }}"
           git add package.json packages/*/package.json pnpm-lock.yaml packages/trace-viewer/README.md packages/trace-viewer/src/core packages/trace-viewer/src/sw
           git commit -m "chore(deps): update playwright to ${{ steps.version.outputs.latest }} and sync the vendored trace viewer"
@@ -94,22 +105,31 @@ jobs:
           url=$(gh pr create \
             --title "chore(deps): update playwright to ${{ steps.version.outputs.latest }}" \
             --body "Playwright ${{ steps.version.outputs.current }} -> ${{ steps.version.outputs.latest }}, with the vendored trace viewer engine re-synced. Opened by the Playwright Update workflow. Until this is merged and released, traces recorded with Playwright ${{ steps.version.outputs.latest }} may not open in kinora.")
-          GH_TOKEN="${{ github.token }}" gh pr comment "$url" --body "@$NOTIFY_USER Playwright ${{ steps.version.outputs.latest }} is out. Merge and release once CI is green."
+          gh pr comment "$url" --body "@$NOTIFY_USER Playwright ${{ steps.version.outputs.latest }} is out. Merge and release once CI is green."
 
       # No pull request means nobody is told. Open (or refresh) an issue so a newer Playwright that
       # could not be applied automatically never goes unnoticed.
       - name: Report a failed update
-        if: failure() && steps.version.outputs.update == 'true'
+        if: failure() && (steps.version.outputs.update == 'true' || steps.app-token.outcome == 'failure')
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Falls back to the default token if the app token itself could not be created.
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           LATEST: ${{ steps.version.outputs.latest }}
           CURRENT: ${{ steps.version.outputs.current }}
         run: |
-          title="Playwright $LATEST is out and the automatic update failed"
-          body="The Playwright Update workflow could not bump Playwright $CURRENT -> $LATEST: $RUN_URL
+          if [ -z "$LATEST" ]; then
+            # Failed before checking npm: the kinora-bot app token could not be created.
+            title="Playwright Update cannot run: the kinora-bot token could not be created"
+            body="The Playwright Update workflow could not create a token from the kinora-bot GitHub App (secrets KINORA_BOT_APP_ID / KINORA_BOT_APP_PRIVATE_KEY, or the app is no longer installed on this repository): $RUN_URL
+
+          Until this is fixed, new Playwright versions are not picked up."
+          else
+            title="Playwright $LATEST is out and the automatic update failed"
+            body="The Playwright Update workflow could not bump Playwright $CURRENT -> $LATEST: $RUN_URL
 
           Until kinora ships this update, traces recorded with Playwright $LATEST may not open in the trace viewer. Bump by hand with the steps in \`packages/trace-viewer/README.md\`, then close this issue."
+          fi
           existing=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "@$NOTIFY_USER still failing: $RUN_URL"
