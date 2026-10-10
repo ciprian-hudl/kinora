@@ -1,10 +1,7 @@
 name: Renovate
 
-# Self-hosted Renovate. The Mend-hosted app runs out of memory on this repo (its job is killed
-# while pnpm regenerates the root workspace lockfile) and went two months without finishing a
-# single run. A GitHub runner has far more memory, and the logs are in the Actions tab.
-# Reads the same renovate.json. The Mend app must stay disabled for this repo, or both would
-# push to the same `renovate/*` branches.
+# Self-hosted Renovate, configured by renovate.json. Do not also enable the Mend Renovate app on
+# this repo: both would push to the same `renovate/*` branches.
 on:
   # Every 6 hours. renovate.json lifts Renovate's default of 2 new PRs per hour (it would cap
   # each run at 2) and keeps at most 10 open at once.
