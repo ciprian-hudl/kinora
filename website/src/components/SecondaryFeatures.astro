@@ -2,8 +2,8 @@
 import {
   FingerprintPattern,
   GitBranch,
-  GitCompareArrows,
   GitPullRequest,
+  Images,
   Server,
   Upload,
 } from '@lucide/astro'
@@ -29,10 +29,11 @@ const items: {
   },
   {
     icon: Upload,
-    title: 'Reporter or CLI',
-    body: 'Auto-upload at the end of every run, or push an existing results.json from a separate CI job. Same data either way.',
+    title: 'Reporter, Vitest or CLI',
+    body: 'Auto-upload at the end of every Playwright or Vitest run, or push an existing results.json from a separate CI job. Same data either way.',
     docs: [
       { label: 'Reporter', href: DOCS.reporter, event: 'docs-reporter' },
+      { label: 'Vitest', href: DOCS.vitest, event: 'docs-vitest' },
       { label: 'CLI', href: DOCS.cli, event: 'docs-cli' },
     ],
   },
@@ -42,9 +43,10 @@ const items: {
     body: 'A test keeps the same key across runs and ingest paths, so its history never silently breaks.',
   },
   {
-    icon: GitCompareArrows,
-    title: 'Run-to-run compare',
-    body: 'Diff two runs and see what is newly failing, what got fixed, and what just turned flaky.',
+    icon: Images,
+    title: 'Screenshot comparisons',
+    body: 'A failed visual assertion shows its expected, actual and diff images side by side, on the run and in the test\'s history.',
+    docs: [{ label: 'Screenshot comparisons', href: `${DOCS.reporter}#screenshot-comparisons`, event: 'docs-screenshot-comparisons' }],
   },
   {
     icon: Server,

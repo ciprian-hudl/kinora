@@ -3,7 +3,7 @@ import type { Buffer } from 'node:buffer'
 import type { LoadedDemoTrace } from './demo-traces'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
-import { countsByTagFrom, makeTestKey } from '@kinora/core'
+import { countsByTagFrom, makeTestKey, STORY_ANNOTATION } from '@kinora/core'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db'
 import { apikey, artifact, member, project, run, test, user as userTable } from '../src/db/schemas/index'
@@ -87,12 +87,19 @@ interface TestDef {
   title: string
   profile: Profile
   tags?: string[]
+  // A Storybook test (Vitest addon): the story it renders, as the Vitest reporter records it.
+  story?: string
 }
 
 interface ProjectDef {
   slug: string
   name: string
   tests: TestDef[]
+}
+
+// Storybook stories run by Vitest, one test per story: feeds the Components page.
+function stories(component: string, defs: [story: string, profile: Profile][]): TestDef[] {
+  return defs.map(([story, profile]) => ({ file: `src/components/${component}.stories.tsx`, title: story, profile, story: `${component}/${story}` }))
 }
 
 const PROJECTS: ProjectDef[] = [
@@ -180,14 +187,28 @@ const PROJECTS: ProjectDef[] = [
       { file: 'tests/reports.spec.ts', title: 'generates a CSV', profile: 'fixmeSkip' },
     ],
   },
+  {
+    // Storybook stories run by Vitest -> the Components page: mostly green, a component regressing
+    // in the recent window and a couple of flaky stories.
+    slug: 'design-system',
+    name: 'Design System',
+    tests: [
+      ...stories('Button', [['Primary', 'solid'], ['Secondary', 'solid'], ['Disabled', 'mostlyGreen'], ['Loading', 'flakyHistory']]),
+      ...stories('Dialog', [['Default', 'solid'], ['Confirm', 'newlyFlaky']]),
+      ...stories('Select', [['Default', 'solid'], ['Searchable', 'chronicFlaky'], ['Disabled', 'solid']]),
+      ...stories('DatePicker', [['Default', 'solid'], ['Range', 'newlyBroken']]),
+      ...stories('Toast', [['Success', 'solid'], ['Error', 'degrading']]),
+      ...stories('Tabs', [['Default', 'recovering']]),
+    ],
+  },
 ]
 
-function annotationsFor(profile: Profile, status: Status): NormTest['annotations'] {
-  if (profile === 'fixmeSkip')
+function annotationsFor(def: TestDef, status: Status): NormTest['annotations'] {
+  if (def.profile === 'fixmeSkip')
     return [{ type: 'fixme', description: 'flaky on CI - tracked in JIRA-412' }]
   if (status === 'skipped')
     return [{ type: 'skip', description: 'skipped on CI' }]
-  return []
+  return def.story ? [{ type: STORY_ANNOTATION, description: def.story }] : []
 }
 
 const isOwn = (trace: LoadedDemoTrace, def: TestDef): boolean => trace.file === def.file && trace.title === def.title
@@ -223,20 +244,21 @@ function makeTest(traces: LoadedDemoTrace[], pdef: ProjectDef, def: TestDef, i: 
   const at = traces.find(t => isOwn(t, def))
   const line = at?.line ?? fallbackLine
   const trace = traceFor(traces, pdef, def, status)
+  const projectName = def.story ? 'storybook (chromium)' : 'chromium'
   const norm: NormTest = {
-    testKey: makeTestKey(def.file, titlePath, 'chromium'),
+    testKey: makeTestKey(def.file, titlePath, projectName),
     title: def.title,
     titlePath,
     file: def.file,
     line,
     column: at?.column ?? 3,
-    projectName: 'chromium',
+    projectName,
     status,
     ok: status !== 'unexpected',
     duration: status === 'skipped' ? 0 : status === 'flaky' ? 800 + jitter(2500) : 200 + jitter(1800),
     retries: status === 'flaky' ? 1 : 0,
     tags: def.tags ?? [],
-    annotations: annotationsFor(def.profile, status),
+    annotations: annotationsFor(def, status),
     errors: errorsFor(def, line, trace),
     attachments: [],
   }

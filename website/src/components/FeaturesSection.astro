@@ -1,7 +1,9 @@
 ---
-import { GitCompare, History, ScanLine, TrendingUp } from '@lucide/astro'
+import { Blocks, GitCompare, History, ScanLine, TrendingUp } from '@lucide/astro'
 import compareDark from '../assets/screenshots/compare-dark.png'
 import compareLight from '../assets/screenshots/compare-light.png'
+import componentsDark from '../assets/screenshots/components-dark.png'
+import componentsLight from '../assets/screenshots/components-light.png'
 import projectDark from '../assets/screenshots/project-dark.png'
 import projectLight from '../assets/screenshots/project-light.png'
 import testHistoryDark from '../assets/screenshots/test-history-dark.png'
@@ -54,6 +56,17 @@ const features = [
     dark: compareDark,
     label: 'kinora.dev/project/checkout-api/compare',
     alt: 'Run comparison page grouping tests into newly failing, fixed, newly flaky and still failing, with pass-rate delta',
+  },
+  {
+    num: '05',
+    icon: Blocks,
+    eyebrow: 'Component health',
+    title: 'Every story of your design system, run after run.',
+    body: 'Storybook stories run by Vitest and Playwright component tests are grouped by component and story, each with its status and history. See at a glance which component regressed and which story keeps flaking, then open the tests behind it.',
+    light: componentsLight,
+    dark: componentsDark,
+    label: 'kinora.dev/project/design-system/components',
+    alt: 'Components page listing each component with its stories, their status and a run history timeline',
   },
 ];
 ---

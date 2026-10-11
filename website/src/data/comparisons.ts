@@ -32,6 +32,8 @@ type Cell = boolean | string
 // and supplies only the competitor's value; label/kinora can be overridden per comparison for framing
 const FEATURES = {
   traceViewer: { label: 'Embedded Playwright trace viewer', kinora: true },
+  visualDiff: { label: 'Screenshot comparison (expected / actual / diff)', kinora: true },
+  components: { label: 'Health per component and story (Storybook, component tests)', kinora: true },
   flaky: { label: 'Flaky detection', kinora: true },
   history: { label: 'Cross-run history & trends', kinora: true },
   alerts: { label: 'Alerts (Slack / email / webhook)', kinora: true },
@@ -89,6 +91,8 @@ const SOURCES: ComparisonSource[] = [
       { feature: 'history', label: 'History across runs', them: false },
       { label: 'Pass-rate trends over time', kinora: true, them: false },
       { feature: 'flaky', kinora: 'Across run history', them: 'Per-run retries only' },
+      { feature: 'visualDiff', kinora: 'Per run and across history', them: 'Per run' },
+      { feature: 'components', them: false },
       { label: 'Multiple repos/suites over time', kinora: true, them: false },
       { label: 'Runs from all CI shards merged', kinora: 'Automatic on ingest', them: 'Via blob + merge-reports' },
       { feature: 'alerts', label: 'Alerts on new failures / regressions', kinora: 'Slack, email, webhook', them: false },
@@ -143,6 +147,10 @@ const SOURCES: ComparisonSource[] = [
       { feature: 'history', label: 'Run history & trends', them: true },
       { feature: 'flaky', them: true },
       { feature: 'traceViewer', label: 'Playwright traces in the dashboard', them: true },
+      // Currents changelog, Aug 2024: diff / actual / expected / side by side / slider for toHaveScreenshot.
+      { feature: 'visualDiff', them: true },
+      // Currents docs: no Vitest reporter; Vitest's JUnit XML is converted and uploaded by @currents/cmd.
+      { label: 'Vitest & Storybook', kinora: 'Native reporter: traces, screenshots, stories', them: 'Via JUnit XML import' },
       { feature: 'alerts', them: true },
       { feature: 'prComment', them: true },
       { label: 'Test orchestration / parallelization', kinora: false, them: true },
@@ -198,7 +206,7 @@ const SOURCES: ComparisonSource[] = [
       'Allure Report is a great multi-language static report generator. But it\'s disposable: history across runs means carrying an Allure history folder between CI jobs, and persistent analytics really means the separate commercial Allure TestOps. kinora is a running dashboard: every run is stored, trends and flaky detection work out of the box, and the native Playwright trace viewer is embedded. Allure is framework-agnostic; kinora is Playwright-focused.',
     rows: [
       { feature: 'license', kinora: 'Fair source (FSL-1.1); MIT client libs', them: 'Apache-2.0' },
-      { label: 'Frameworks', kinora: 'Playwright', them: '50+ languages / frameworks' },
+      { label: 'Frameworks', kinora: 'Playwright, Vitest (browser mode), Storybook', them: '50+ languages / frameworks' },
       { feature: 'history', label: 'Persistent cross-run history', kinora: 'Built in', them: 'Manual history folder' },
       { label: 'Trends & analytics dashboard', kinora: true, them: 'In-report trends; persistent dashboard needs TestOps' },
       { feature: 'flaky', kinora: 'Across run history', them: 'Per-run categorization' },
@@ -253,7 +261,7 @@ const SOURCES: ComparisonSource[] = [
       'Both are open source and self-hostable. ReportPortal is broad and enterprise-oriented: many languages, ML auto-analysis of failures, a heavier infrastructure footprint, and quote-based SaaS. kinora is narrow by design: Playwright-native, a single-origin Docker Compose install (Postgres, server, web), the embedded Playwright trace viewer, a desktop app, and simple public pricing.',
     rows: [
       { feature: 'license', label: 'Open source & self-host', kinora: 'Fair source (FSL-1.1); self-host', them: 'Apache-2.0; self-host' },
-      { label: 'Frameworks', kinora: 'Playwright', them: 'Many languages / frameworks' },
+      { label: 'Frameworks', kinora: 'Playwright, Vitest (browser mode), Storybook', them: 'Many languages / frameworks' },
       { feature: 'traceViewer', them: false },
       { label: 'ML failure auto-analysis', kinora: false, them: true },
       { feature: 'history', them: true },

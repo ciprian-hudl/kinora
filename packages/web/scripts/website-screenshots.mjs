@@ -5,9 +5,11 @@
 //   node packages/web/scripts/website-screenshots.mjs
 //
 // Captures each view light + dark at 1440x900 @2x (2880x1800) into the website assets.
+// WEB_URL points at another dashboard; VIEWS=components,tests captures only those views.
+import process from 'node:process'
 import { chromium } from '@playwright/test'
 
-const WEB = 'http://localhost:5173'
+const WEB = process.env.WEB_URL ?? 'http://localhost:5173'
 const OUT = new URL('../../../website/src/assets/screenshots/', import.meta.url).pathname
 const VIEWPORT = { width: 1440, height: 900 }
 const EMAIL = 'market@kinora.dev'
@@ -44,7 +46,8 @@ const views = [
   { name: 'test-history', url: `${WEB}${testHref}` },
   { name: 'compare', url: `${WEB}/projects/checkout-api/compare?base=checkout-api-run-29&head=checkout-api-run-30` },
   { name: 'trace-viewer', url: traceHref, settle: 3000 },
-]
+  { name: 'components', url: `${WEB}/projects/design-system/components` },
+].filter(v => !process.env.VIEWS || process.env.VIEWS.split(',').includes(v.name))
 
 for (const theme of ['light', 'dark']) {
   // kinora apps read `kinora-theme`; the vendored trace viewer themes off prefers-color-scheme.
