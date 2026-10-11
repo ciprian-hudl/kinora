@@ -20,6 +20,68 @@
     }
   },
   {
+    "file": "tests/components/button.spec.ts",
+    "title": "loading disables the button",
+    "line": 5,
+    "column": 1,
+    "status": "passed",
+    "trace": "button--loading-disables-the-button.zip"
+  },
+  {
+    "file": "tests/components/date-picker.spec.ts",
+    "title": "range highlights the selected days",
+    "line": 8,
+    "column": 1,
+    "status": "failed",
+    "trace": "date-picker--range-highlights-the-selected-days.zip",
+    "error": {
+      "message": "Error: expect(locator).toHaveScreenshot(expected) failed\n\nLocator: getByTestId('canvas')\n  2497 pixels (ratio 0.02 of all image pixels) are different.\n\n  Snapshot: date-picker-range.png\n\nCall log:\n  - Expect \"toHaveScreenshot(date-picker-range.png)\" getByTestId('canvas') with timeout 2000ms\n    - verifying given screenshot expectation\n  - waiting for getByTestId('canvas')\n    - locator resolved to <section id=\"canvas\" class=\"canvas\" data-testid=\"canvas\">…</section>\n  - taking element screenshot\n    - disabled all CSS animations\n  - waiting for fonts to load...\n  - fonts loaded\n  - attempting scroll into view action\n    - waiting for element to be stable\n  - 2497 pixels (ratio 0.02 of all image pixels) are different.\n  - waiting 100ms before taking screenshot\n  - waiting for getByTestId('canvas')\n    - locator resolved to <section id=\"canvas\" class=\"canvas\" data-testid=\"canvas\">…</section>\n  - taking element screenshot\n    - disabled all CSS animations\n  - waiting for fonts to load...\n  - fonts loaded\n  - attempting scroll into view action\n    - waiting for element to be stable\n  - captured a stable screenshot\n  - 2497 pixels (ratio 0.02 of all image pixels) are different.",
+      "stack": "at tests/components/date-picker.spec.ts:12:44"
+    },
+    "screenshots": [
+      {
+        "name": "date-picker-range-expected.png",
+        "file": "date-picker-range-expected.png"
+      },
+      {
+        "name": "date-picker-range-actual.png",
+        "file": "date-picker-range-actual.png"
+      },
+      {
+        "name": "date-picker-range-diff.png",
+        "file": "date-picker-range-diff.png"
+      }
+    ]
+  },
+  {
+    "file": "tests/components/dialog.spec.ts",
+    "title": "confirm closes on accept",
+    "line": 5,
+    "column": 1,
+    "status": "passed",
+    "trace": "dialog--confirm-closes-on-accept.zip"
+  },
+  {
+    "file": "tests/components/select.spec.ts",
+    "title": "searchable filters options",
+    "line": 5,
+    "column": 1,
+    "status": "passed",
+    "trace": "select--searchable-filters-options.zip"
+  },
+  {
+    "file": "tests/components/toast.spec.ts",
+    "title": "error toast can be dismissed",
+    "line": 5,
+    "column": 1,
+    "status": "failed",
+    "trace": "toast--error-toast-can-be-dismissed.zip",
+    "error": {
+      "message": "Error: expect(locator).toBeHidden() failed\n\nLocator:  getByRole('alert')\nExpected: hidden\nReceived: visible\nTimeout:  2000ms\n\nCall log:\n  - Expect \"toBeHidden\" getByRole('alert') with timeout 2000ms\n  - waiting for getByRole('alert')\n    21 × locator resolved to <div role=\"alert\" class=\"toast bad\">…</div>\n       - unexpected value \"visible\"",
+      "stack": "at tests/components/toast.spec.ts:11:41"
+    }
+  },
+  {
     "file": "tests/feed.spec.ts",
     "title": "loads the next page",
     "line": 7,

@@ -5,7 +5,7 @@ import { ME, ORDERS, POSTS, ROUTES } from './data'
 
 export { expect } from '@playwright/test'
 
-// The four demo apps (Store, Pay, Gateway, Pulse) are static pages under ../app plus the
+// The demo apps (Store, Pay, Gateway, Pulse, plus the UI component gallery) are static pages under ../app plus the
 // in-memory backend below, all served through `page.route`: the suite needs no server
 // and records the same traces on every machine. Their bugs are deliberate.
 const APP_DIR = new URL('../app/', import.meta.url)
@@ -15,6 +15,7 @@ const PAGES: Record<string, [RegExp, string][]> = {
   pay: [[/^\/orders\/\w+$/, 'pay/order.html'], [/^\/developers\/usage$/, 'pay/usage.html']],
   gateway: [[/^\/routes\/[\w-]+$/, 'gateway/route.html']],
   pulse: [[/^\/feed$/, 'pulse/feed.html'], [/^\/profile$/, 'pulse/profile.html']],
+  ui: [[/^\/stories\/\w+\/\w+$/, 'ui/gallery.html']],
 }
 
 const ASSETS: Record<string, string> = {

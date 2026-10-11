@@ -41,7 +41,7 @@ type Status = NormTest['status']
 type Profile
   = | 'solid' | 'mostlyGreen' | 'flakyHistory' | 'chronicFlaky' | 'flakyCluster'
     | 'degrading' | 'outage' | 'recovering' | 'intermittent' | 'chronicFail'
-    | 'newlyFlaky' | 'newlyBroken' | 'newlyFailing' | 'fixed' | 'fixmeSkip'
+    | 'newlyFlaky' | 'newlyBroken' | 'newlyFailing' | 'fixed' | 'fixmeSkip' | 'recurringFail'
 
 // Status sequence per profile across run ordinals (0 = oldest, LATEST = newest).
 // Events are spread across the timeline (not just the tail) so per-run pass rates
@@ -77,6 +77,8 @@ function statusAt(profile: Profile, i: number): Status {
       return i === LATEST ? 'unexpected' : 'expected'
     case 'fixed':
       return i === LATEST - 1 ? 'unexpected' : 'expected'
+    case 'recurringFail': // fails now and then in the recent window, never flaky
+      return [22, 25, 28].includes(i) ? 'unexpected' : 'expected'
     case 'fixmeSkip':
       return 'skipped'
   }
@@ -87,7 +89,7 @@ interface TestDef {
   title: string
   profile: Profile
   tags?: string[]
-  // A Storybook test (Vitest addon): the story it renders, as the Vitest reporter records it.
+  // A component test: the story it mounts, as `@kinora/reporter/ct` records it.
   story?: string
 }
 
@@ -97,9 +99,10 @@ interface ProjectDef {
   tests: TestDef[]
 }
 
-// Storybook stories run by Vitest, one test per story: feeds the Components page.
-function stories(component: string, defs: [story: string, profile: Profile][]): TestDef[] {
-  return defs.map(([story, profile]) => ({ file: `src/components/${component}.stories.tsx`, title: story, profile, story: `${component}/${story}` }))
+// Component tests of a design system, one per story: feeds the Components page.
+function component(name: string, defs: [story: string, title: string, profile: Profile][]): TestDef[] {
+  const file = `tests/components/${name.replace(/(?<=[a-z])(?=[A-Z])/g, '-').toLowerCase()}.spec.ts`
+  return defs.map(([story, title, profile]) => ({ file, title, profile, story: `${name}/${story}` }))
 }
 
 const PROJECTS: ProjectDef[] = [
@@ -188,17 +191,27 @@ const PROJECTS: ProjectDef[] = [
     ],
   },
   {
-    // Storybook stories run by Vitest -> the Components page: mostly green, a component regressing
-    // in the recent window and a couple of flaky stories.
+    // Component tests -> the Components page: mostly green, a visual regression in the latest
+    // runs (real expected / actual / diff images), a recurring failure and a few flaky stories.
+    // The unstable ones exist in the demo suite (demo-traces/suite/tests/components).
     slug: 'design-system',
     name: 'Design System',
     tests: [
-      ...stories('Button', [['Primary', 'solid'], ['Secondary', 'solid'], ['Disabled', 'mostlyGreen'], ['Loading', 'flakyHistory']]),
-      ...stories('Dialog', [['Default', 'solid'], ['Confirm', 'newlyFlaky']]),
-      ...stories('Select', [['Default', 'solid'], ['Searchable', 'chronicFlaky'], ['Disabled', 'solid']]),
-      ...stories('DatePicker', [['Default', 'solid'], ['Range', 'newlyBroken']]),
-      ...stories('Toast', [['Success', 'solid'], ['Error', 'degrading']]),
-      ...stories('Tabs', [['Default', 'recovering']]),
+      ...component('Button', [
+        ['Primary', 'primary renders its label', 'solid'],
+        ['Secondary', 'secondary renders its label', 'solid'],
+        ['Disabled', 'disabled ignores clicks', 'solid'],
+        ['Loading', 'loading disables the button', 'flakyHistory'],
+      ]),
+      ...component('Dialog', [['Default', 'default opens and closes', 'solid'], ['Confirm', 'confirm closes on accept', 'newlyFlaky']]),
+      ...component('Select', [
+        ['Default', 'default picks an option', 'solid'],
+        ['Searchable', 'searchable filters options', 'chronicFlaky'],
+        ['Disabled', 'disabled does not open', 'solid'],
+      ]),
+      ...component('DatePicker', [['Default', 'default picks a day', 'solid'], ['Range', 'range highlights the selected days', 'newlyBroken']]),
+      ...component('Toast', [['Success', 'success shows the message', 'solid'], ['Error', 'error toast can be dismissed', 'recurringFail']]),
+      ...component('Tabs', [['Default', 'default switches panels', 'solid']]),
     ],
   },
 ]
@@ -222,7 +235,8 @@ function traceFor(traces: LoadedDemoTrace[], pdef: ProjectDef, def: TestDef, sta
     return undefined
   const pool = traces.filter(t => t.status === wanted)
   const own = pool.find(t => isOwn(t, def))
-  if (own)
+  // A component test never borrows: an end-to-end flow has nothing to do with its story.
+  if (own || def.story)
     return own
   const sameProject = pool.filter(t => pdef.tests.some(d => d.file === t.file))
   const from = sameProject.length ? sameProject : pool
@@ -244,15 +258,14 @@ function makeTest(traces: LoadedDemoTrace[], pdef: ProjectDef, def: TestDef, i: 
   const at = traces.find(t => isOwn(t, def))
   const line = at?.line ?? fallbackLine
   const trace = traceFor(traces, pdef, def, status)
-  const projectName = def.story ? 'storybook (chromium)' : 'chromium'
   const norm: NormTest = {
-    testKey: makeTestKey(def.file, titlePath, projectName),
+    testKey: makeTestKey(def.file, titlePath, 'chromium'),
     title: def.title,
     titlePath,
     file: def.file,
     line,
     column: at?.column ?? 3,
-    projectName,
+    projectName: 'chromium',
     status,
     ok: status !== 'unexpected',
     duration: status === 'skipped' ? 0 : status === 'flaky' ? 800 + jitter(2500) : 200 + jitter(1800),
@@ -327,11 +340,16 @@ async function main(): Promise<void> {
       })
 
       const traced: { id: string, storageKey: string, buf: Buffer }[] = []
+      const shots: { id: string, name: string, storageKey: string, buf: Buffer }[] = []
       const testRows = made.map(({ test: t, trace }) => {
         const id = randomUUID()
         const hasTrace = !!trace
         if (trace)
           traced.push({ id, storageKey: `${projectId}/${runId}/${randomUUID()}-trace.zip`, buf: trace.buf })
+        // The images of a failed `toHaveScreenshot`, recorded with the trace.
+        for (const image of trace?.images ?? [])
+          shots.push({ id, name: image.name, storageKey: `${projectId}/${runId}/${randomUUID()}-${image.name}`, buf: image.buf })
+        const images = shots.filter(sh => sh.id === id).map(sh => ({ name: sh.name, contentType: 'image/png', hasBody: true }))
         return {
           id,
           runId,
@@ -350,15 +368,29 @@ async function main(): Promise<void> {
           tags: t.tags,
           annotations: t.annotations,
           errors: t.errors,
-          attachments: hasTrace
-            ? [{ name: 'trace', contentType: 'application/zip', hasBody: true }]
-            : t.attachments,
+          attachments: [
+            ...(hasTrace ? [{ name: 'trace', contentType: 'application/zip', hasBody: true }] : t.attachments),
+            ...images,
+          ],
         }
       })
       await db.insert(test).values(testRows)
 
-      for (const tr of traced)
-        await storage.put(tr.storageKey, tr.buf)
+      for (const file of [...traced, ...shots])
+        await storage.put(file.storageKey, file.buf)
+
+      if (shots.length) {
+        await db.insert(artifact).values(shots.map(sh => ({
+          id: randomUUID(),
+          projectId,
+          runId,
+          testId: sh.id,
+          name: sh.name,
+          contentType: 'image/png',
+          storageKey: sh.storageKey,
+          size: sh.buf.length,
+        })))
+      }
 
       if (traced.length) {
         await db.insert(artifact).values(traced.map(tr => ({

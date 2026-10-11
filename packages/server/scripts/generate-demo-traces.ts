@@ -35,6 +35,9 @@ await writeFile(path.join(tmp, 'package.json'), '{ "type": "module" }\n')
 await symlink(path.join(root, 'node_modules'), path.join(tmp, 'node_modules'), 'dir')
 
 try {
+  // Visual tests first record their reference from the fixed components, so the real run
+  // below fails them with expected / actual / diff images rendered by the same browser.
+  await execFileAsync(playwrightBin, ['test', '--grep', '@visual', '--update-snapshots'], { cwd: tmp, env: { ...process.env, DEMO_BASELINE: '1' } })
   // Exits 1 because of the deliberate failures; the JSON report says what actually ran.
   await execFileAsync(playwrightBin, ['test'], { cwd: tmp }).catch(() => {})
   const report = JSON.parse(await readFile(path.join(tmp, 'results.json'), 'utf8')) as { suites: JsonSuite[] }
@@ -52,6 +55,13 @@ try {
 
     const name = `${path.basename(spec.file, '.spec.ts')}--${spec.title.replace(/\W+/g, '-').toLowerCase()}.zip`
     await copyFile(trace, path.join(out, name))
+    const screenshots: NonNullable<DemoTrace['screenshots']> = []
+    for (const a of result.attachments) {
+      if (!a.path || !/-(?:expected|actual|diff)\.png$/.test(a.name))
+        continue
+      await copyFile(a.path, path.join(out, a.name))
+      screenshots.push({ name: a.name, file: a.name })
+    }
     traces.push({
       file: spec.file,
       title: spec.title,
@@ -60,6 +70,7 @@ try {
       status: result.status,
       trace: name,
       error: result.status === 'failed' ? errorOf(spec, result.error) : undefined,
+      screenshots: screenshots.length ? screenshots : undefined,
     })
     console.log(`${result.status.padEnd(6)} ${spec.file} › ${spec.title}`)
   }

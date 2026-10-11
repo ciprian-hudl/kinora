@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Component gallery</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { background: var(--surface); }
+    .stage { max-width: 560px; margin: 48px auto; padding: 0 20px; }
+    .stage > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .canvas { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 32px; min-height: 220px; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+    .spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; }
+    .dialog { border: 1px solid var(--line); border-radius: 12px; padding: 20px; width: 100%; box-shadow: 0 12px 32px rgb(20 23 31 / .12); }
+    .dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .listbox { list-style: none; margin: 6px 0 0; padding: 4px; border: 1px solid var(--line); border-radius: 8px; width: 100%; }
+    .listbox li { padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+    .listbox li:hover, .listbox li[aria-selected="true"] { background: var(--surface); }
+    .cal { display: grid; grid-template-columns: repeat(7, 40px); gap: 4px 0; }
+    .cal span { font-size: 12px; color: var(--faint); text-align: center; padding-bottom: 4px; }
+    .cal button { height: 36px; border: 0; background: none; font: inherit; cursor: pointer; }
+    .cal button.in { background: #fde68a; }
+    .cal button.edge { background: var(--accent); font-weight: 600; border-radius: 8px; }
+    .toast { display: flex; align-items: center; gap: 14px; border-radius: 10px; padding: 12px 14px; width: 100%; border: 1px solid var(--line); }
+    .toast.bad { background: var(--bad-soft); color: var(--bad); border-color: #fecdca; }
+    .toast.ok { background: var(--ok-soft); color: var(--ok); border-color: #abefc6; }
+    .toast button { margin-left: auto; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <header>
+      <div class="brand"><img src="/logo.svg" width="26" height="26" alt=""><h1 id="title"></h1></div>
+      <span class="pill" id="story"></span>
+    </header>
+    <section class="canvas" id="canvas" data-testid="canvas"></section>
+  </main>
+
+  <script>
+    // Renders one story of the demo design system: /stories/<Component>/<Story>.
+    const [, , component, story] = location.pathname.split('/')
+    const fixed = new URLSearchParams(location.search).has('fixed')
+    const canvas = document.getElementById('canvas')
+    document.getElementById('title').textContent = component
+    document.getElementById('story').textContent = story
+
+    const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild }
+
+    const stories = {
+      'Button/Loading': () => {
+        const button = el('<button class="btn">Save changes</button>')
+        button.onclick = () => { button.disabled = true; button.innerHTML = '<span class="spinner"></span>Saving…' }
+        canvas.append(button)
+      },
+      'Dialog/Confirm': () => {
+        const open = el('<button class="btn danger">Delete project</button>')
+        const status = el('<p class="notice" role="status"></p>')
+        open.onclick = () => {
+          const dialog = el(`<div class="dialog" role="alertdialog" aria-labelledby="dt"><h2 id="dt" style="font-size:16px">Delete this project?</h2>
+            <p class="muted" style="margin-top:6px">Its runs and traces are removed. This cannot be undone.</p>
+            <footer><button class="btn secondary">Cancel</button><button class="btn danger">Delete</button></footer></div>`)
+          const [cancel, accept] = dialog.querySelectorAll('button')
+          cancel.onclick = () => dialog.remove()
+          accept.onclick = () => { dialog.remove(); status.textContent = 'Project deleted' }
+          canvas.append(dialog)
+        }
+        canvas.append(open, status)
+      },
+      'Select/Searchable': () => {
+        const options = ['Amsterdam', 'Berlin', 'Lisbon', 'Madrid', 'Paris', 'Stockholm']
+        const input = el('<input class="input" role="combobox" aria-label="City" aria-expanded="true" placeholder="Search a city">')
+        const list = el('<ul class="listbox" role="listbox"></ul>')
+        const render = () => {
+          const q = input.value.trim().toLowerCase()
+          list.replaceChildren(...options.filter(o => o.toLowerCase().includes(q)).map((o) => {
+            const li = el(`<li role="option">${o}</li>`)
+            li.onclick = () => { input.value = o; list.hidden = true }
+            return li
+          }))
+        }
+        input.oninput = render
+        render()
+        const wrap = el('<div style="width:100%"><label class="field">City</label></div>')
+        wrap.append(input, list)
+        canvas.append(wrap)
+      },
+      'DatePicker/Range': () => {
+        const cal = el('<div class="cal" role="grid" aria-label="March 2026"></div>')
+        for (const d of ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'])
+          cal.append(el(`<span>${d}</span>`))
+        const [from, to] = [9, 13]
+        for (let day = 1; day <= 28; day++) {
+          const button = el(`<button role="gridcell">${day}</button>`)
+          // Deliberate bug: the range ends one day early.
+          const end = fixed ? to : to - 1
+          if (day === from || day === end)
+            button.className = 'edge'
+          else if (day > from && day < end)
+            button.className = 'in'
+          cal.append(button)
+        }
+        canvas.append(el('<p style="font-weight:600">March 2026</p>'), cal)
+      },
+      'Toast/Error': () => {
+        const toast = el('<div class="toast bad" role="alert">Could not save your changes.<button>Dismiss</button></div>')
+        // Deliberate bug: dismissing only fades the toast, it stays in the page.
+        toast.querySelector('button').onclick = () => { toast.style.opacity = '.6' }
+        canvas.append(toast)
+      },
+    }
+
+    stories[`${component}/${story}`]?.()
+  </script>
+</body>
+</html>
