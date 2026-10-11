@@ -9,12 +9,15 @@ function browser() {
 
 // The reporter is loaded from source, so the contract test needs no prior build.
 export default defineConfig({
-  define: { __SWATCH__: JSON.stringify(process.env.SWATCH ?? 'rgb(79, 70, 229)') },
   test: {
     reporters: ['default', ['../vitest-reporter/src/index.ts', { project: { slug: 'contract' } }]],
     projects: [
       { test: { name: 'unit', include: ['src/**/*.unit.ts'] } },
-      { test: { name: 'browser', include: ['src/**/*.browser.test.ts'], browser: browser() } },
+      {
+        // On the project itself: Vitest 4 does not pass a root-level `define` to browser projects.
+        define: { __SWATCH__: JSON.stringify(process.env.SWATCH ?? 'rgb(79, 70, 229)') },
+        test: { name: 'browser', include: ['src/**/*.browser.test.ts'], browser: browser() },
+      },
       {
         plugins: [storybookTest({ configDir: '.storybook' })],
         optimizeDeps: { include: ['react', 'react-dom', 'react-dom/client', 'react/jsx-runtime', 'react/jsx-dev-runtime'] },

@@ -13,8 +13,9 @@ const run = promisify(execFile)
 const VITEST_CLI = join(dirname(createRequire(import.meta.url).resolve('vitest/package.json')), 'vitest.mjs')
 const FIXTURE = fileURLToPath(new URL('./fixtures/vitest-run/', import.meta.url))
 const CONFIG = join(FIXTURE, 'vitest.config.ts')
-// What the nested run writes next to its tests (also git-ignored there).
-const OUTPUTS = ['__screenshots__', '__traces__', '.vitest-attachments', 'node_modules']
+// What the nested run writes next to its tests (also git-ignored there): attachments go to
+// `.vitest` since Vitest 5, `.vitest-attachments` before.
+const OUTPUTS = ['__screenshots__', '__traces__', '.vitest', '.vitest-attachments', 'node_modules']
 
 // The Vitest path end to end, nothing seeded: Vitest browser mode -> @kinora/vitest-reporter ->
 // upload -> server -> run page and trace.
