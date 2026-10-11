@@ -178,19 +178,6 @@ const PROJECTS: ProjectDef[] = [
     ],
   },
   {
-    // Stable internal tool -> PASSING badge, occasional flakiness.
-    slug: 'admin-dashboard',
-    name: 'Admin Dashboard',
-    tests: [
-      { file: 'tests/users.spec.ts', title: 'lists and filters users', profile: 'solid', tags: ['@smoke'] },
-      { file: 'tests/users.spec.ts', title: 'invites a teammate', profile: 'mostlyGreen' },
-      { file: 'tests/billing.spec.ts', title: 'shows the current plan', profile: 'solid', tags: ['@critical'] },
-      { file: 'tests/billing.spec.ts', title: 'exports an invoice', profile: 'chronicFlaky' },
-      { file: 'tests/audit.spec.ts', title: 'records an audit log', profile: 'flakyHistory' },
-      { file: 'tests/reports.spec.ts', title: 'generates a CSV', profile: 'fixmeSkip' },
-    ],
-  },
-  {
     // Component tests -> the Components page: mostly green, a visual regression in the latest
     // runs (real expected / actual / diff images), a recurring failure and a few flaky stories.
     // The unstable ones exist in the demo suite (demo-traces/suite/tests/components).
