@@ -1,0 +1,5 @@
+# Written by the nested Vitest run of e2e/vitest-run.spec.ts.
+__screenshots__/
+__traces__/
+.vitest-attachments/
+node_modules/

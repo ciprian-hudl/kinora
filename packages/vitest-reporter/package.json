@@ -1,0 +1,55 @@
+{
+  "name": "@kinora/vitest-reporter",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Vitest reporter that uploads browser-mode and Storybook test results to a kinora server",
+  "author": "Joris Gallot",
+  "license": "MIT",
+  "homepage": "https://github.com/kinora-dev/kinora#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kinora-dev/kinora.git",
+    "directory": "packages/vitest-reporter"
+  },
+  "bugs": "https://github.com/kinora-dev/kinora/issues",
+  "keywords": [
+    "vitest",
+    "storybook",
+    "reporter",
+    "test-report",
+    "ci",
+    "kinora"
+  ],
+  "exports": {
+    ".": "./dist/index.mjs"
+  },
+  "main": "./dist/index.mjs",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage",
+    "prepublishOnly": "tsdown"
+  },
+  "peerDependencies": {
+    "vitest": ">=4.1.0"
+  },
+  "dependencies": {
+    "@kinora/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "@vitest/coverage-v8": "^4.1.11",
+    "tsdown": "^0.22.14",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.11"
+  }
+}

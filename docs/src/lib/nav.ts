@@ -20,6 +20,7 @@ export const NAV: NavGroup[] = [
     label: 'Guides',
     items: [
       { label: 'Playwright reporter', slug: 'guides/reporter' },
+      { label: 'Vitest and Storybook', slug: 'guides/vitest' },
       { label: 'CLI upload', slug: 'guides/cli' },
       { label: 'PR comments', slug: 'guides/pr-comments' },
       { label: 'Component testing', slug: 'guides/component-testing' },

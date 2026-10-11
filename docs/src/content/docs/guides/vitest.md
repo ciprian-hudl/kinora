@@ -1,0 +1,107 @@
+---
+title: Vitest and Storybook
+description: Upload Vitest browser-mode and Storybook test results to kinora with the @kinora/vitest-reporter package.
+---
+
+`@kinora/vitest-reporter` uploads the results of [Vitest](https://vitest.dev/) tests that run in a
+browser, including [Storybook](https://storybook.js.org/) tests, to kinora. They get the same pages
+as Playwright runs: pass rates, flaky tests, per-test history, the Playwright trace of each test,
+screenshot comparisons, and for Storybook, the [Components](/guides/component-testing/#the-components-view)
+page. **Upload never fails your test run.**
+
+## Install
+
+```bash
+pnpm add -D @kinora/vitest-reporter
+# or: npm i -D @kinora/vitest-reporter
+```
+
+`vitest` (>=4.1) is a peer dependency.
+
+## Usage
+
+Add it to `vitest.config.ts`, next to the default reporter:
+
+```ts
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    reporters: ['default', ['@kinora/vitest-reporter', { project: { slug: 'web-app' } }]],
+  },
+})
+```
+
+The token comes from the environment; the server URL defaults to the hosted cloud:
+
+```bash
+KINORA_TOKEN=<token> npx vitest run
+```
+
+Create an API token in the dashboard under **Settings → Workspace**. Self-hosting? Point at your
+server with `KINORA_URL`.
+
+## Options
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `project` | `{ slug: string, name?: string }` | required | Target project. `name` defaults to `slug`. |
+| `url` | `string` | env `KINORA_URL`, then cloud | kinora server base URL. Set for self-host. |
+| `token` | `string` | env `KINORA_TOKEN` | Project API token. Prefer the env var. |
+| `include` | `'browser' \| 'all'` | `'browser'` | Which tests to upload. See [Node tests](#node-tests). |
+| `uploadAttachments` | `('trace' \| 'snapshot' \| 'video' \| 'screenshot')[]` | `['trace', 'snapshot']` | Which attachment kinds to upload. Add `'screenshot'` for Vitest's failure screenshots. |
+| `git` | `{ sha?, branch?, baseBranch?, repoUrl? }` | auto on GitHub Actions / GitLab CI | Git metadata. |
+| `ci` | `{ provider?, runUrl?, runNumber? }` | auto on GitHub Actions / GitLab CI | CI metadata for the run. |
+
+## Node tests
+
+Only the tests of Vitest projects running in a browser (browser mode, Storybook) are uploaded by
+default. Node unit tests are usually thousands of fast, deterministic tests with no trace: they add
+little to kinora and would eat your plan's monthly result quota in a single run.
+
+To upload them too, set `include: 'all'`. A run with no browser test uploads nothing and says so.
+
+## Traces
+
+With browser mode and the [Playwright provider](https://vitest.dev/config/browser/playwright),
+turn traces on in the browser config. Each test's `trace.zip` is uploaded and opens in kinora's
+trace viewer:
+
+```ts
+import { playwright } from '@vitest/browser-playwright'
+
+export default defineConfig({
+  test: {
+    browser: {
+      enabled: true,
+      provider: playwright(),
+      instances: [{ browser: 'chromium' }],
+      trace: 'retain-on-failure',
+    },
+  },
+})
+```
+
+Keep the trace files where Vitest puts them by default: with a custom `tracesDir`, Vitest 4 does
+not hand the trace to reporters.
+
+## Screenshot comparisons
+
+A failing [`toMatchScreenshot`](https://vitest.dev/api/browser/assertions#tomatchscreenshot)
+uploads its reference, actual and diff images, shown on the run page as a
+[screenshot comparison](/guides/reporter/#screenshot-comparisons), named after the test.
+
+## Storybook
+
+With [Storybook's Vitest addon](https://storybook.js.org/docs/writing-tests/integrations/vitest-addon),
+each story is a Vitest test. The reporter records which story each test renders, as
+`<Component>/<Story>` (for example `Button/Primary`), so stories appear on the project's
+Components page with no extra setup. Interactions run by a story's `play` function are not
+Playwright actions, so the trace shows the rendered story rather than each step.
+
+## Notes
+
+- Test identity is the file (relative to the Vitest root), the suite path and the Vitest project
+  name, which includes the browser in browser mode (`browser (chromium)`). History stays stable as
+  long as those don't change.
+- The reporter turns on Vitest's test locations, so each test links to its `file:line`.
