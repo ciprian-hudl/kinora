@@ -26,6 +26,13 @@
       "enabled": false
     },
     {
+      "description": "The Vitest reporter contract test runs on the oldest Vitest the reporter supports (its vitest peer range). Patches only; raise the floor deliberately, together with that peer range",
+      "matchFileNames": ["packages/vitest-contract/package.json"],
+      "matchPackageNames": ["vitest", "@vitest/**"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
       "description": "better-auth packages pin better-call to an exact version, so bumping one alone splits @better-auth/core into two pnpm instances and every plugin endpoint drops out of InferAPI",
       "groupName": "better-auth",
       "matchSourceUrls": ["https://github.com/better-auth/better-auth"]
