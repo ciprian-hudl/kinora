@@ -30,6 +30,13 @@ export default defineConfig({
       },
     }),
   ],
+  // Same themes as CodeBlock.astro; global.css switches between them with prefers-color-scheme.
+  markdown: {
+    shikiConfig: {
+      themes: { light: 'vitesse-light', dark: 'vitesse-dark' },
+      defaultColor: false,
+    },
+  },
   build: { inlineStylesheets: 'always' },
   vite: {
     plugins: [tailwindcss()],
