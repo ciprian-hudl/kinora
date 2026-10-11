@@ -204,13 +204,14 @@ jobs:
         run: pnpm --filter @kinora/web exec playwright install-deps chromium
 
       # test:e2e resets kinora_e2e + self-boots the stack on dedicated ports (same as local).
-      # @kinora/ui runs in component_tests: web and trace-viewer depend on it, so pnpm would run
-      # its suite first, alone, and add its whole duration to this job.
+      # @kinora/ui and the Vitest reporter contract run in component_tests, which needs no database.
+      # (web and trace-viewer depend on @kinora/ui, so pnpm would also run its suite first, alone.)
       - name: E2E (viewer + web suites)
-        run: pnpm --filter '!@kinora/ui' test:e2e
+        run: pnpm --filter '!@kinora/ui' --filter '!@kinora/vitest-contract' test:e2e
 
-  # @kinora/ui component + visual tests, in parallel with e2e_tests. No database: the suite only
-  # needs the gallery's dev server and Docker, for the browser that renders the visual tests.
+  # @kinora/ui component + visual tests and the Vitest reporter contract, in parallel with e2e_tests.
+  # No database: they need the gallery's dev server, Docker (for the browser that renders the visual
+  # tests) and a local fake kinora server.
   component_tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -248,3 +249,7 @@ jobs:
 
       - name: Component + visual tests
         run: pnpm --filter @kinora/ui test:e2e
+
+      # Real Vitest browser mode and Storybook through @kinora/vitest-reporter, against a fake server.
+      - name: Vitest reporter contract
+        run: pnpm --filter @kinora/vitest-contract test:e2e

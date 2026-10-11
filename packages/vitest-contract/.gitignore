@@ -1,0 +1,6 @@
+# Written by the Vitest runs of contract.test.mjs.
+__screenshots__/
+__traces__/
+.vitest/
+.vitest-attachments/
+node_modules/

@@ -1,0 +1,19 @@
+{
+  "name": "@kinora/vitest-contract",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contract test of @kinora/vitest-reporter against real Vitest, Storybook and browser-mode output",
+  "scripts": {
+    "test:e2e": "node --test contract.test.mjs"
+  },
+  "devDependencies": {
+    "@storybook/addon-vitest": "^10.6.1",
+    "@storybook/react-vite": "^10.6.1",
+    "@vitest/browser-playwright": "^5.0.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "storybook": "^10.6.1",
+    "vitest": "^5.0.3"
+  }
+}
