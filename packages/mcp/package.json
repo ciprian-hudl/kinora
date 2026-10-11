@@ -2,7 +2,7 @@
   "name": "@kinora/mcp",
   "type": "module",
   "version": "0.2.0",
-  "description": "MCP server exposing kinora Playwright test failures and history to coding agents",
+  "description": "MCP server exposing kinora test failures and history (Playwright, Vitest, Storybook) to coding agents",
   "author": "Joris Gallot",
   "license": "MIT",
   "homepage": "https://github.com/kinora-dev/kinora#readme",
@@ -14,6 +14,8 @@
   "bugs": "https://github.com/kinora-dev/kinora/issues",
   "keywords": [
     "playwright",
+    "vitest",
+    "storybook",
     "test-report",
     "flaky-tests",
     "ci",

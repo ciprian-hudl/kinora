@@ -1,6 +1,6 @@
 # @kinora/mcp
 
-MCP server that exposes your [kinora](https://kinora.dev) Playwright test data to coding agents (Claude Code, Cursor, Claude Desktop, Windsurf, …). Point an agent at your last CI failures and let it pull the error, the trace, and the flaky-vs-regression history to debug the fix.
+MCP server that exposes your [kinora](https://kinora.dev) test data (Playwright, Vitest browser mode, Storybook) to coding agents (Claude Code, Cursor, Claude Desktop, Windsurf, …). Point an agent at your last CI failures and let it pull the error, the trace, and the flaky-vs-regression history to debug the fix.
 
 ## Setup
 
