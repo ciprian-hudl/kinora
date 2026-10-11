@@ -6,5 +6,5 @@ export const SITE = {
   demo: 'https://demo.kinora.dev',
   repo: 'https://github.com/kinora-dev/kinora',
   description:
-    'Documentation for kinora, the dashboard for Playwright test reports across projects and over time, with an embedded trace viewer.',
+    'Documentation for kinora, the dashboard for browser test reports (Playwright, Vitest browser mode, Storybook) across projects and over time, with an embedded trace viewer.',
 } as const

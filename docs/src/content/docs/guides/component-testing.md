@@ -46,6 +46,9 @@ export const test = base.extend({
 
 ## The Components view
 
+Using Storybook with Vitest instead? The [Vitest reporter](/guides/vitest/#storybook) records each
+story on its own, with no wrapper to import, and its stories land on the same page.
+
 Once a run with recorded stories is uploaded, the project's **Components** page (linked from the
 project page) groups them by component: `components/Button/Primary` is the `Primary` story of
 `Button`. Each story shows its latest status, a timeline over the last 20 runs, and the tests
