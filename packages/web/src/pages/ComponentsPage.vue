@@ -16,6 +16,7 @@ import SearchInput from '@/components/app/SearchInput.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
 import { useProjectHistory } from '@/composables/queries'
+import { useNewFeature } from '@/composables/useNewFeature'
 import { useQuarantine } from '@/composables/useQuarantine'
 import { testLabel } from '@/lib/test-display'
 
@@ -28,7 +29,10 @@ function retry() {
   void reloadQuarantines()
 }
 
+useNewFeature('components').markSeen()
+
 const DOCS_URL = 'https://docs.kinora.dev/guides/component-testing/'
+const VITEST_DOCS_URL = 'https://docs.kinora.dev/guides/vitest/'
 
 // Same window and same "unstable" rule as the Tests page, so a story and its tests agree.
 const WINDOW = HEALTH_WINDOW
@@ -123,11 +127,19 @@ const rows = computed<ComponentHealth[]>(() => {
           No component stories recorded yet.
         </p>
         <p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Import <code class="font-mono text-xs">test</code> from <code class="font-mono text-xs">@kinora/reporter/ct</code> in your Playwright component tests to see their health per story here.
+          This page tracks the health of each component story across runs and points out the unstable ones.
         </p>
-        <a :href="DOCS_URL" target="_blank" rel="noopener" class="mt-4 inline-block font-mono text-xs text-signal hover:underline">
-          Component testing guide
-        </a>
+        <p class="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
+          It fills in from Playwright component tests that import <code class="font-mono text-xs">test</code> from <code class="font-mono text-xs">@kinora/reporter/ct</code>, or from Storybook tests uploaded with <code class="font-mono text-xs">@kinora/vitest-reporter</code>.
+        </p>
+        <div class="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 font-mono text-xs">
+          <a :href="DOCS_URL" target="_blank" rel="noopener" class="text-signal hover:underline">
+            Component testing guide
+          </a>
+          <a :href="VITEST_DOCS_URL" target="_blank" rel="noopener" class="text-signal hover:underline">
+            Vitest and Storybook guide
+          </a>
+        </div>
       </div>
 
       <template v-else>

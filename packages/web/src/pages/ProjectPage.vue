@@ -8,6 +8,7 @@ import {
   sortedRuns,
   trend,
 } from '@kinora/core'
+import { Badge } from '@kinora/ui/badge'
 import { HealthBadge } from '@kinora/ui/health-badge'
 import { Separator } from '@kinora/ui/separator'
 import { Skeleton } from '@kinora/ui/skeleton'
@@ -19,11 +20,13 @@ import { RouterLink } from 'vue-router'
 import ErrorState from '@/components/app/ErrorState.vue'
 import RunHistoryTable from '@/components/project/RunHistoryTable.vue'
 import { useManifest } from '@/composables/queries'
+import { useNewFeature } from '@/composables/useNewFeature'
 import { useOrg } from '@/composables/useOrg'
 
 const props = defineProps<{ projectId: string }>()
 
 const { isAdmin } = useOrg()
+const { isNew: componentsIsNew } = useNewFeature('components')
 const { state: manifest, isLoading, error, execute: retry } = useManifest()
 
 const project = computed(() =>
@@ -84,6 +87,9 @@ const health = computed(() => (latest.value ? runHealth(latest.value.counts) : '
               >
                 <Blocks class="size-3" />
                 Components
+                <Badge v-if="componentsIsNew" class="border-signal/30 bg-signal px-1.5 py-0.5 text-[9px] leading-none tracking-wider text-white">
+                  New
+                </Badge>
               </RouterLink>
             </div>
             <RouterLink
