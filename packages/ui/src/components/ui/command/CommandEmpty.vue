@@ -12,8 +12,9 @@ const props = defineProps<PrimitiveProps & { class?: HTMLAttributes['class'] }>(
 const delegatedProps = reactiveOmit(props, 'class')
 const forwardedProps = useForwardProps(delegatedProps)
 
-const { filterState } = useCommand()
-const isRender = computed(() => !!filterState.search && filterState.filtered.count === 0,
+const { allItems, filterState, shouldFilter } = useCommand()
+const isRender = computed(() => !!filterState.search
+  && (shouldFilter.value ? filterState.filtered.count === 0 : allItems.value.size === 0),
 )
 </script>
 

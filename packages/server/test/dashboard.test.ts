@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { STORY_ANNOTATION } from '@kinora/core'
+import { makeTestKey, STORY_ANNOTATION } from '@kinora/core'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { db } from '../src/db'
@@ -81,6 +81,71 @@ describe('dashboard scoping', () => {
     await expect((await caller(b)).dashboard.compareRuns({ projectId: 'web-app', baseRunId: base.runId, headRunId: head.runId }))
       .rejects
       .toThrow()
+  })
+})
+
+// A one-test run of `slug` whose test is `title` in `file`.
+function testRun(slug: string, file: string, title: string, status: 'expected' | 'unexpected' = 'expected') {
+  const payload = runPayload(slug, '@smoke', status)
+  const titlePath = [file, 'checkout', title]
+  payload.tests[0] = { ...payload.tests[0], file, title, titlePath, testKey: makeTestKey(file, titlePath, 'chromium') }
+  return payload
+}
+
+describe('dashboard test search', () => {
+  it('finds tests across projects by file, suite and title words', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    await ingest(key, testRun('web-app', 'tests/cart.spec.ts', 'adds an item'))
+    await ingest(key, testRun('admin', 'tests/orders.spec.ts', 'refunds an item'))
+    const search = (await caller(a)).dashboard.searchTests
+
+    expect((await search({ q: 'ITEM' })).map(h => h.projectId).sort()).toEqual(['admin', 'web-app'])
+    // Every word has to match, in any order and in any part of the path.
+    expect((await search({ q: 'item cart checkout' })).map(h => h.title)).toEqual(['adds an item'])
+    expect(await search({ q: 'item missing' })).toEqual([])
+    // The project narrows a query down too.
+    expect((await search({ q: 'item admin' })).map(h => h.title)).toEqual(['refunds an item'])
+  })
+
+  it('returns a test once, with its status in the newest run', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    await ingest(key, testRun('web-app', 'tests/cart.spec.ts', 'adds an item', 'expected'))
+    const { runId } = await (await ingest(key, testRun('web-app', 'tests/cart.spec.ts', 'adds an item', 'unexpected'))).json() as { runId: string }
+
+    const hits = await (await caller(a)).dashboard.searchTests({ q: 'adds' })
+    expect(hits).toHaveLength(1)
+    expect(hits[0]).toMatchObject({ projectId: 'web-app', projectName: 'web-app', status: 'unexpected', runId })
+  })
+
+  it('lists the preferred project first', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    await ingest(key, testRun('admin', 'tests/orders.spec.ts', 'refunds an item'))
+    await ingest(key, testRun('web-app', 'tests/cart.spec.ts', 'adds an item'))
+    const search = (await caller(a)).dashboard.searchTests
+
+    expect((await search({ q: 'item' })).map(h => h.projectId)).toEqual(['web-app', 'admin'])
+    expect((await search({ q: 'item', projectId: 'admin' })).map(h => h.projectId)).toEqual(['admin', 'web-app'])
+  })
+
+  it('matches LIKE wildcards literally', async () => {
+    const a = await createUser('a@test.dev')
+    await ingest(await createApiKey(a.id), testRun('web-app', 'tests/cart.spec.ts', 'applies a 10% discount'))
+    const search = (await caller(a)).dashboard.searchTests
+
+    expect(await search({ q: '10%' })).toHaveLength(1)
+    expect(await search({ q: 'a_p' })).toEqual([])
+    expect(await search({ q: '%%' })).toEqual([])
+  })
+
+  it('never returns the tests of another workspace', async () => {
+    const a = await createUser('a@test.dev')
+    const b = await createUser('b@test.dev')
+    await ingest(await createApiKey(a.id), testRun('web-app', 'tests/cart.spec.ts', 'adds an item'))
+
+    expect(await (await caller(b)).dashboard.searchTests({ q: 'item', projectId: 'web-app' })).toEqual([])
   })
 })
 

@@ -1,7 +1,7 @@
 import type { NormTest, ProjectEntry, ProjectHistory, RunReport, RunSummary } from '@kinora/core'
 import type { CodeownersRule } from '../lib/codeowners'
 import { buildFailureClusters, buildTestHistories, SCHEMA_VERSION } from '@kinora/core'
-import { and, asc, desc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, lte, sql } from 'drizzle-orm'
 import { db } from '../db'
 import { artifact, project, run, test } from '../db/schemas/index'
 import { matchCodeowners, parseCodeowners } from '../lib/codeowners'
@@ -14,6 +14,25 @@ type TestRow = typeof test.$inferSelect
 // Most-recent runs per project the dashboard loads. Memory bound until the UI gets pagination;
 // projects with more runs show this window in trends/history.
 export const MAX_DASHBOARD_RUNS = 500
+
+// A test search reads each project's newest runs only: `test` holds one row per test per run, so
+// an unbounded scan grows with the whole history while people look for tests that still run.
+const SEARCH_RUN_WINDOW = 20
+export const MAX_SEARCH_RESULTS = 20
+const MAX_SEARCH_TERMS = 8
+
+// A test matching a search, as of its newest run in the search window.
+export interface TestSearchHit {
+  projectId: string
+  projectName: string
+  testKey: string
+  title: string
+  titlePath: string[]
+  file: string
+  status: NormTest['status']
+  runId: string
+  startedAt: string
+}
 
 export function runSummary(slug: string, r: RunRow): RunSummary {
   return {
@@ -146,4 +165,57 @@ export async function loadProjectHistory(p: ProjectRow): Promise<ProjectHistory>
   const reports = runs.map(r => runReport(p.slug, r, byRun.get(r.id) ?? [], undefined, codeowners))
   const entry: ProjectEntry = { id: p.slug, name: p.name, runs: runs.map(r => runSummary(p.slug, r)) }
   return { project: entry, histories: buildTestHistories(reports), clusters: buildFailureClusters(reports) }
+}
+
+// Tests of a workspace whose file, title path or project contains every word of the query, one
+// hit per test. `preferSlug` lists that project's hits first, for a search started from one of its pages.
+export async function searchTests(organizationId: string, query: string, preferSlug?: string): Promise<TestSearchHit[]> {
+  const terms = query.split(/\s+/).filter(Boolean).slice(0, MAX_SEARCH_TERMS)
+  if (!terms.length)
+    return []
+
+  const recentRun = db.$with('recent_run').as(
+    db.select({
+      id: run.id,
+      startedAt: run.startedAt,
+      slug: project.slug,
+      projectName: project.name,
+      position: sql<number>`row_number() over (partition by ${run.projectId} order by ${run.startedAt} desc)`.as('position'),
+    })
+      .from(run)
+      .innerJoin(project, eq(project.id, run.projectId))
+      .where(eq(project.organizationId, organizationId)),
+  )
+
+  // titlePath starts with the file and ends with the title, so it covers suites too. The project
+  // is searched as well, to narrow a query down with its name ("checkout web").
+  const haystack = sql`(${test.file} || ' ' || ${test.titlePath}::text || ' ' || ${recentRun.projectName} || ' ' || ${recentRun.slug})`
+  const match = db.with(recentRun)
+    .selectDistinctOn([recentRun.slug, test.testKey], {
+      projectId: recentRun.slug,
+      projectName: recentRun.projectName,
+      testKey: test.testKey,
+      title: test.title,
+      titlePath: test.titlePath,
+      file: test.file,
+      status: test.status,
+      runId: test.runId,
+      startedAt: recentRun.startedAt,
+    })
+    .from(test)
+    .innerJoin(recentRun, eq(test.runId, recentRun.id))
+    .where(and(
+      lte(recentRun.position, SEARCH_RUN_WINDOW),
+      // LIKE wildcards in the query are matched literally.
+      ...terms.map(term => ilike(haystack, `%${term.replace(/[\\%_]/g, '\\$&')}%`)),
+    ))
+    .orderBy(recentRun.slug, test.testKey, desc(recentRun.startedAt))
+    .as('match')
+
+  const rows = await db.select().from(match).orderBy(
+    ...(preferSlug ? [desc(eq(match.projectId, preferSlug))] : []),
+    desc(match.startedAt),
+    asc(match.title),
+  ).limit(MAX_SEARCH_RESULTS)
+  return rows.map(r => ({ ...r, startedAt: r.startedAt.toISOString() }))
 }

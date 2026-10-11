@@ -5,6 +5,7 @@ import { computed } from 'vue'
 import { RouterView } from 'vue-router'
 import AppHeader from '@/components/app/AppHeader.vue'
 import BootError from '@/components/app/BootError.vue'
+import CommandPalette from '@/components/app/CommandPalette.vue'
 import DemoBanner from '@/components/app/DemoBanner.vue'
 import LoadingScreen from '@/components/app/LoadingScreen.vue'
 import { useDemo } from '@/composables/queries'
@@ -36,6 +37,7 @@ useTitle(computed(() => (isDemo.value ? 'kinora · demo' : 'kinora')))
         <div v-else class="min-h-svh bg-background app-grid">
           <DemoBanner />
           <AppHeader />
+          <CommandPalette />
           <main class="mx-auto max-w-7xl px-5 py-8">
             <!-- Settings tabs share one layout: collapse their key so switching tabs swaps
                  the child view instantly instead of re-running the page transition. -->

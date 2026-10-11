@@ -6,7 +6,7 @@ import { and, desc, eq, gt, isNull, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '../db'
 import { project, run, test, testQuarantine } from '../db/schemas/index'
-import { findProject, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries, loadTestAttachments, MAX_DASHBOARD_RUNS, toNormTest } from '../reports/queries'
+import { findProject, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries, loadTestAttachments, MAX_DASHBOARD_RUNS, searchTests, toNormTest } from '../reports/queries'
 import { orgProcedure, router } from '../trpc/index'
 
 export { MAX_DASHBOARD_RUNS }
@@ -60,6 +60,12 @@ export const dashboardRouter = router({
       const p = await ownedProject(ctx.organizationId, input.projectId)
       return loadProjectHistory(p)
     }),
+
+  // Command palette: tests across every project of the workspace. An unknown `projectId` only
+  // affects ordering, so there is no ownership to check.
+  searchTests: orgProcedure
+    .input(z.object({ q: z.string().trim().min(2).max(200), projectId: z.string().min(1).optional() }))
+    .query(({ ctx, input }) => searchTests(ctx.organizationId, input.q, input.projectId)),
 
   testAttachments: orgProcedure
     .input(z.object({ projectId: z.string().min(1), runId: z.string().min(1), testKey: z.string().min(1) }))

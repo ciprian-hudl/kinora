@@ -6,10 +6,11 @@ import { Separator } from '@kinora/ui/separator'
 import { Skeleton } from '@kinora/ui/skeleton'
 import { StatBlock } from '@kinora/ui/stat-block'
 import { Tabs, TabsList, TabsTrigger } from '@kinora/ui/tabs'
-import { ArrowLeft, ExternalLink, Film, GitBranch, GitCompareArrows, Paperclip } from '@lucide/vue'
+import { ArrowLeft, ExternalLink, Film, GitBranch, GitCommitHorizontal, GitCompareArrows, Link2, Paperclip } from '@lucide/vue'
 import { useRouteQuery } from '@vueuse/router'
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import { toast } from 'vue-sonner'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
@@ -18,6 +19,7 @@ import ScreenshotDiff from '@/components/viz/ScreenshotDiff.vue'
 import StoryBadge from '@/components/viz/StoryBadge.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
 import { useDemo, useManifest, useRun } from '@/composables/queries'
+import { usePaletteCommands } from '@/composables/useCommandPalette'
 import { useQuarantine } from '@/composables/useQuarantine'
 import { formatDateTimeLong } from '@/lib/format'
 import { testLabel } from '@/lib/test-display'
@@ -68,6 +70,25 @@ const commitHref = computed(() => {
   return `${base}/${seg}/${g.sha}`
 })
 const ciRunHref = computed(() => httpsUrl(report.value?.meta.ci?.runUrl))
+
+async function copyLink() {
+  await navigator.clipboard.writeText(window.location.href)
+  toast.success('Link copied')
+}
+
+// The same links as the header and the first failure's trace pill, reachable from the keyboard.
+usePaletteCommands(() => {
+  const failure = report.value?.tests.find(t => t.status === 'unexpected' && traceViewerHref(t.attachments))
+  const ci = report.value?.meta.ci
+  const group = 'This run'
+  return [
+    ...(failure ? [{ id: 'run:trace', group, label: 'Open the trace of the first failure', detail: testLabel(failure), icon: Film, href: traceViewerHref(failure.attachments) }] : []),
+    ...(previousRunId.value ? [{ id: 'run:compare', group, label: 'Compare with the previous run', keywords: 'diff', icon: GitCompareArrows, to: { name: 'compare', params: { projectId: props.projectId }, query: { base: previousRunId.value, head: props.runId } } }] : []),
+    ...(ciRunHref.value ? [{ id: 'run:ci', group, label: `Open the ${ci?.provider ?? 'CI'} run`, keywords: 'ci pipeline workflow', hint: ci?.runNumber ? `#${ci.runNumber}` : undefined, icon: ExternalLink, href: ciRunHref.value }] : []),
+    ...(commitHref.value ? [{ id: 'run:commit', group, label: 'Open the commit', hint: report.value?.meta.git?.sha?.slice(0, 7), icon: GitCommitHorizontal, href: commitHref.value }] : []),
+    { id: 'run:copy-link', group, label: 'Copy the link to this run', keywords: 'share url', icon: Link2, run: copyLink },
+  ]
+})
 
 const filter = useRouteQuery<'all' | PwTestStatus | 'quarantined'>('status', 'all')
 const selectedTag = useRouteQuery('tag', 'all')

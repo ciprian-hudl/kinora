@@ -18,6 +18,7 @@ export const [useCommand, provideCommandContext] = createContext<{
     search: string
     filtered: { count: number, items: Map<string, number>, groups: Set<string> }
   }
+  shouldFilter: Readonly<Ref<boolean>>
 }>('Command')
 
 export const [useCommandGroup, provideCommandGroupContext] = createContext<{

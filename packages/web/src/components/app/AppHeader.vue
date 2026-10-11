@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Avatar, AvatarFallback, AvatarImage } from '@kinora/ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@kinora/ui/dropdown-menu'
-import { Check, ChevronsUpDown, Gauge, LifeBuoy, LogOut, MessageSquarePlus, MonitorDown, Settings, SlidersHorizontal } from '@lucide/vue'
+import { Check, ChevronsUpDown, Gauge, LifeBuoy, LogOut, MessageSquarePlus, MonitorDown, Search, Settings, SlidersHorizontal } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useServerConfig } from '@/composables/queries'
+import { GENERAL_GROUP, MODIFIER_KEY, useCommandPalette, usePaletteCommands } from '@/composables/useCommandPalette'
 import { resetOrgState, useOrg } from '@/composables/useOrg'
 import { authClient } from '@/lib/auth'
 import { session } from '@/lib/session'
@@ -33,6 +34,16 @@ async function signOut(): Promise<void> {
   session.setUser(null)
   router.push({ name: 'login' })
 }
+
+const { open: paletteOpen } = useCommandPalette()
+usePaletteCommands(() => [
+  ...(feedbackEnabled.value
+    ? [{ id: 'feedback', group: GENERAL_GROUP, label: 'Send feedback', keywords: 'bug feature request', icon: MessageSquarePlus, run: () => {
+        feedbackOpen.value = true
+      } }]
+    : []),
+  { id: 'sign-out', group: GENERAL_GROUP, label: 'Sign out', keywords: 'log out logout', icon: LogOut, run: signOut },
+])
 </script>
 
 <template>
@@ -50,6 +61,17 @@ async function signOut(): Promise<void> {
           kinora
         </span>
       </RouterLink>
+
+      <button
+        type="button"
+        aria-label="Search or jump to"
+        class="ml-2 flex h-8 items-center gap-2 rounded-md border border-border/70 px-2.5 font-mono text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground sm:w-60"
+        @click="paletteOpen = true"
+      >
+        <Search class="size-3.5" />
+        <span class="hidden sm:inline">Search...</span>
+        <kbd class="ml-auto hidden font-mono text-[11px] opacity-70 sm:inline">{{ MODIFIER_KEY }}K</kbd>
+      </button>
 
       <div class="ml-auto flex items-center gap-2">
         <!-- Active workspace: always visible so it's clear which org's data is shown. -->
