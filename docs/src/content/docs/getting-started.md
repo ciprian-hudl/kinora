@@ -39,6 +39,10 @@ KINORA_TOKEN=<token> npx playwright test
 On GitHub Actions and GitLab CI, git and CI metadata (branch, commit, PR) are filled in automatically. For all
 reporter options and a full CI example, see the [reporter package](https://github.com/kinora-dev/kinora/tree/main/packages/reporter).
 
+
+Using **Vitest browser mode or Storybook** instead? Add
+[`@kinora/vitest-reporter`](/guides/vitest/) to `vitest.config.ts`: same token, same dashboard.
+
 ## 4. See your run
 
 Open the dashboard. The run appears on the project overview with its pass rate; failing tests

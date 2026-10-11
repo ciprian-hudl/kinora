@@ -31,7 +31,7 @@ kinora runs two ways: self-host the full dashboard and trace viewer for free (FS
 - [Blog](${url}/blog): articles about Playwright reporting, flaky tests, traces, CI debugging, and building Kinora
 - [Self-host guide](${SITE.selfhost}): Docker Compose bundle
 - [Desktop app](${SITE.download}): local trace viewer + account dashboard
-- [Agent setup](${url}/llms/setup.md): paste-and-go Playwright reporting setup for coding agents
+- [Agent setup](${url}/llms/setup.md): paste-and-go reporting setup (Playwright, Vitest, Storybook) for coding agents
 - [Full text](${url}/llms-full.txt): every use case, comparison, and FAQ in one file
 
 ## Use cases
@@ -44,6 +44,7 @@ ${comparisons}
 ## Key facts
 - License: FSL-1.1-MIT. Server, web, and desktop are FSL-1.1 (source-available, converts to MIT after 2 years); the embeddable libraries (reporter, CLI, core, ui) and the trace viewer are MIT.
 - Ingest: add @kinora/reporter to playwright.config, or upload results.json with the kinora CLI from CI. Both derive the same cross-run test identity, so history stays stable regardless of upload path.
+- Vitest and Storybook: add @kinora/vitest-reporter to vitest.config. It uploads browser-mode and Storybook tests (Node unit tests only with include: 'all'), their Playwright traces and screenshot comparisons, and maps each Storybook story to the Components page.
 - Artifacts: trace.zip files are stored on local disk by default, or in any S3-compatible store (AWS, Cloudflare R2, MinIO, Hetzner). Self-hosted, everything stays on your own infrastructure.
 - Alerts: per-project notifications on new failures and regressions via Slack, email, and webhook.
 - PR comments: on a GitHub pull_request run or a GitLab merge request pipeline, the reporter/CLI post a summary comment on the PR/MR (pass/fail, tests newly failing vs the base branch, link to the run). GitHub uses the CI job's GITHUB_TOKEN; GitLab uses a GITLAB_TOKEN CI variable. No credentials are stored in kinora; works self-host and cloud.

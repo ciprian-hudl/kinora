@@ -20,7 +20,7 @@ const mode = ref<'ai' | 'manual'>('ai')
 
 const setupDocUrl = 'https://kinora.dev/llms/setup.md'
 const aiPrompt = [
-  'Set up kinora Playwright reporting in this repository.',
+  'Set up kinora test reporting in this repository.',
   `Read ${setupDocUrl} and follow it.`,
   ...(isSelfHost ? [`My kinora server is at ${env.serverUrl}; set KINORA_URL to it.`] : []),
   'I have created a kinora API token and will add it as KINORA_TOKEN to my CI secrets (and a local .env if I run the suite locally). Do not hardcode it.',
@@ -56,7 +56,7 @@ const runSnippet = isSelfHost
         No projects reporting yet
       </h2>
       <p class="mt-1.5 text-sm text-muted-foreground">
-        Push a Playwright run and pass rates, flaky tests, trends, and full traces land here.
+        Push a Playwright or Vitest run and pass rates, flaky tests, trends, and full traces land here.
       </p>
 
       <!-- Setup-path toggle -->
@@ -153,6 +153,11 @@ const runSnippet = isSelfHost
           <div class="min-w-0 flex-1 pt-1">
             <p class="text-sm">
               Add the kinora reporter to your Playwright config.
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              Vitest browser mode or Storybook?
+              <a href="https://docs.kinora.dev/guides/vitest/" target="_blank" rel="noopener" class="font-medium text-foreground underline-offset-4 hover:underline">Use @kinora/vitest-reporter</a>
+              instead.
             </p>
             <div class="mt-2 overflow-hidden rounded-md border border-border bg-background/60">
               <div class="border-b border-border/80 px-3 py-1.5 font-mono text-[10px] text-muted-foreground">

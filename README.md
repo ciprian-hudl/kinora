@@ -5,8 +5,8 @@
 <h1 align="center">kinora</h1>
 
 <p align="center">
-  A dashboard for your Playwright tests, across projects and over time.<br>
-  With the full Playwright trace viewer built in.
+  A dashboard for your browser tests, across projects and over time.<br>
+  Playwright, Vitest browser mode and Storybook, with the full Playwright trace viewer built in.
 </p>
 
 <p align="center">
@@ -52,6 +52,17 @@ export default defineConfig({
 KINORA_TOKEN=<token> npx playwright test
 ```
 
+Using **Vitest browser mode or Storybook**? [`@kinora/vitest-reporter`](packages/vitest-reporter) does the same from `vitest.config.ts`, and each story shows up on the Components page:
+
+```ts
+// vitest.config.ts
+export default defineConfig({
+  test: {
+    reporters: ['default', ['@kinora/vitest-reporter', { project: { slug: 'web-app' } }]],
+  },
+})
+```
+
 Git and CI metadata are filled in automatically on GitHub Actions. No reporter? [`@kinora/cli`](packages/cli) uploads an existing `results.json` and can bulk-import a backlog of past reports. Self-hosting? Point either one at your server with `KINORA_URL`.
 
 ## Desktop app
@@ -92,4 +103,4 @@ Open http://localhost:5173 and sign in with the seeded credentials (`demo@kinora
 
 ## License
 
-Fair source. The deployable product (`server`, `web`, `desktop`) is [FSL-1.1-MIT](LICENSE), the client libraries you embed (`reporter`, `cli`, `mcp`, `core`, `ui`) and the trace viewer are MIT. The trace engine under `packages/trace-viewer/src/core` and `src/sw` is vendored from [microsoft/playwright](https://github.com/microsoft/playwright) (Apache-2.0).
+Fair source. The deployable product (`server`, `web`, `desktop`) is [FSL-1.1-MIT](LICENSE), the client libraries you embed (`reporter`, `vitest-reporter`, `cli`, `mcp`, `core`, `ui`) and the trace viewer are MIT. The trace engine under `packages/trace-viewer/src/core` and `src/sw` is vendored from [microsoft/playwright](https://github.com/microsoft/playwright) (Apache-2.0).

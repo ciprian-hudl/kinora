@@ -79,7 +79,7 @@ const stats = computed(() => {
             Test runs overview
           </h1>
           <p class="mt-1 text-sm text-muted-foreground">
-            Playwright report history across every project, one strip per run.
+            Test run history across every project, one strip per run.
           </p>
         </div>
 

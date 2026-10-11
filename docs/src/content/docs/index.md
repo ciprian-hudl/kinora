@@ -1,16 +1,17 @@
 ---
 title: kinora docs
-description: A dashboard for Playwright test reports across projects and over time, with an embedded trace viewer.
+description: A dashboard for browser tests (Playwright, Vitest browser mode and Storybook) across projects and over time, with an embedded trace viewer.
 ---
 
-Playwright ships a great HTML report for a single run on one machine. kinora sits one level up:
+kinora is a dashboard for the tests that run in a browser: Playwright, Vitest browser mode and
+Storybook. Their own reports cover a single run on one machine. kinora sits one level up:
 it ingests every run from CI, keeps the history, and lets you compare runs, watch pass-rate
 trends, and surface flaky tests over time. The Playwright trace viewer is embedded directly in
 the dashboard, so a red test is one click from its full trace.
 
 ## How it flows
 
-A result travels: **Playwright run → reporter or CLI → kinora server → dashboard**, with the
+A result travels: **test run → reporter or CLI → kinora server → dashboard**, with the
 `trace.zip` on a parallel path. Both upload paths derive the same cross-run test identity, so a
 test keeps stable history regardless of how it was pushed. The ingest API is plain REST authed by
 an API key, so any CI provider or a `curl` command works.
@@ -25,6 +26,7 @@ an API key, so any CI provider or a `curl` command works.
 ## Where to next
 
 - [Getting started](/getting-started/): create a project, add the reporter, see your first run.
-- [Guides](/guides/reporter/): reporter, CLI, PR comments, alerts, MCP, desktop.
+- [Guides](/guides/reporter/): Playwright reporter, Vitest and Storybook, CLI, PR comments, alerts,
+  MCP, desktop.
 - [Self-hosting](/self-hosting/): run the whole stack with Docker Compose.
 - [Live demo](https://demo.kinora.dev): the dashboard with seeded data, no sign-up.

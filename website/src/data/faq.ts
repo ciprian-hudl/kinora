@@ -36,6 +36,11 @@ export const HOME_FAQS: Faq[] = [
     ],
   },
   {
+    q: 'Does kinora support Vitest or Storybook?',
+    a: 'Yes. @kinora/vitest-reporter uploads Vitest browser-mode and Storybook tests, with their Playwright traces and screenshot comparisons, and each Storybook story shows up on the project\'s Components page. Node unit tests are left out by default, since they have no trace and would only use up your monthly results.',
+    docs: [{ label: 'Vitest and Storybook guide', href: DOCS.vitest, event: 'docs-faq-vitest' }],
+  },
+  {
     q: 'Does kinora work with my CI provider?',
     a: 'Yes, kinora is CI-agnostic. The ingest API is plain REST authed by an API key, so any CI provider such as GitHub Actions or GitLab CI, or a plain curl command, can push results.',
     docs: [{ label: 'REST API reference', href: DOCS.api, event: 'docs-faq-api' }],

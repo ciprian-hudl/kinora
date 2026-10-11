@@ -5,9 +5,9 @@ export const GET: APIRoute = () => {
   const url = SITE.url
   const app = SITE.app
 
-  const body = `# Set up kinora for a Playwright project
+  const body = `# Set up kinora for a Playwright or Vitest project
 
-You are a coding agent configuring [kinora](${url}) reporting in this repository. kinora ingests Playwright test results from CI, tracks pass rates, trends, and flaky tests over time, and opens the full trace inline for any failure. Follow the steps below, editing the repo's real files. Make the smallest change that wires reporting in, and never invent config the project doesn't already use.
+You are a coding agent configuring [kinora](${url}) reporting in this repository. kinora ingests Playwright and Vitest (browser mode, Storybook) test results from CI, tracks pass rates, trends, and flaky tests over time, and opens the full trace inline for any failure. Follow the steps below, editing the repo's real files. Make the smallest change that wires reporting in, and never invent config the project doesn't already use.
 
 ## What you need from the user
 
@@ -23,6 +23,8 @@ Two paths derive the same cross-run test identity, so history stays stable eithe
 - **CLI.** Use this only when the reporter can't run inline: results are produced in one CI job and uploaded from another, or you are bulk-importing a backlog of historical \`results.json\` files. The CLI uploads a Playwright JSON report; it does not upload traces.
 
 Inspect the repo before deciding. If tests and upload happen in the same job, use the reporter.
+
+If the project tests in the browser with **Vitest** (browser mode, or Storybook's Vitest addon) rather than Playwright Test, skip to the Vitest path below.
 
 ## Reporter path
 
@@ -108,10 +110,24 @@ npx @kinora/cli import ./reports --project web-app --token <token> --concurrency
 
 The CLI also reads \`KINORA_TOKEN\` / \`KINORA_URL\` from the environment; prefer that over \`--token\` in CI. The \`import\` command does not upload traces (a JSON archive has no trace.zip on disk); pass rates, trends, and flaky detection still work.
 
+## Vitest path
+
+For Vitest browser mode and Storybook tests. Install \`@kinora/vitest-reporter\` as a dev dependency with the repo's package manager (\`vitest\` >=4.1 is a peer dependency), then add it to \`test.reporters\` in the Vitest config, keeping the existing reporters (add \`'default'\` if none were set):
+
+\`\`\`ts
+export default defineConfig({
+  test: {
+    reporters: ['default', ['@kinora/vitest-reporter', { project: { slug: '<project-slug>' } }]],
+  },
+})
+\`\`\`
+
+Only browser tests are uploaded; Node unit tests stay out unless the user asks for \`include: 'all'\`. If browser mode uses the Playwright provider, set \`trace: 'retain-on-failure'\` in its \`browser\` config so failures upload a trace, and do not set a custom \`tracesDir\`. Wire \`KINORA_TOKEN\` (and \`KINORA_URL\` for self-host) exactly as in the reporter path.
+
 ## Done checklist
 
-- [ ] \`@kinora/reporter\` (or the CLI) is installed as a dev dependency.
-- [ ] The reporter line is merged into the Playwright config without dropping existing reporters.
+- [ ] \`@kinora/reporter\` (or the CLI, or \`@kinora/vitest-reporter\`) is installed as a dev dependency.
+- [ ] The reporter line is merged into the Playwright (or Vitest) config without dropping existing reporters.
 - [ ] A capturing \`trace\` value is set.
 - [ ] \`KINORA_TOKEN\` is referenced from the environment, never committed; it lives in CI secrets (and an untracked \`.env\` only if the suite also runs locally).
 - [ ] CI passes \`KINORA_TOKEN\` (and \`KINORA_URL\` if self-host) via secrets.

@@ -4,7 +4,7 @@ Guidance for agents in this repo. Shared stack conventions are imported above; e
 
 ## What this is
 
-kinora is a dashboard for Playwright test reports across projects and over time, with an embedded trace viewer. CI runs push results to a self-hosted kinora server; the dashboard tracks pass rates, trends, and flaky tests, and opens the full Playwright trace inline for failures.
+kinora is a dashboard for browser test reports (Playwright, plus Vitest browser mode and Storybook through `@kinora/vitest-reporter`) across projects and over time, with an embedded trace viewer. CI runs push results to a self-hosted kinora server; the dashboard tracks pass rates, trends, and flaky tests, and opens the full Playwright trace inline for failures.
 
 pnpm workspace monorepo. Node 26, ESM-only (except `desktop`, see below), TypeScript strict. Fair source: `server`, `web`, and `desktop` are FSL-1.1-MIT (source-available, converts to MIT after 2 years); the embeddable libs (`reporter`, `cli`, `core`, `ui`, `mcp`) and `trace-viewer` are MIT.
 

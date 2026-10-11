@@ -12,9 +12,9 @@ export const SITE = {
   repo: 'https://github.com/kinora-dev/kinora',
   selfhost: 'https://docs.kinora.dev/self-hosting/',
   download: 'https://github.com/kinora-dev/kinora/releases/latest',
-  tagline: 'Playwright test intelligence',
+  tagline: 'Browser test intelligence',
   description:
-    'A dashboard for your Playwright tests, across projects and over time, with an embedded trace viewer. Track pass rates, spot trends, surface flaky tests, and open the full trace inline.',
+    'A dashboard for your Playwright, Vitest and Storybook tests, across projects and over time, with an embedded trace viewer. Track pass rates, spot trends, surface flaky tests, and open the full trace inline.',
   cal: 'https://cal.com/joris-gallot',
   email: 'hi@kinora.dev',
 } as const
@@ -24,6 +24,7 @@ export const SITE = {
 export const DOCS = {
   gettingStarted: `${SITE.docs}/getting-started/`,
   reporter: `${SITE.docs}/guides/reporter/`,
+  vitest: `${SITE.docs}/guides/vitest/`,
   cli: `${SITE.docs}/guides/cli/`,
   mcp: `${SITE.docs}/guides/mcp/`,
   desktop: `${SITE.docs}/guides/desktop/`,
