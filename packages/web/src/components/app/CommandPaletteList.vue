@@ -274,19 +274,25 @@ function onArrow(): void {
   picked = true
 }
 
-// The listbox leaves Enter with a modifier alone: open the highlighted row in a new tab.
-function onEnter(event: KeyboardEvent): void {
+function activeCommand(): PaletteCommand | undefined {
   const id = listbox.highlightedElement.value?.dataset.commandId
-  const command = id ? commandsById.value.get(id) : undefined
-  if (!withModifier(event) || !command)
+  return id ? commandsById.value.get(id) : sections.value[0]?.items[0]
+}
+
+function onEnter(event: KeyboardEvent): void {
+  if (event.isComposing)
+    return
+  const command = activeCommand()
+  if (!command)
     return
   event.preventDefault()
-  execute(command, true)
+  event.stopPropagation()
+  execute(command, withModifier(event))
 }
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col" @keydown.up.down="onArrow" @keydown.enter="onEnter">
+  <div class="flex min-h-0 flex-col" @keydown.up.down="onArrow" @keydown.enter.capture="onEnter">
     <CommandInput placeholder="Search projects, runs, tests, or jump to..." class="font-mono text-xs" />
     <CommandList class="max-h-[min(26rem,60vh)]">
       <CommandGroup
