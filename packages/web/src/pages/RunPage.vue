@@ -182,13 +182,13 @@ const BADGE_CLASS = 'inline-flex items-center gap-1 rounded border border-border
     <template v-else>
       <!-- Header -->
       <div class="flex flex-col gap-6">
-        <div class="flex items-start justify-between gap-4">
+        <div class="flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
           <div>
             <h1 class="text-xl font-semibold tracking-tight">
               {{ formatDateTimeLong(report.startedAt) }}
             </h1>
             <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground">
-              <span v-if="report.meta.git?.branch" class="flex items-center gap-1">
+              <span v-if="report.meta.git?.branch" class="flex items-center gap-1 whitespace-nowrap">
                 <GitBranch class="size-3" />{{ report.meta.git.branch }}
                 <template v-if="report.meta.git.sha">
                   @ <a
@@ -201,11 +201,11 @@ const BADGE_CLASS = 'inline-flex items-center gap-1 rounded border border-border
                   <span v-else>{{ report.meta.git.sha.slice(0, 7) }}</span>
                 </template>
               </span>
-              <span v-if="report.meta.playwrightVersion">playwright {{ report.meta.playwrightVersion }}</span>
+              <span v-if="report.meta.playwrightVersion" class="whitespace-nowrap">playwright {{ report.meta.playwrightVersion }}</span>
             </div>
           </div>
 
-          <div class="flex shrink-0 items-center gap-2">
+          <div class="flex shrink-0 flex-wrap items-center gap-2">
             <Button
               v-if="previousRunId"
               as-child
@@ -254,8 +254,8 @@ const BADGE_CLASS = 'inline-flex items-center gap-1 rounded border border-border
 
       <!-- Filters -->
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <Tabs v-model="filter">
-          <TabsList class="font-mono">
+        <Tabs v-model="filter" class="w-full max-w-full overflow-x-auto sm:w-auto">
+          <TabsList class="min-w-max font-mono">
             <TabsTrigger value="all">
               All <span class="ml-1.5 tabular-nums text-muted-foreground">{{ tabCounts.all }}</span>
             </TabsTrigger>

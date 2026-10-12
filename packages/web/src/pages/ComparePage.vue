@@ -119,17 +119,17 @@ function shortId(id: string): string {
           v-for="t in g.tests"
           :key="t.testKey"
           :to="{ name: 'test', params: { projectId }, query: { key: t.testKey } }"
-          class="flex items-center justify-between gap-4 rounded-lg border border-border/70 bg-card/80 px-4 py-3 transition-colors hover:border-border"
+          class="flex flex-col items-start gap-3 rounded-lg border border-border/70 bg-card/80 px-4 py-3 transition-colors hover:border-border sm:flex-row sm:items-center sm:justify-between sm:gap-4"
         >
-          <div class="min-w-0">
+          <div class="min-w-0 max-w-full">
             <div class="truncate text-sm font-medium">
               {{ testLabel(t) }}
             </div>
-            <div class="mt-0.5 font-mono text-[11px] text-muted-foreground">
+            <div class="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
               {{ t.file }} · {{ t.projectName }}
             </div>
           </div>
-          <div class="flex shrink-0 items-center gap-3">
+          <div class="flex w-full shrink-0 items-center justify-between gap-3 sm:w-auto sm:justify-end">
             <div class="flex items-center gap-1.5">
               <TestStatusBadge v-if="t.baseStatus" :status="t.baseStatus" />
               <span v-else class="font-mono text-[11px] text-muted-foreground">-</span>

@@ -82,7 +82,7 @@ usePaletteCommands(() => [
               class="flex items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
             >
               <span class="size-1.5 rounded-full bg-signal" aria-hidden="true" />
-              <span class="max-w-40 truncate">{{ activeOrgName }}</span>
+              <span class="max-w-28 truncate sm:max-w-40">{{ activeOrgName }}</span>
               <ChevronsUpDown class="size-3 opacity-60" />
             </button>
           </DropdownMenuTrigger>

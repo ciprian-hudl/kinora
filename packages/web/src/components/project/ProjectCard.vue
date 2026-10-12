@@ -61,7 +61,7 @@ const rel = computed(() => {
         </span>
       </div>
       <div class="w-1/2 max-w-[220px] text-muted-foreground">
-        <Sparkline :values="series" :height="40" />
+        <Sparkline :values="series" :height="40" class="w-full" />
       </div>
     </div>
 

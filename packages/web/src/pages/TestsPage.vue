@@ -219,7 +219,7 @@ function setPage(p: number) {
           v-for="h in paged"
           :key="h.testKey"
           :to="{ name: 'test', params: { projectId }, query: { key: h.testKey } }"
-          class="group grid grid-cols-[1fr_auto] items-center gap-4 rounded-lg border border-border/70 bg-card/80 px-4 py-3 transition-colors hover:border-border"
+          class="group grid grid-cols-1 items-center gap-3 rounded-lg border border-border/70 bg-card/80 px-4 py-3 transition-colors hover:border-border sm:grid-cols-[1fr_auto] sm:gap-4"
         >
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
@@ -238,12 +238,12 @@ function setPage(p: number) {
                 {{ owner }}
               </Badge>
             </div>
-            <div class="mt-0.5 font-mono text-[11px] text-muted-foreground">
+            <div class="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
               {{ h.file }} · {{ h.projectName }}
             </div>
           </div>
 
-          <div class="flex items-center gap-6">
+          <div class="flex items-center justify-between gap-4 sm:justify-end sm:gap-6">
             <div class="hidden w-40 sm:block">
               <StatusTimeline :points="h.points" :project-id="projectId" :height="18" :link="false" :slots="WINDOW" />
             </div>

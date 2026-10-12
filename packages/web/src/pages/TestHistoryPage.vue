@@ -101,7 +101,7 @@ function toggleQuarantine() {
     <template v-else>
       <!-- Header -->
       <div class="flex flex-col gap-6">
-        <div class="flex items-start justify-between gap-4">
+        <div class="flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
           <div class="min-w-0">
             <h1 class="text-xl font-semibold tracking-tight">
               {{ history.title }}
@@ -119,7 +119,7 @@ function toggleQuarantine() {
               <StoryBadge v-for="id in history.stories" :key="id" :project-id="projectId" :story-id="id" />
             </div>
           </div>
-          <div class="flex shrink-0 items-center gap-2">
+          <div class="flex shrink-0 flex-wrap items-center gap-2">
             <Badge v-if="quarantine" class="border-flaky/30 bg-flaky/10 text-flaky">
               Quarantined
             </Badge>
