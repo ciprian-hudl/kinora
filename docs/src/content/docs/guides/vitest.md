@@ -118,6 +118,9 @@ How a violation counts depends on the addon's `a11y.test` parameter:
   their impact. Use `todo` to keep the impact, if your CI does not need to fail on violations.
 - `off`: no check, nothing recorded.
 
+Playwright tests get the same views from axe scans attached to the test: see the
+[Playwright reporter](/guides/reporter/#accessibility).
+
 ## Notes
 
 - Test identity is the file (relative to the Vitest root), the suite path and the Vitest project

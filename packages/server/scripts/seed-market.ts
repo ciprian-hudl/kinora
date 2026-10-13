@@ -117,6 +117,8 @@ interface TestDef {
   title: string
   profile: Profile
   tags?: string[]
+  // Violations of the axe scans the test attaches (`scanA11y`); an empty list is a clean scan.
+  a11y?: A11yViolation[]
   // A component test: the story it mounts, as `@kinora/reporter/ct` records it.
   story?: string
 }
@@ -133,19 +135,31 @@ function component(name: string, defs: [story: string, title: string, profile: P
   return defs.map(([story, title, profile]) => ({ file, title, profile, story: `${name}/${story}` }))
 }
 
+function rule(id: string, impact: A11yViolation['impact'], help: string, nodes: string[], nodeCount = nodes.length): A11yViolation {
+  return { id, impact, help, helpUrl: `https://dequeuniversity.com/rules/axe/4.10/${id}`, nodes, nodeCount }
+}
+const CONTRAST = 'Elements must meet minimum color contrast ratio thresholds'
+const LABEL = 'Form elements must have labels'
+
 const PROJECTS: ProjectDef[] = [
   {
     // Healthy with real flakiness + one test that just started flaking -> FLAKY badge.
     slug: 'web-app',
     name: 'Web App',
     tests: [
-      { file: 'tests/auth.spec.ts', title: 'logs in with valid credentials', profile: 'solid', tags: ['@smoke', '@critical'] },
+      { file: 'tests/auth.spec.ts', title: 'logs in with valid credentials', profile: 'solid', tags: ['@smoke', '@critical'], a11y: [] },
       { file: 'tests/auth.spec.ts', title: 'rejects a wrong password', profile: 'mostlyGreen', tags: ['@smoke'] },
-      { file: 'tests/checkout.spec.ts', title: 'adds an item to the cart', profile: 'chronicFlaky', tags: ['@smoke'] },
-      { file: 'tests/checkout.spec.ts', title: 'completes a purchase', profile: 'flakyCluster', tags: ['@smoke', '@critical'] },
+      { file: 'tests/checkout.spec.ts', title: 'adds an item to the cart', profile: 'chronicFlaky', tags: ['@smoke'], a11y: [rule('button-name', 'critical', 'Buttons must have discernible text', ['button.cart-icon'])] },
+      { file: 'tests/checkout.spec.ts', title: 'completes a purchase', profile: 'flakyCluster', tags: ['@smoke', '@critical'], a11y: [
+        rule('label', 'critical', LABEL, ['input[name="card-number"]', 'input[name="cvc"]']),
+        rule('color-contrast', 'serious', CONTRAST, ['.total .muted', '.terms'], 3),
+      ] },
       { file: 'tests/checkout.spec.ts', title: 'applies a discount code', profile: 'recovering' },
-      { file: 'tests/search.spec.ts', title: 'returns relevant results', profile: 'newlyFlaky', tags: ['@critical'] },
-      { file: 'tests/search.spec.ts', title: 'handles an empty query', profile: 'solid' },
+      { file: 'tests/search.spec.ts', title: 'returns relevant results', profile: 'newlyFlaky', tags: ['@critical'], a11y: [
+        rule('image-alt', 'critical', 'Images must have alternative text', ['.result img'], 8),
+        rule('region', 'moderate', 'All page content should be contained by landmarks', ['#results']),
+      ] },
+      { file: 'tests/search.spec.ts', title: 'handles an empty query', profile: 'solid', a11y: [] },
       { file: 'tests/dashboard.spec.ts', title: 'renders widgets', profile: 'flakyHistory' },
     ],
   },
@@ -168,9 +182,12 @@ const PROJECTS: ProjectDef[] = [
     slug: 'marketing-site',
     name: 'Marketing Site',
     tests: [
-      { file: 'tests/home.spec.ts', title: 'renders the hero', profile: 'solid', tags: ['@smoke'] },
-      { file: 'tests/home.spec.ts', title: 'newsletter signup works', profile: 'mostlyGreen' },
-      { file: 'tests/pricing.spec.ts', title: 'toggles annual billing', profile: 'chronicFlaky' },
+      { file: 'tests/home.spec.ts', title: 'renders the hero', profile: 'solid', tags: ['@smoke'], a11y: [
+        rule('color-contrast', 'serious', CONTRAST, ['.hero .tagline']),
+        rule('heading-order', 'moderate', 'Heading levels should only increase by one', ['.hero h3']),
+      ] },
+      { file: 'tests/home.spec.ts', title: 'newsletter signup works', profile: 'mostlyGreen', a11y: [rule('label', 'critical', LABEL, ['footer input[type="email"]'])] },
+      { file: 'tests/pricing.spec.ts', title: 'toggles annual billing', profile: 'chronicFlaky', a11y: [] },
       { file: 'tests/blog.spec.ts', title: 'lists recent posts', profile: 'fixmeSkip' },
       { file: 'tests/seo.spec.ts', title: 'has correct meta tags', profile: 'recovering', tags: ['@smoke'] },
       { file: 'tests/contact.spec.ts', title: 'submits the form', profile: 'solid' },
@@ -233,9 +250,6 @@ const PROJECTS: ProjectDef[] = [
 
 // Accessibility checks of the design system's stories (Storybook's a11y addon, `todo` mode: the
 // violations are warnings), so the Components page shows its hotspots. Stories not listed pass.
-function rule(id: string, impact: A11yViolation['impact'], help: string, nodes: string[], nodeCount = nodes.length): A11yViolation {
-  return { id, impact, help, helpUrl: `https://dequeuniversity.com/rules/axe/4.10/${id}`, nodes, nodeCount }
-}
 const STORY_A11Y: Record<string, A11yViolation[]> = {
   'Button/Loading': [rule('button-name', 'critical', 'Buttons must have discernible text', ['#storybook-root > button[aria-busy="true"]'])],
   'Button/Secondary': [rule('color-contrast', 'serious', 'Elements must meet minimum color contrast ratio thresholds', ['.btn-secondary'])],
@@ -251,11 +265,13 @@ const STORY_A11Y: Record<string, A11yViolation[]> = {
   'Toast/Error': [rule('aria-allowed-role', 'minor', 'ARIA role should be appropriate for the element', ['li[role="alert"]'])],
 }
 
+// A story's check comes from the addon, a Playwright test's from the scans it attaches. Violations
+// of a test that still passes are warnings.
 function a11yFor(def: TestDef, status: Status): A11yReport | undefined {
-  if (!def.story || status === 'skipped')
+  const violations = def.a11y ?? (def.story ? STORY_A11Y[def.story] ?? [] : undefined)
+  if (!violations || status === 'skipped')
     return undefined
-  const violations = STORY_A11Y[def.story] ?? []
-  return { status: violations.length ? 'warning' : 'passed', violations }
+  return { status: !violations.length ? 'passed' : status === 'unexpected' ? 'failed' : 'warning', violations }
 }
 
 function annotationsFor(def: TestDef, status: Status): NormTest['annotations'] {

@@ -2,6 +2,7 @@ import type { Counts, NormTest, RunReport, RunSummary } from '../contracts/kinor
 import type { PlaywrightReport, PwSpec } from '../contracts/playwright'
 import { SCHEMA_VERSION } from '../contracts/kinora'
 import { playwrightReportSchema } from '../contracts/playwright'
+import { a11yFromScans, parseAxeScan } from './a11y'
 import { effectiveAttachments } from './attachments'
 import { makeTestKey } from './test-key'
 
@@ -43,12 +44,33 @@ function flattenSpecs(
   }
 }
 
+// Past this size (in base64) a JSON attachment is not an axe scan worth decoding.
+const MAX_SCAN_BASE64 = 28 * 1024 * 1024
+
+// The axe scans a test attached as JSON with an inline body, which the JSON report carries in
+// base64. A scan attached as a file is only read by the reporter: core has no file access.
+function axeScans(attachments: { contentType: string, body?: string }[]): { violations: unknown[] }[] {
+  return attachments.flatMap((a) => {
+    if (!a.body || a.body.length > MAX_SCAN_BASE64 || !a.contentType.includes('json'))
+      return []
+    try {
+      const scan = parseAxeScan(new TextDecoder().decode(Uint8Array.from(atob(a.body), c => c.charCodeAt(0))))
+      return scan ? [scan] : []
+    }
+    catch {
+      return [] // not base64
+    }
+  })
+}
+
 function normalizeSpec(spec: PwSpec, ctx: WalkCtx, out: NormTest[], meta: IngestMeta): void {
   const file = spec.file || ctx.file
   const titlePath = [...ctx.titlePath, spec.title]
   for (const test of spec.tests) {
     const last = test.results.at(-1)
     const testKey = makeTestKey(file, titlePath, test.projectName)
+    const attachments = effectiveAttachments(test.results)
+    const a11y = a11yFromScans(axeScans(attachments), spec.ok)
     out.push({
       testKey,
       title: spec.title,
@@ -66,7 +88,7 @@ function normalizeSpec(spec: PwSpec, ctx: WalkCtx, out: NormTest[], meta: Ingest
       errors: (last?.errors ?? []).flatMap(e =>
         e.message ? [{ message: e.message, stack: e.stack, location: e.location }] : [],
       ),
-      attachments: effectiveAttachments(test.results).map(a => ({
+      attachments: attachments.map(a => ({
         name: a.name,
         contentType: a.contentType,
         path: a.path,
@@ -76,6 +98,7 @@ function normalizeSpec(spec: PwSpec, ctx: WalkCtx, out: NormTest[], meta: Ingest
           { projectId: meta.projectId, runId: meta.runId, testKey, status: test.status },
         ),
       })),
+      ...a11y && { a11y },
     })
   }
 }

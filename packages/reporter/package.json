@@ -21,7 +21,8 @@
   ],
   "exports": {
     ".": "./dist/index.mjs",
-    "./ct": "./dist/ct.mjs"
+    "./ct": "./dist/ct.mjs",
+    "./a11y": "./dist/a11y.mjs"
   },
   "main": "./dist/index.mjs",
   "files": [
@@ -40,12 +41,19 @@
     "prepublishOnly": "tsdown"
   },
   "peerDependencies": {
+    "@axe-core/playwright": ">=4.7.0",
     "@playwright/test": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "@axe-core/playwright": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@kinora/core": "workspace:*"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.64.0",
     "@types/node": "^26.6.5",
     "@vitest/coverage-v8": "^5.0.3",

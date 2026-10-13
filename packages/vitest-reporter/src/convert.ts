@@ -1,6 +1,6 @@
 import type { A11yReport, A11yViolation, NormTest } from '@kinora/core'
 import type { TestCase, TestModule } from 'vitest/node'
-import { A11Y_IMPACTS, makeTestKey, MAX_A11Y_NODES, MAX_A11Y_VIOLATIONS, STORY_ANNOTATION, stripAnsi } from '@kinora/core'
+import { axeViolations, makeTestKey, MAX_A11Y_NODES, MAX_A11Y_VIOLATIONS, STORY_ANNOTATION, stripAnsi } from '@kinora/core'
 
 type Attachment = NormTest['attachments'][number]
 
@@ -10,7 +10,6 @@ interface StoryMeta { storyId?: string, componentName?: string, reports?: Report
 
 // Read structurally: the reports are Storybook's, and axe's result is axe-core's.
 interface ReportLike { type?: string, status?: string, result?: unknown }
-interface AxeViolationLike { id?: string, impact?: string | null, help?: string, helpUrl?: string, nodes?: { target?: unknown }[] }
 
 // Vitest artifacts are experimental and typed as an open union, so read them structurally.
 interface ArtifactLike {
@@ -55,28 +54,6 @@ function storyOf(test: TestCase, titlePath: string[]): string | undefined {
 
 const MAX_TEXT = 300
 const truncate = (s: string): string => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}…` : s)
-const isImpact = (v: unknown): v is A11yViolation['impact'] => A11Y_IMPACTS.includes(v as never)
-
-// axe targets an element by a list of selectors, nested when it crosses iframes or shadow roots.
-function selector(target: unknown): string {
-  if (!Array.isArray(target))
-    return ''
-  return truncate(target.map(t => (Array.isArray(t) ? t.join(' >>> ') : String(t))).join(' '))
-}
-
-function violation(v: AxeViolationLike): A11yViolation[] {
-  if (!v.id)
-    return []
-  const nodes = v.nodes ?? []
-  return [{
-    id: v.id,
-    ...(isImpact(v.impact) && { impact: v.impact }),
-    help: truncate(v.help ?? v.id),
-    ...(v.helpUrl && { helpUrl: v.helpUrl }),
-    nodes: nodes.slice(0, MAX_A11Y_NODES).map(n => selector(n.target)).filter(Boolean),
-    nodeCount: nodes.length,
-  }]
-}
 
 // One block per failing element in vitest-axe's `toHaveNoViolations` message: its selector, then the
 // rule's help and id, then the rule's documentation.
@@ -107,14 +84,14 @@ function a11yOf(test: TestCase): A11yReport | undefined {
   const status = report?.status
   if (status !== 'passed' && status !== 'warning' && status !== 'failed')
     return a11yFromError(test)
-  const result = (report?.result ?? {}) as { violations?: AxeViolationLike[], error?: unknown }
+  const result = (report?.result ?? {}) as { violations?: unknown, error?: unknown }
   // axe itself failed: the result carries the error instead of violations.
   if (result.error) {
     const { message } = result.error as { message?: unknown }
     const text = typeof message === 'string' ? message : typeof result.error === 'string' ? result.error : 'The accessibility check failed.'
     return { status: 'failed', violations: [], error: truncate(text) }
   }
-  return { status, violations: (result.violations ?? []).slice(0, MAX_A11Y_VIOLATIONS).flatMap(violation) }
+  return { status, violations: axeViolations(result.violations) }
 }
 
 function slug(name: string): string {

@@ -63,6 +63,11 @@ const a11yOnly = useRouteQuery<string, boolean>('a11y', 'false', {
     set: v => (v ? 'true' : 'false'),
   },
 })
+const a11yGroups = computed(() => components.value.map(c => ({
+  key: c.path,
+  name: c.name || 'Other',
+  violations: c.stories.flatMap(s => s.a11y?.violations ?? []),
+})))
 // A hotspot opens the stories of its component that break a rule.
 function showA11yOf(path: string): void {
   search.value = path
@@ -174,7 +179,7 @@ const rows = computed<ComponentHealth[]>(() => {
       </div>
 
       <template v-else>
-        <A11yHotspots :components="components" @select="showA11yOf" />
+        <A11yHotspots :groups="a11yGroups" what="Components" @select="showA11yOf" />
 
         <!-- Toolbar -->
         <div class="flex flex-wrap items-center justify-between gap-3">

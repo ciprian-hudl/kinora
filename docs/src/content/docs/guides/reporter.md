@@ -74,6 +74,66 @@ reporter: [['@kinora/reporter', {
 }]]
 ```
 
+## Accessibility
+
+kinora records the accessibility scans of your tests ([axe](https://github.com/dequelabs/axe-core),
+through [`@axe-core/playwright`](https://playwright.dev/docs/accessibility-testing)): the rules
+each test breaks, their impact (critical, serious, moderate, minor), the elements they hit and a
+link to each rule's documentation. The run and test pages list them, most severe first, and the
+Tests page ranks your test files by their violations under **Accessibility hotspots**.
+
+The reporter reads a scan from the test's attachments, so **the scan has to be attached to the
+test**. With only `expect(results.violations).toEqual([])`, a reporter sees a failed assertion and
+nothing else. Two ways to attach it:
+
+**With the helper.** `scanA11y` runs the scan and attaches its result:
+
+```ts
+import { scanA11y } from '@kinora/reporter/a11y'
+import { expect, test } from '@playwright/test'
+
+test('checkout is accessible', async ({ page }) => {
+  await page.goto('/checkout')
+  const { violations } = await scanA11y(page)
+  expect(violations).toEqual([])
+})
+```
+
+It needs `@axe-core/playwright` in your dev dependencies. Pass a function to configure the scan,
+as you would on `AxeBuilder`:
+
+```ts
+await scanA11y(page, axe => axe.withTags(['wcag2a', 'wcag2aa']).exclude('#ads'))
+```
+
+**By hand.** If you already build your scans with `AxeBuilder`, attach the result as JSON, as
+[Playwright's guide](https://playwright.dev/docs/accessibility-testing#exporting-scan-results-as-a-test-attachment)
+shows. Any attachment name works, kinora recognizes an axe result by its content:
+
+```ts
+const results = await new AxeBuilder({ page }).analyze()
+await testInfo.attach('accessibility-scan-results', {
+  body: JSON.stringify(results),
+  contentType: 'application/json',
+})
+expect(results.violations).toEqual([])
+```
+
+Attach before you assert, so the scan is there when the assertion fails.
+
+Whether a violation fails the test is your call:
+
+- **Assert on `violations`** and the test fails on them. kinora shows them as the reason.
+- **Scan without asserting** and the test passes: kinora records the violations as warnings.
+  Useful to track a backlog without blocking CI.
+
+A test can scan several pages or states; kinora merges its scans and keeps each rule once. Only
+the violations are uploaded, not axe's full result. The [CLI](/guides/cli/) reads the same
+attachments from the JSON report, when they are attached with a `body` (as above), not as a file.
+
+Storybook stories get the same views through the a11y addon: see
+[Vitest and Storybook](/guides/vitest/#accessibility).
+
 ## CI example (GitHub Actions)
 
 ```yaml

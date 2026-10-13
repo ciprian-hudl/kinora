@@ -18,6 +18,8 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from '@lucide/vue'
 import { useRouteQuery } from '@vueuse/router'
 import { computed, watch } from 'vue'
 import { RouterLink } from 'vue-router'
+import A11yBadge from '@/components/a11y/A11yBadge.vue'
+import A11yHotspots from '@/components/a11y/A11yHotspots.vue'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
@@ -44,9 +46,33 @@ const histories = computed(() => state.value.histories)
 const clusters = computed(() => state.value.clusters)
 const quarantinedCount = computed(() => quarantineByKey.value.size)
 
-const search = useRouteQuery('q', '')
+const search = useRouteQuery<string>('q', '')
 // Lands on what needs a look: the flaky and the broken tests.
 const filter = useHealthFilter('attention')
+const a11yOnly = useRouteQuery<string, boolean>('a11y', 'false', {
+  transform: {
+    get: v => v === 'true',
+    set: v => (v ? 'true' : 'false'),
+  },
+})
+
+// Accessibility checks (axe scans attached to a test, or Storybook's a11y addon). Stories have
+// their own hotspots on the Components page; here tests group by file.
+const hasA11yIssues = (h: TestHistory): boolean => !!h.a11y?.violations.length
+const a11yCount = computed(() => histories.value.filter(hasA11yIssues).length)
+const checksA11y = computed(() => histories.value.some(h => h.a11y))
+const a11yGroups = computed(() => {
+  const byFile = new Map<string, TestHistory[]>()
+  for (const h of histories.value.filter(hasA11yIssues))
+    byFile.set(h.file, [...(byFile.get(h.file) ?? []), h])
+  return [...byFile].map(([file, tests]) => ({ key: file, name: file, violations: tests.flatMap(t => t.a11y!.violations) }))
+})
+// A hotspot opens the tests of its file that break a rule, whatever their health.
+function showA11yOf(file: string): void {
+  search.value = file
+  a11yOnly.value = true
+  filter.value = 'all'
+}
 
 // Everything on this page reads the same window as the timeline: the last WINDOW runs. Rates,
 // flaky / broken and the sort all derive from it, so the numbers match the bars.
@@ -81,7 +107,7 @@ function rank(h: TestHistory): number {
 const rows = computed(() => {
   const q = search.value.trim().toLowerCase()
   return histories.value
-    .filter(h => matchesHealth(filter.value, health(h), isQuarantined(h.testKey)))
+    .filter(h => matchesHealth(filter.value, health(h), isQuarantined(h.testKey)) && (!a11yOnly.value || hasA11yIssues(h)))
     .filter(
       h =>
         !q
@@ -111,7 +137,7 @@ const currentPage = computed(() => pageIndex.value + 1)
 const paged = computed(() => rows.value.slice(pageIndex.value * PAGE_SIZE, pageIndex.value * PAGE_SIZE + PAGE_SIZE))
 
 // A changed filter should land on page 1, not a stale (clamped) page.
-watch([search, filter], () => {
+watch([search, filter, a11yOnly], () => {
   page.value = null
 })
 
@@ -176,10 +202,16 @@ function setPage(p: number) {
           <StatBlock label="New failures" :value="newlyBrokenCount" :tone="newlyBrokenCount ? 'fail' : 'default'" />
           <Separator orientation="vertical" class="h-10" />
           <StatBlock label="Quarantined" :value="quarantinedCount" :tone="quarantinedCount ? 'flaky' : 'default'" />
+          <template v-if="checksA11y">
+            <Separator orientation="vertical" class="h-10" />
+            <StatBlock label="A11y issues" :value="a11yCount" :tone="a11yCount ? 'fail' : 'pass'" />
+          </template>
         </div>
       </div>
 
       <FailureCausesCard :clusters="clusters" :histories="histories" :project-id="projectId" />
+
+      <A11yHotspots :groups="a11yGroups" what="Test files" @select="showA11yOf" />
 
       <!-- Toolbar -->
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -203,6 +235,17 @@ function setPage(p: number) {
             @click="filter = 'quarantined'"
           >
             Quarantined <span class="ml-1 tabular-nums text-muted-foreground">{{ quarantinedCount }}</span>
+          </Button>
+          <Button
+            v-if="checksA11y"
+            variant="outline"
+            size="sm"
+            class="font-mono text-xs"
+            :class="a11yOnly ? 'border-fail/50 text-fail hover:text-fail' : ''"
+            :aria-pressed="a11yOnly"
+            @click="a11yOnly = !a11yOnly"
+          >
+            A11y issues <span class="ml-1 tabular-nums text-muted-foreground">{{ a11yCount }}</span>
           </Button>
         </div>
         <SearchInput v-model="search" placeholder="Filter by title or file..." />
@@ -231,6 +274,7 @@ function setPage(p: number) {
                 v-if="!(isNewFailure(h) && health(h).kind === 'broken') && !(h.newlyFlaky && health(h).kind === 'flaky')"
                 :health="health(h)"
               />
+              <A11yBadge :report="h.a11y" />
               <Badge v-if="isQuarantined(h.testKey)" class="border-flaky/30 bg-flaky/10 text-[10px] text-flaky">
                 Quarantined
               </Badge>

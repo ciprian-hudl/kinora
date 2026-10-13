@@ -28,27 +28,35 @@ const MATE_NAME = 'Acme QA'
 
 // `stories` marks a component test: the story ids its `mount` calls would record.
 // `snapshot` marks a visual test: its latest run fails `toHaveScreenshot` on that snapshot name.
-// `a11y` is the accessibility check it records (as Storybook's a11y addon would, in `todo` mode):
-// its violations, an empty list when it passes. Absent: no check.
+// `a11y` is the accessibility check it records (an axe scan attached to a Playwright test, or
+// Storybook's a11y addon): its violations, an empty list when it passes. Absent: no check.
 interface TestDef { file: string, title: string, stories?: string[], snapshot?: string, a11y?: A11yViolation[] }
 
 function rule(id: string, impact: A11yViolation['impact'], help: string, nodes: string[], nodeCount = nodes.length): A11yViolation {
   return { id, impact, help, helpUrl: `https://dequeuniversity.com/rules/axe/4.10/${id}`, nodes, nodeCount }
 }
 const CONTRAST = 'Elements must meet minimum color contrast ratio thresholds'
+const LABEL = 'Form elements must have labels'
+const BUTTON_NAME = 'Buttons must have discernible text'
 
 const PROJECTS: { slug: string, name: string, tests: TestDef[] }[] = [
   {
     slug: 'web-app',
     name: 'Web App',
     tests: [
-      { file: 'tests/auth.spec.ts', title: 'logs in with valid credentials' },
+      { file: 'tests/auth.spec.ts', title: 'logs in with valid credentials', a11y: [] },
       { file: 'tests/auth.spec.ts', title: 'rejects a wrong password' },
-      { file: 'tests/checkout.spec.ts', title: 'adds an item to the cart' },
-      { file: 'tests/checkout.spec.ts', title: 'completes a purchase' },
+      { file: 'tests/checkout.spec.ts', title: 'adds an item to the cart', a11y: [rule('button-name', 'critical', BUTTON_NAME, ['button.cart-icon'])] },
+      { file: 'tests/checkout.spec.ts', title: 'completes a purchase', a11y: [
+        rule('label', 'critical', LABEL, ['input[name="card-number"]', 'input[name="cvc"]']),
+        rule('color-contrast', 'serious', CONTRAST, ['.total .muted', '.terms'], 3),
+      ] },
       { file: 'tests/checkout.spec.ts', title: 'applies a discount code' },
-      { file: 'tests/search.spec.ts', title: 'returns relevant results' },
-      { file: 'tests/search.spec.ts', title: 'handles an empty query' },
+      { file: 'tests/search.spec.ts', title: 'returns relevant results', a11y: [
+        rule('image-alt', 'critical', 'Images must have alternative text', ['.result img'], 8),
+        rule('region', 'moderate', 'All page content should be contained by landmarks', ['#results']),
+      ] },
+      { file: 'tests/search.spec.ts', title: 'handles an empty query', a11y: [] },
     ],
   },
   {
@@ -65,7 +73,10 @@ const PROJECTS: { slug: string, name: string, tests: TestDef[] }[] = [
     slug: 'marketing-site',
     name: 'Marketing Site',
     tests: [
-      { file: 'tests/home.spec.ts', title: 'renders the hero' },
+      { file: 'tests/home.spec.ts', title: 'renders the hero', a11y: [
+        rule('color-contrast', 'serious', CONTRAST, ['.hero .tagline']),
+        rule('heading-order', 'moderate', 'Heading levels should only increase by one', ['.hero h3']),
+      ] },
       { file: 'tests/home.spec.ts', title: 'newsletter signup works' },
       { file: 'tests/pricing.spec.ts', title: 'toggles annual billing' },
     ],
@@ -139,7 +150,8 @@ function makeTest(def: TestDef, status: NormTest['status'], visualFailure = fals
         ? [{ message: `expect(locator).toHaveScreenshot(expected) failed\n\n  1440 pixels (ratio 0.04 of all image pixels) are different.\n\n  Snapshot: ${def.snapshot}.png`, stack: `at ${def.file}:23:18` }]
         : [{ message: `expect(received).toBe(expected)\n\nExpected: 200\nReceived: 500`, stack: `at ${def.file}:23:18` }],
     attachments: [],
-    ...(def.a11y && status !== 'skipped' && { a11y: { status: def.a11y.length ? 'warning' : 'passed', violations: def.a11y } }),
+    // Violations of a test that still passes are warnings.
+    ...(def.a11y && status !== 'skipped' && { a11y: { status: !def.a11y.length ? 'passed' : failed ? 'failed' : 'warning', violations: def.a11y } }),
   }
 }
 

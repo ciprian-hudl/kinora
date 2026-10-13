@@ -9,12 +9,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import KinoraReporter from '../src/index'
 
 // Minimal fakes of the Playwright reporter objects the reporter reads.
-function fakeTest(over: { title?: string, outcome?: string, ok?: boolean, tracePath?: string, videoPath?: string } = {}): TestCase {
+function fakeTest(over: { title?: string, outcome?: string, ok?: boolean, tracePath?: string, videoPath?: string, attachments?: { name: string, contentType: string, body?: Buffer, path?: string }[] } = {}): TestCase {
   const projectSuite = { type: 'project', title: 'chromium', parent: undefined }
   const fileSuite = { type: 'file', title: 'a.spec.ts', parent: projectSuite }
   const attachments = [
     ...over.tracePath ? [{ name: 'trace', contentType: 'application/zip', path: over.tracePath }] : [],
     ...over.videoPath ? [{ name: 'video', contentType: 'video/webm', path: over.videoPath }] : [],
+    ...over.attachments ?? [],
   ]
   return {
     parent: fileSuite,
@@ -43,6 +44,53 @@ function fakeResult(): FullResult {
 afterEach(() => {
   vi.unstubAllGlobals()
   for (const v of [...GH_VARS, ...GL_VARS]) delete process.env[v]
+})
+
+describe('reporter a11y', () => {
+  const axe = (violations: unknown[]) => JSON.stringify({ testEngine: { name: 'axe-core', version: '4.10.2' }, violations, passes: [{ id: 'region', nodes: [{ html: '<main>' }] }] })
+  const buttonName = { id: 'button-name', impact: 'critical', help: 'Buttons must have discernible text', helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/button-name', nodes: [{ target: ['#save'], html: '<button id="save">' }] }
+  const contrast = { id: 'color-contrast', impact: 'serious', help: 'Elements must meet minimum color contrast ratio thresholds', helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/color-contrast', nodes: [{ target: ['.muted'] }, { target: ['.hint'] }] }
+
+  async function upload(test: TestCase) {
+    let body = ''
+    vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init: RequestInit) => {
+      body = init.body as string
+      return new Response(JSON.stringify({ projectId: 'p', runId: 'r', tests: 1 }), { status: 201 })
+    }))
+    const reporter = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' } })
+    reporter.onBegin({ version: '1.60.0' } as FullConfig, fakeSuite([test]))
+    await reporter.onEnd(fakeResult())
+    return JSON.parse(body).tests[0]
+  }
+
+  it('reads the axe scans attached to a test, from a body or a file, and keeps only their violations', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kinora-a11y-'))
+    const file = join(dir, 'scan.json')
+    await writeFile(file, axe([contrast, buttonName]))
+    try {
+      const t = await upload(fakeTest({
+        attachments: [
+          { name: 'accessibility-scan-results', contentType: 'application/json', body: Buffer.from(axe([buttonName])) },
+          { name: 'checkout scan', contentType: 'application/json', path: file },
+          { name: 'api-response', contentType: 'application/json', body: Buffer.from('{"violations":[1]}') },
+        ],
+      }))
+      // A test that still passes: warnings. Each rule once across the scans, most severe first.
+      expect(t.a11y.status).toBe('warning')
+      expect(t.a11y.violations.map((v: { id: string, nodes: string[] }) => [v.id, v.nodes])).toEqual([['button-name', ['#save']], ['color-contrast', ['.muted', '.hint']]])
+      expect(JSON.stringify(t.a11y)).not.toContain('<button')
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('marks the check failed when the test failed, passed when a scan found nothing, absent without a scan', async () => {
+    const scan = (violations: unknown[]) => [{ name: 'a11y', contentType: 'application/json', body: Buffer.from(axe(violations)) }]
+    expect((await upload(fakeTest({ outcome: 'unexpected', ok: false, attachments: scan([buttonName]) }))).a11y.status).toBe('failed')
+    expect((await upload(fakeTest({ attachments: scan([]) }))).a11y).toEqual({ status: 'passed', violations: [] })
+    expect((await upload(fakeTest())).a11y).toBeUndefined()
+  })
 })
 
 describe('reporter onEnd', () => {

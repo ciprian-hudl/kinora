@@ -1,9 +1,10 @@
 import type { AttachmentKind, CiMeta, Counts, GitMeta, IngestRun, IngestRunResult, NormTest } from '@kinora/core'
 import type { FullConfig, FullResult, Reporter, Suite, TestCase } from '@playwright/test/reporter'
-import { readFileSync } from 'node:fs'
+import type { Buffer } from 'node:buffer'
+import { readFileSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import process from 'node:process'
-import { createIngestClient, DEFAULT_KINORA_URL, DEFAULT_UPLOAD_ATTACHMENTS, detectCiEnv, effectiveAttachments, IngestError, isUploadableAttachment, makeTestKey, postPrComment, resolvePrContext } from '@kinora/core'
+import { a11yFromScans, createIngestClient, DEFAULT_KINORA_URL, DEFAULT_UPLOAD_ATTACHMENTS, detectCiEnv, effectiveAttachments, IngestError, isUploadableAttachment, makeTestKey, parseAxeScan, postPrComment, resolvePrContext } from '@kinora/core'
 
 export interface KinoraReporterOptions {
   /** kinora server base URL. Defaults to env KINORA_URL, then the hosted cloud. Set for self-host. */
@@ -49,9 +50,33 @@ function identity(test: TestCase): { file: string, titlePath: string[], projectN
   return { file, titlePath: [file, ...describes, test.title], projectName }
 }
 
+// A JSON attachment past this size is not an axe scan worth parsing in the reporter.
+const MAX_SCAN_BYTES = 20 * 1024 * 1024
+
+// The axe scans a test attached as JSON (`testInfo.attach(name, { body: JSON.stringify(results),
+// contentType: 'application/json' })`, or the same from a file).
+function axeScans(attachments: { contentType: string, body?: Buffer, path?: string }[]): { violations: unknown[] }[] {
+  return attachments.flatMap((a) => {
+    if (!a.contentType.includes('json'))
+      return []
+    try {
+      const text = a.body
+        ? (a.body.length <= MAX_SCAN_BYTES ? a.body.toString('utf8') : undefined)
+        : a.path && statSync(a.path).size <= MAX_SCAN_BYTES ? readFileSync(a.path, 'utf8') : undefined
+      const scan = text ? parseAxeScan(text) : undefined
+      return scan ? [scan] : []
+    }
+    catch {
+      return [] // unreadable file: not worth failing the upload
+    }
+  })
+}
+
 function toNormTest(test: TestCase): NormTest {
   const { file, titlePath, projectName } = identity(test)
   const last = test.results.at(-1)
+  const attachments = effectiveAttachments(test.results)
+  const a11y = a11yFromScans(axeScans(attachments), test.ok())
   return {
     testKey: makeTestKey(file, titlePath, projectName),
     title: test.title,
@@ -69,12 +94,13 @@ function toNormTest(test: TestCase): NormTest {
     errors: (last?.errors ?? []).flatMap(e =>
       e.message ? [{ message: e.message, stack: e.stack, location: e.location }] : [],
     ),
-    attachments: effectiveAttachments(test.results).map(a => ({
+    attachments: attachments.map(a => ({
       name: a.name,
       contentType: a.contentType,
       path: a.path,
       hasBody: a.body != null,
     })),
+    ...a11y && { a11y },
   }
 }
 

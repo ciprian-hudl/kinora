@@ -27,6 +27,27 @@ describe('ingestPlaywrightReport', () => {
     expect(JSON.stringify(report)).not.toContain('iVBORw0') // base64 gone
   })
 
+  it('reads an axe scan attached to a test as JSON, trimmed to its violations', () => {
+    const scan = {
+      testEngine: { name: 'axe-core', version: '4.10.2' },
+      passes: [{ id: 'region', nodes: [{ html: '<main>' }] }],
+      violations: [{ id: 'button-name', impact: 'critical', help: 'Buttons must have discernible text', helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/button-name', nodes: [{ target: ['#save'], html: '<button id="save">é</button>' }] }],
+    }
+    // Playwright's JSON report carries an inline attachment body in base64.
+    const base64 = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(scan))))
+    const withScan = structuredClone(raw) as { suites: { specs: { title: string, tests: { results: { attachments: unknown[] }[] }[] }[], suites?: unknown[] }[] }
+    const specs = (suites: typeof withScan.suites): typeof withScan.suites[number]['specs'] => suites.flatMap(x => [...x.specs, ...specs((x.suites ?? []) as typeof withScan.suites)])
+    const login = specs(withScan.suites).find(x => x.title === 'login works')!
+    login.tests[0].results.at(-1)!.attachments.push({ name: 'accessibility-scan-results', contentType: 'application/json', body: base64 })
+
+    const t = ingestPlaywrightReport(withScan, { projectId: 'web-app', runId: 'r1' }).report.tests.find(x => x.title === 'login works')
+    expect(t?.a11y).toEqual({
+      status: 'warning',
+      violations: [{ id: 'button-name', impact: 'critical', help: 'Buttons must have discernible text', helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/button-name', nodes: ['#save'], nodeCount: 1 }],
+    })
+    expect(report.tests.every(x => x.a11y === undefined)).toBe(true)
+  })
+
   it('builds a stable testKey from file + title path + project', () => {
     const t = report.tests.find(x => x.title === 'login works')
     expect(t?.testKey).toContain('tests/auth.spec.ts')

@@ -1,5 +1,5 @@
 import type { A11yReport, A11yViolation } from '../contracts/kinora'
-import { MAX_A11Y_NODES } from '../contracts/kinora'
+import { A11Y_IMPACTS, MAX_A11Y_NODES, MAX_A11Y_VIOLATIONS } from '../contracts/kinora'
 
 type Impact = NonNullable<A11yViolation['impact']>
 
@@ -53,4 +53,66 @@ export function mergeA11y(reports: (A11yReport | undefined)[]): A11yReport | und
   }
   const error = present.find(r => r.error)?.error
   return { status, violations: [...byRule.values()].sort(byImpact), ...(error && { error }) }
+}
+
+// --- Reading axe ---
+// axe-core's result, read structurally: it comes from another tool (Storybook's a11y addon,
+// @axe-core/playwright) and through JSON.
+interface AxeViolationLike { id?: unknown, impact?: unknown, help?: unknown, helpUrl?: unknown, nodes?: { target?: unknown }[] }
+
+const MAX_TEXT = 300
+const truncate = (s: string): string => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}…` : s)
+const isImpact = (v: unknown): v is NonNullable<A11yViolation['impact']> => A11Y_IMPACTS.includes(v as never)
+
+// axe targets an element by a list of selectors, nested when it crosses iframes or shadow roots.
+function selector(target: unknown): string {
+  if (!Array.isArray(target))
+    return ''
+  return truncate(target.map(t => (Array.isArray(t) ? t.join(' >>> ') : String(t))).join(' '))
+}
+
+// axe's violations, trimmed to what kinora keeps: the rule, its impact and docs, and the first
+// failing elements with their count. axe's full result also lists every passing rule with the HTML
+// of each node, far too heavy to upload.
+export function axeViolations(violations: unknown): A11yViolation[] {
+  if (!Array.isArray(violations))
+    return []
+  return (violations as AxeViolationLike[]).slice(0, MAX_A11Y_VIOLATIONS).flatMap((v) => {
+    if (typeof v?.id !== 'string')
+      return []
+    const nodes = Array.isArray(v.nodes) ? v.nodes : []
+    return [{
+      id: v.id,
+      ...(isImpact(v.impact) && { impact: v.impact }),
+      help: truncate(typeof v.help === 'string' ? v.help : v.id),
+      ...(typeof v.helpUrl === 'string' && { helpUrl: v.helpUrl }),
+      nodes: nodes.slice(0, MAX_A11Y_NODES).map(n => selector(n?.target)).filter(Boolean),
+      nodeCount: nodes.length,
+    }]
+  })
+}
+
+// An axe scan attached to a test as JSON, the way Playwright's accessibility guide shows
+// (`testInfo.attach('accessibility-scan-results', { body: JSON.stringify(results), ... })`).
+// Told by its content, since the attachment name is the test author's choice.
+export function parseAxeScan(json: string): { violations: unknown[] } | undefined {
+  try {
+    const value = JSON.parse(json) as { testEngine?: { name?: unknown }, violations?: unknown }
+    return value?.testEngine?.name === 'axe-core' && Array.isArray(value.violations) ? { violations: value.violations } : undefined
+  }
+  catch {
+    return undefined
+  }
+}
+
+// The accessibility check of a Playwright test from the axe scans it attached (one per page or
+// state it scanned). Violations of a test that still passes are warnings.
+export function a11yFromScans(scans: { violations: unknown[] }[], testOk: boolean): A11yReport | undefined {
+  if (!scans.length)
+    return undefined
+  const reports = scans.map((scan): A11yReport => {
+    const violations = axeViolations(scan.violations)
+    return { status: !violations.length ? 'passed' : testOk ? 'warning' : 'failed', violations }
+  })
+  return mergeA11y(reports)
 }
