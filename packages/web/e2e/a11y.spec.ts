@@ -1,7 +1,7 @@
-import type { IngestRun, NormTest } from '@kinora/core'
+import type { NormTest } from '@kinora/core'
 import { makeTestKey, STORY_ANNOTATION } from '@kinora/core'
 import { expect, test } from '@playwright/test'
-import { createApiToken, login, SERVER_URL } from './helpers'
+import { createApiToken, login, postRun, runOf } from './helpers'
 
 // Story tests carrying the a11y check of Storybook's addon, as @kinora/vitest-reporter uploads them.
 function storyTest(story: string, a11y: NormTest['a11y']): NormTest {
@@ -40,13 +40,7 @@ test('a11y checks show on the components, test and run pages', async ({ page }) 
     }),
     storyTest('Primary', { status: 'passed', violations: [] }),
   ]
-  const payload: IngestRun = {
-    project: { slug, name: slug },
-    run: { startedAt: new Date().toISOString(), duration: 240, counts: { total: 2, expected: 2, unexpected: 0, flaky: 0, skipped: 0 } },
-    tests,
-  }
-  const res = await page.request.post(`${SERVER_URL}/api/v1/runs`, { headers: { Authorization: `Bearer ${await createApiToken(page)}` }, data: payload })
-  expect(res.status()).toBe(201)
+  await postRun(page, await createApiToken(page), runOf(slug, new Date(), tests))
 
   // Components: a badge per story, the hotspots card, and a filter on stories with violations.
   await page.goto(`/projects/${slug}/components`)

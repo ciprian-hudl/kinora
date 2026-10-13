@@ -131,7 +131,7 @@ function bucketLabel(t: number): string {
     </template>
 
     <template v-else-if="state">
-      <div class="flex flex-wrap items-center gap-x-10 gap-y-4 rounded-lg border border-border/70 bg-card/80 px-6 py-5">
+      <div role="group" aria-label="Range totals" class="flex flex-wrap items-center gap-x-10 gap-y-4 rounded-lg border border-border/70 bg-card/80 px-6 py-5">
         <StatBlock label="Runs" :value="totals.runs" />
         <Separator orientation="vertical" class="h-10" />
         <StatBlock label="Test results" :value="results.toLocaleString()" />

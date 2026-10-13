@@ -1,7 +1,9 @@
+import type { IngestRun, NormTest } from '@kinora/core'
 import type { AppRouter } from '@kinora/server'
 import type { Locator, Page } from '@playwright/test'
 import type { inferRouterOutputs } from '@trpc/server'
 import process from 'node:process'
+import { makeTestKey } from '@kinora/core'
 import { expect } from '@playwright/test'
 
 type Outputs = inferRouterOutputs<AppRouter>
@@ -74,6 +76,43 @@ export async function createApiToken(page: Page): Promise<string> {
   if (!key)
     throw new Error(`token.create failed: ${JSON.stringify(json)}`)
   return key
+}
+
+// Upload a run through the public ingest API, as a reporter would, so a test sets up exactly the
+// data it checks instead of probing the randomly seeded runs. `backfill` keeps alerts quiet.
+export async function postRun(page: Page, token: string, payload: IngestRun): Promise<void> {
+  const res = await page.request.post(`${SERVER_URL}/api/v1/runs?backfill=1`, { headers: { Authorization: `Bearer ${token}` }, data: payload })
+  expect(res.status(), await res.text()).toBe(201)
+}
+
+// A plain Playwright test result, for runs built with `runOf`.
+export function testOf(file: string, title: string, status: NormTest['status']): NormTest {
+  const titlePath = [file, title]
+  return {
+    testKey: makeTestKey(file, titlePath, 'chromium'),
+    title,
+    titlePath,
+    file,
+    line: 5,
+    column: 3,
+    projectName: 'chromium',
+    status,
+    ok: status !== 'unexpected',
+    duration: 100,
+    retries: status === 'flaky' ? 1 : 0,
+    tags: [],
+    annotations: [],
+    errors: status === 'unexpected' ? [{ message: 'expect(received).toBe(expected)' }] : [],
+    attachments: [],
+  }
+}
+
+// A run of `slug` with the given tests, counts derived from their statuses.
+export function runOf(slug: string, startedAt: Date, tests: NormTest[], git?: IngestRun['run']['git']): IngestRun {
+  const counts = { total: tests.length, expected: 0, unexpected: 0, flaky: 0, skipped: 0 }
+  for (const t of tests)
+    counts[t.status]++
+  return { project: { slug, name: slug }, run: { startedAt: startedAt.toISOString(), duration: 100, counts, ...(git && { git }) }, tests }
 }
 
 // Find a run whose report has a test matching `pred` (which seeded tests get
