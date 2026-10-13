@@ -58,6 +58,7 @@ export const test = pgTable('test', {
   annotations: jsonb('annotations').$type<NormTest['annotations']>().notNull(),
   errors: jsonb('errors').$type<NormTest['errors']>().notNull(),
   attachments: jsonb('attachments').$type<NormTest['attachments']>().notNull(),
+  a11y: jsonb('a11y').$type<NormTest['a11y']>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, table => [
   index('test_runId_idx').on(table.runId),

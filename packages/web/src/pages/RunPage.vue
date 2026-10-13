@@ -11,6 +11,7 @@ import { useRouteQuery } from '@vueuse/router'
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
+import A11yViolations from '@/components/a11y/A11yViolations.vue'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
@@ -345,6 +346,8 @@ const BADGE_CLASS = 'inline-flex items-center gap-1 rounded border border-border
           <div v-if="t.errors.length" class="mt-3 overflow-x-auto rounded-md bg-fail/5 p-3">
             <pre class="font-mono text-[11px] leading-relaxed text-fail">{{ stripAnsi(t.errors[0].message) }}</pre>
           </div>
+          <!-- A passed a11y check says nothing worth the space on a run. -->
+          <A11yViolations v-if="t.a11y && t.a11y.status !== 'passed'" :report="t.a11y" class="mt-3" />
           <div v-if="screenshotDiffs(t.attachments).length" class="mt-3 flex flex-col gap-3">
             <ScreenshotDiff v-for="(c, i) in screenshotDiffs(t.attachments)" :key="`${c.name}-${i}`" :comparison="c" />
           </div>

@@ -51,6 +51,20 @@ describe('buildTestHistories', () => {
     expect(h.points.map(p => p.sha)).toEqual(['abc', undefined])
   })
 
+  it('keeps the a11y check of the latest run that executed', () => {
+    const report = { status: 'warning' as const, violations: [] }
+    const [kept] = buildTestHistories([
+      makeReport('r1', '2026-01-01T00:00:00Z', [makeTest({ testKey: 'K', status: 'expected', a11y: report })]),
+      makeReport('r2', '2026-01-02T00:00:00Z', [makeTest({ testKey: 'K', status: 'skipped' })]),
+    ])
+    expect(kept.a11y).toEqual(report)
+    const [dropped] = buildTestHistories([
+      makeReport('r1', '2026-01-01T00:00:00Z', [makeTest({ testKey: 'K', status: 'expected', a11y: report })]),
+      makeReport('r2', '2026-01-02T00:00:00Z', [makeTest({ testKey: 'K', status: 'expected' })]),
+    ])
+    expect(dropped.a11y).toBeUndefined()
+  })
+
   it('computes rates with skipped excluded from the denominator', () => {
     const runs = [
       makeReport('r1', '2026-01-01T00:00:00Z', [makeTest({ testKey: 'K', status: 'expected' })]),

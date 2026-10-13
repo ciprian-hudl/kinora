@@ -10,6 +10,8 @@ import { ArrowLeft, ChevronDown, ChevronRight } from '@lucide/vue'
 import { useRouteQuery } from '@vueuse/router'
 import { computed, reactive } from 'vue'
 import { RouterLink } from 'vue-router'
+import A11yBadge from '@/components/a11y/A11yBadge.vue'
+import A11yHotspots from '@/components/a11y/A11yHotspots.vue'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
@@ -48,9 +50,24 @@ function health(s: StoryHealth): TestHealth {
 }
 const flakyCount = computed(() => stories.value.filter(s => health(s).kind === 'flaky').length)
 const brokenCount = computed(() => stories.value.filter(s => health(s).kind === 'broken').length)
+const hasA11yIssues = (s: StoryHealth): boolean => !!s.a11y?.violations.length
+const a11yCount = computed(() => stories.value.filter(hasA11yIssues).length)
+// Shown only once a story records an a11y check, so suites without the addon see no empty stat.
+const checksA11y = computed(() => stories.value.some(s => s.a11y))
 
-const search = useRouteQuery('q', '')
+const search = useRouteQuery<string>('q', '')
 const filter = useHealthFilter('all')
+const a11yOnly = useRouteQuery<string, boolean>('a11y', 'false', {
+  transform: {
+    get: v => v === 'true',
+    set: v => (v ? 'true' : 'false'),
+  },
+})
+// A hotspot opens the stories of its component that break a rule.
+function showA11yOf(path: string): void {
+  search.value = path
+  a11yOnly.value = true
+}
 const FILTERS = [
   { value: 'all', label: 'All stories', active: 'border-foreground/30 text-foreground' },
   { value: 'attention', label: 'Needs attention', active: 'border-flaky/50 text-flaky hover:text-flaky' },
@@ -86,7 +103,7 @@ const rows = computed<ComponentHealth[]>(() => {
   return components.value
     .map(c => ({
       ...c,
-      stories: c.stories.filter(s => matchesHealth(filter.value, health(s)) && (!q || s.id.toLowerCase().includes(q))),
+      stories: c.stories.filter(s => matchesHealth(filter.value, health(s)) && (!a11yOnly.value || hasA11yIssues(s)) && (!q || s.id.toLowerCase().includes(q))),
     }))
     .filter(c => c.stories.length)
 })
@@ -129,6 +146,10 @@ const rows = computed<ComponentHealth[]>(() => {
           <StatBlock label="Flaky" :value="flakyCount" :tone="flakyCount ? 'flaky' : 'pass'" />
           <Separator orientation="vertical" class="h-10" />
           <StatBlock label="Broken" :value="brokenCount" :tone="brokenCount ? 'fail' : 'pass'" />
+          <template v-if="checksA11y">
+            <Separator orientation="vertical" class="h-10" />
+            <StatBlock label="A11y issues" :value="a11yCount" :tone="a11yCount ? 'fail' : 'pass'" />
+          </template>
         </div>
       </div>
 
@@ -153,6 +174,8 @@ const rows = computed<ComponentHealth[]>(() => {
       </div>
 
       <template v-else>
+        <A11yHotspots :components="components" @select="showA11yOf" />
+
         <!-- Toolbar -->
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-2">
@@ -166,6 +189,17 @@ const rows = computed<ComponentHealth[]>(() => {
               @click="filter = f.value"
             >
               {{ f.label }}
+            </Button>
+            <Button
+              v-if="checksA11y"
+              variant="outline"
+              size="sm"
+              class="font-mono text-xs"
+              :class="a11yOnly ? 'border-fail/50 text-fail hover:text-fail' : ''"
+              :aria-pressed="a11yOnly"
+              @click="a11yOnly = !a11yOnly"
+            >
+              A11y issues <span class="ml-1 tabular-nums text-muted-foreground">{{ a11yCount }}</span>
             </Button>
           </div>
           <SearchInput v-model="search" placeholder="Filter by component or story..." />
@@ -209,6 +243,7 @@ const rows = computed<ComponentHealth[]>(() => {
                   <span class="truncate text-sm font-medium group-hover:underline">{{ s.name }}</span>
                   <span class="shrink-0 font-mono text-[10px] text-muted-foreground">{{ testsLabel(s) }}</span>
                   <TestHealthBadge :health="health(s)" />
+                  <A11yBadge :report="s.a11y" />
                 </button>
                 <div class="hidden w-40 sm:block">
                   <StatusTimeline :points="s.points" :project-id="projectId" :height="18" :slots="WINDOW" />

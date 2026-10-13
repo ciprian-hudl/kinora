@@ -115,7 +115,7 @@ export function registerTools(server: McpServer, client: ReadClient): void {
 
   server.registerTool('component_health', {
     title: 'Component and story health',
-    description: 'Health of the UI components a project tests, from Playwright component tests (stories recorded by @kinora/reporter/ct) or Storybook stories run by Vitest (@kinora/vitest-reporter), grouped by component: per story, its latest status, its health over the last 20 runs (flaky or broken, with the reason), fail/flaky rates, and the tests that mount it. Filter by component name or story id, or by health. Empty when the project records no stories.',
+    description: 'Health of the UI components a project tests, from Playwright component tests (stories recorded by @kinora/reporter/ct) or Storybook stories run by Vitest (@kinora/vitest-reporter), grouped by component: per story, its latest status, its health over the last 20 runs (flaky or broken, with the reason), its accessibility violations when the Storybook a11y addon checks it (rule, impact, failing elements, docs link), fail/flaky rates, and the tests that mount it. Filter by component name or story id, or by health. Empty when the project records no stories.',
     inputSchema: z.object({
       project: z.string().describe('Project slug.'),
       component: z.string().optional().describe('Case-insensitive substring of a component name, path or story id, e.g. "Button".'),

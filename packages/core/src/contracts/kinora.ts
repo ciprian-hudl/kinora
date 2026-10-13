@@ -85,6 +85,31 @@ export const normErrorSchema = z.object({
 })
 export type NormError = z.infer<typeof normErrorSchema>
 
+// Accessibility check of a test, from Storybook's a11y addon (axe). Only the violations travel:
+// axe's full result also lists every passing rule with the HTML of each node, far too heavy.
+export const A11Y_IMPACTS = ['minor', 'moderate', 'serious', 'critical'] as const
+export const MAX_A11Y_VIOLATIONS = 50
+export const MAX_A11Y_NODES = 10
+
+export const a11yViolationSchema = z.object({
+  id: z.string(), // axe rule, e.g. `color-contrast`
+  impact: z.enum(A11Y_IMPACTS).optional(),
+  help: z.string(),
+  helpUrl: linkUrl,
+  nodes: z.array(z.string()).max(MAX_A11Y_NODES), // CSS selectors of the failing elements, the first few
+  nodeCount: z.number(), // every failing element, past the ones listed
+})
+export type A11yViolation = z.infer<typeof a11yViolationSchema>
+
+export const a11yReportSchema = z.object({
+  // passed: no violation. warning: violations of a story in `todo` mode, the test still passes.
+  // failed: violations in `error` mode (the test fails), or axe itself failed (`error`).
+  status: z.enum(['passed', 'warning', 'failed']),
+  violations: z.array(a11yViolationSchema).max(MAX_A11Y_VIOLATIONS),
+  error: z.string().optional(),
+})
+export type A11yReport = z.infer<typeof a11yReportSchema>
+
 // Flattened test, identity stable across runs via testKey.
 export const normTestSchema = z.object({
   testKey: z.string(),
@@ -103,6 +128,8 @@ export const normTestSchema = z.object({
   errors: z.array(normErrorSchema),
   attachments: z.array(normAttachmentSchema),
   codeOwners: z.array(z.string()).optional(),
+  // A malformed report is dropped, not a reason to reject the whole run.
+  a11y: a11yReportSchema.optional().catch(undefined),
 })
 export type NormTest = z.infer<typeof normTestSchema>
 
@@ -149,6 +176,8 @@ export const testHistorySchema = z.object({
   codeOwners: z.array(z.string()).optional(),
   // Component stories the test mounted in its most recent run (see lib/story). Absent for non-component tests.
   stories: z.array(z.string()).optional(),
+  // Accessibility check of its most recent run that executed (see lib/a11y). Absent without one.
+  a11y: a11yReportSchema.optional(),
   points: z.array(testPointSchema),
   runs: z.number(),
   passed: z.number(),

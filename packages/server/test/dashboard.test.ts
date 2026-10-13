@@ -1,4 +1,4 @@
-import type { Counts } from '@kinora/core'
+import type { Counts, IngestRun } from '@kinora/core'
 import { randomUUID } from 'node:crypto'
 import { makeTestKey, STORY_ANNOTATION } from '@kinora/core'
 import { eq } from 'drizzle-orm'
@@ -404,6 +404,27 @@ describe('dashboard reads', () => {
     expect(h.project?.id).toBe('web-app')
     expect(h.histories.length).toBeGreaterThan(0)
     expect(h.histories[0].points).toHaveLength(2)
+  })
+
+  it('run returns the a11y report of a test, and drops a malformed one without rejecting the run', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    const a11y = {
+      status: 'warning',
+      violations: [{ id: 'button-name', impact: 'critical', help: 'Buttons must have discernible text', helpUrl: 'https://dequeuniversity.com/rules/axe/4.14/button-name', nodes: ['#root > button'], nodeCount: 1 }],
+    } as const
+    const withA11y = (report: unknown) => {
+      const payload = runPayload('web-app')
+      return { ...payload, tests: [{ ...payload.tests[0], a11y: report }] } as IngestRun
+    }
+    const good = await (await ingest(key, withA11y(a11y))).json() as { runId: string }
+    const bad = await ingest(key, withA11y({ status: 'nope', violations: 'x' }))
+    expect(bad.status).toBe(201)
+
+    const dashboard = (await caller(a)).dashboard
+    expect((await dashboard.run({ projectId: 'web-app', runId: good.runId })).tests[0].a11y).toEqual(a11y)
+    const { runId } = await bad.json() as { runId: string }
+    expect((await dashboard.run({ projectId: 'web-app', runId })).tests[0].a11y).toBeUndefined()
   })
 
   it('projectHistory stamps each point with the commit of its run, for flaky detection', async () => {

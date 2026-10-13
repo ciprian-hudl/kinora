@@ -68,6 +68,76 @@ describe('toNormTest', () => {
   })
 })
 
+describe('toNormTest a11y', () => {
+  const axe = (over: Record<string, unknown> = {}) => ({
+    id: 'button-name',
+    impact: 'critical',
+    help: 'Buttons must have discernible text',
+    helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/button-name',
+    nodes: [{ target: ['#root > button'], html: '<button></button>' }],
+    ...over,
+  })
+  const withReport = (report: Record<string, unknown>) => toNormTest(fakeTest({ meta: { storyId: 'button--empty', reports: [{ type: 'a11y', version: 1, ...report }] } }))!
+
+  it('keeps only the violations of axe\'s result, with the selectors of the failing elements', () => {
+    const t = withReport({ status: 'warning', result: { violations: [axe()], passes: [axe({ id: 'region' })], incomplete: [] } })
+    expect(t.a11y).toEqual({
+      status: 'warning',
+      violations: [{ id: 'button-name', impact: 'critical', help: 'Buttons must have discernible text', helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/button-name', nodes: ['#root > button'], nodeCount: 1 }],
+    })
+  })
+
+  it('records a passed check, so the story is known to be checked', () => {
+    expect(withReport({ status: 'passed', result: { violations: [] } }).a11y).toEqual({ status: 'passed', violations: [] })
+  })
+
+  it('caps the elements listed per violation, keeps their count, and joins shadow DOM selectors', () => {
+    const nodes = [{ target: [['my-app', 'button']] }, ...Array.from({ length: 14 }, (_, i) => ({ target: [`#b${i}`] }))]
+    const [v] = withReport({ status: 'failed', result: { violations: [axe({ impact: null, nodes })] } }).a11y!.violations
+    expect(v.nodes).toHaveLength(10)
+    expect(v.nodes[0]).toBe('my-app >>> button')
+    expect(v.nodeCount).toBe(15)
+    expect(v.impact).toBeUndefined()
+  })
+
+  it('reports an axe crash as a failed check with its message', () => {
+    expect(withReport({ status: 'failed', result: { error: { message: 'axe is already running' } } }).a11y)
+      .toEqual({ status: 'failed', violations: [], error: 'axe is already running' })
+    expect(withReport({ status: 'failed', result: { error: {} } }).a11y?.error).toBe('The accessibility check failed.')
+  })
+
+  it('reads the violations of a story in error mode from its failure, without impact', () => {
+    // vitest-axe's message, as Storybook throws it: the report itself never reaches the reporter.
+    const message = [
+      'expect(received).toHaveNoViolations(expected)',
+      '',
+      'Expected the HTML found at $(\'div:nth-child(5) > button\') to have no violations:',
+      '',
+      '<button></button>',
+      '',
+      'Received:',
+      '',
+      '"Buttons must have discernible text (button-name)"',
+      '',
+      'Fix any of the following:',
+      '  Element does not have inner text that is visible to screen readers',
+      '',
+      'You can find more information on this issue here: ',
+      'https://dequeuniversity.com/rules/axe/4.14/button-name?application=axeAPI',
+    ].join('\n')
+    const t = toNormTest(fakeTest({ state: 'failed', errors: [{ message }], meta: { storyId: 'button--unlabeled' } }))!
+    expect(t.a11y).toEqual({
+      status: 'failed',
+      violations: [{ id: 'button-name', help: 'Buttons must have discernible text', helpUrl: 'https://dequeuniversity.com/rules/axe/4.14/button-name?application=axeAPI', nodes: ['div:nth-child(5) > button'], nodeCount: 1 }],
+    })
+  })
+
+  it('leaves tests without an a11y report alone', () => {
+    expect(toNormTest(fakeTest({ meta: { storyId: 'button--primary', reports: [] } }))!.a11y).toBeUndefined()
+    expect(toNormTest(fakeTest())!.a11y).toBeUndefined()
+  })
+})
+
 describe('toNormTests', () => {
   const tests = [fakeTest({ name: 'clicks', browser: true }), fakeTest({ name: 'adds', browser: false, project: 'unit' }), fakeTest({ name: 'sums', browser: false, project: 'unit' })]
 

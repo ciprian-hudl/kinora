@@ -1,4 +1,4 @@
-import type { Counts, NormTest } from '@kinora/core'
+import type { A11yViolation, Counts, NormTest } from '@kinora/core'
 import type { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -28,7 +28,14 @@ const MATE_NAME = 'Acme QA'
 
 // `stories` marks a component test: the story ids its `mount` calls would record.
 // `snapshot` marks a visual test: its latest run fails `toHaveScreenshot` on that snapshot name.
-interface TestDef { file: string, title: string, stories?: string[], snapshot?: string }
+// `a11y` is the accessibility check it records (as Storybook's a11y addon would, in `todo` mode):
+// its violations, an empty list when it passes. Absent: no check.
+interface TestDef { file: string, title: string, stories?: string[], snapshot?: string, a11y?: A11yViolation[] }
+
+function rule(id: string, impact: A11yViolation['impact'], help: string, nodes: string[], nodeCount = nodes.length): A11yViolation {
+  return { id, impact, help, helpUrl: `https://dequeuniversity.com/rules/axe/4.10/${id}`, nodes, nodeCount }
+}
+const CONTRAST = 'Elements must meet minimum color contrast ratio thresholds'
 
 const PROJECTS: { slug: string, name: string, tests: TestDef[] }[] = [
   {
@@ -67,14 +74,18 @@ const PROJECTS: { slug: string, name: string, tests: TestDef[] }[] = [
     slug: 'design-system',
     name: 'Design System',
     tests: [
-      { file: 'tests/components/button.spec.ts', title: 'primary button submits', stories: ['components/Button/Primary'] },
-      { file: 'tests/components/button.spec.ts', title: 'disabled button ignores clicks', stories: ['components/Button/Disabled'] },
+      { file: 'tests/components/button.spec.ts', title: 'primary button submits', stories: ['components/Button/Primary'], a11y: [] },
+      { file: 'tests/components/button.spec.ts', title: 'disabled button ignores clicks', stories: ['components/Button/Disabled'], a11y: [rule('color-contrast', 'serious', CONTRAST, ['button[disabled]'])] },
       { file: 'tests/components/button.spec.ts', title: 'button states match screenshots', stories: ['components/Button/Primary', 'components/Button/Disabled', 'components/Button/Loading'], snapshot: 'button-primary' },
       { file: 'tests/components/dialog.spec.ts', title: 'closes on escape', stories: ['components/Dialog/Default'] },
       // Playwright accepts a unique suffix of the story id; the dashboard folds it into the full id.
-      { file: 'tests/components/dialog.spec.ts', title: 'traps focus', stories: ['Dialog/Default'] },
-      { file: 'tests/components/select.spec.ts', title: 'opens with the keyboard', stories: ['components/Select/Default'] },
-      { file: 'tests/components/select.spec.ts', title: 'filters options while typing', stories: ['components/Select/Searchable'] },
+      { file: 'tests/components/dialog.spec.ts', title: 'traps focus', stories: ['Dialog/Default'], a11y: [rule('aria-dialog-name', 'serious', 'ARIA dialog and alertdialog nodes should have an accessible name', ['[role="dialog"]'])] },
+      { file: 'tests/components/select.spec.ts', title: 'opens with the keyboard', stories: ['components/Select/Default'], a11y: [] },
+      { file: 'tests/components/select.spec.ts', title: 'filters options while typing', stories: ['components/Select/Searchable'], a11y: [
+        rule('label', 'critical', 'Form elements must have labels', ['input[type="search"]']),
+        rule('color-contrast', 'serious', CONTRAST, ['.option[aria-disabled="true"]', '.placeholder'], 4),
+        rule('region', 'moderate', 'All page content should be contained by landmarks', ['#root > div']),
+      ] },
     ],
   },
 ]
@@ -128,6 +139,7 @@ function makeTest(def: TestDef, status: NormTest['status'], visualFailure = fals
         ? [{ message: `expect(locator).toHaveScreenshot(expected) failed\n\n  1440 pixels (ratio 0.04 of all image pixels) are different.\n\n  Snapshot: ${def.snapshot}.png`, stack: `at ${def.file}:23:18` }]
         : [{ message: `expect(received).toBe(expected)\n\nExpected: 200\nReceived: 500`, stack: `at ${def.file}:23:18` }],
     attachments: [],
+    ...(def.a11y && status !== 'skipped' && { a11y: { status: def.a11y.length ? 'warning' : 'passed', violations: def.a11y } }),
   }
 }
 
@@ -234,6 +246,7 @@ async function seedProjects(orgId: string, defs: typeof PROJECTS, failTrace: Buf
           tags: t.tags,
           annotations: t.annotations,
           errors: t.errors,
+          a11y: t.a11y ?? null,
           attachments: hasTrace
             ? [{ name: 'trace', contentType: 'application/zip', hasBody: true }, ...images]
             : t.attachments,

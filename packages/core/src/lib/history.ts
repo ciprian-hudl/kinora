@@ -83,6 +83,13 @@ export function buildTestHistories(reports: RunReport[]): TestHistory[] {
       const stories = storiesOf(t)
       if (stories.length)
         h.stories = stories
+      // Same for the a11y check, so a story whose check was turned off stops showing old violations.
+      if (t.status !== 'skipped') {
+        if (t.a11y)
+          h.a11y = t.a11y
+        else
+          delete h.a11y
+      }
       h.points.push({
         runId: report.runId,
         startedAt: report.startedAt,

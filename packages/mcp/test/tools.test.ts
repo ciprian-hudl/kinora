@@ -149,6 +149,21 @@ describe('component_health', () => {
     expect(broken.flatMap((c: any) => c.stories.map((s: any) => [s.id, s.health]))).toEqual([['components/Dialog/Default', 'broken']])
   })
 
+  it('returns the a11y violations of a story, most severe first', async () => {
+    const report = {
+      status: 'warning' as const,
+      violations: [
+        { id: 'region', impact: 'moderate' as const, help: 'Content should be in landmarks', nodes: ['#x'], nodeCount: 1 },
+        { id: 'button-name', impact: 'critical' as const, help: 'Buttons must have discernible text', nodes: ['#b'], nodeCount: 1 },
+      ],
+    }
+    const withA11y = [hist({ testKey: 'a', stories: ['components/Button/Icon'], points: [pt('r1', 'expected')], a11y: report })]
+    const call = harness({ getHistory: vi.fn().mockResolvedValue(withA11y) })
+    const story = (await call('component_health', { project: 'p' })).data.components[0].stories[0]
+    expect(story.a11y.status).toBe('warning')
+    expect(story.a11y.violations.map((v: any) => v.id)).toEqual(['button-name', 'region'])
+  })
+
   it('explains an empty result on a project without stories', async () => {
     const call = harness({ getHistory: vi.fn().mockResolvedValue([hist({ testKey: 'e2e' })]) })
     const { data } = await call('component_health', { project: 'p' })

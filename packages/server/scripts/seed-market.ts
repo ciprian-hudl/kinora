@@ -1,4 +1,4 @@
-import type { Counts, NormTest } from '@kinora/core'
+import type { A11yReport, A11yViolation, Counts, NormTest } from '@kinora/core'
 import type { Buffer } from 'node:buffer'
 import type { LoadedDemoTrace } from './demo-traces'
 import { randomUUID } from 'node:crypto'
@@ -231,6 +231,33 @@ const PROJECTS: ProjectDef[] = [
   },
 ]
 
+// Accessibility checks of the design system's stories (Storybook's a11y addon, `todo` mode: the
+// violations are warnings), so the Components page shows its hotspots. Stories not listed pass.
+function rule(id: string, impact: A11yViolation['impact'], help: string, nodes: string[], nodeCount = nodes.length): A11yViolation {
+  return { id, impact, help, helpUrl: `https://dequeuniversity.com/rules/axe/4.10/${id}`, nodes, nodeCount }
+}
+const STORY_A11Y: Record<string, A11yViolation[]> = {
+  'Button/Loading': [rule('button-name', 'critical', 'Buttons must have discernible text', ['#storybook-root > button[aria-busy="true"]'])],
+  'Button/Secondary': [rule('color-contrast', 'serious', 'Elements must meet minimum color contrast ratio thresholds', ['.btn-secondary'])],
+  'Select/Searchable': [
+    rule('label', 'critical', 'Form elements must have labels', ['#storybook-root input[type="search"]']),
+    rule('color-contrast', 'serious', 'Elements must meet minimum color contrast ratio thresholds', ['.select-option[aria-disabled="true"]', '.select-placeholder'], 4),
+  ],
+  'Dialog/Confirm': [rule('aria-dialog-name', 'serious', 'ARIA dialog and alertdialog nodes should have an accessible name', ['[role="alertdialog"]'])],
+  'DatePicker/Range': [
+    rule('color-contrast', 'serious', 'Elements must meet minimum color contrast ratio thresholds', ['.day.outside-month', '.day.in-range'], 12),
+    rule('region', 'moderate', 'All page content should be contained by landmarks', ['#storybook-root > div']),
+  ],
+  'Toast/Error': [rule('aria-allowed-role', 'minor', 'ARIA role should be appropriate for the element', ['li[role="alert"]'])],
+}
+
+function a11yFor(def: TestDef, status: Status): A11yReport | undefined {
+  if (!def.story || status === 'skipped')
+    return undefined
+  const violations = STORY_A11Y[def.story] ?? []
+  return { status: violations.length ? 'warning' : 'passed', violations }
+}
+
 function annotationsFor(def: TestDef, status: Status): NormTest['annotations'] {
   if (def.profile === 'fixmeSkip')
     return [{ type: 'fixme', description: 'flaky on CI - tracked in JIRA-412' }]
@@ -289,6 +316,7 @@ function makeTest(traces: LoadedDemoTrace[], pdef: ProjectDef, def: TestDef, i: 
     annotations: annotationsFor(def, status),
     errors: errorsFor(def, line, trace),
     attachments: [],
+    a11y: a11yFor(def, status),
   }
   return { test: norm, trace }
 }
@@ -388,6 +416,7 @@ async function main(): Promise<void> {
           tags: t.tags,
           annotations: t.annotations,
           errors: t.errors,
+          a11y: t.a11y ?? null,
           attachments: [
             ...(hasTrace ? [{ name: 'trace', contentType: 'application/zip', hasBody: true }] : t.attachments),
             ...images,

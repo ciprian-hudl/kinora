@@ -1,5 +1,5 @@
-import type { ComponentHealth, NormTest, StoryHealth, TestHistory, TestPoint } from '@kinora/core'
-import { describeHealth, diagnose, windowStats } from '@kinora/core'
+import type { A11yReport, ComponentHealth, NormTest, StoryHealth, TestHistory, TestPoint } from '@kinora/core'
+import { byImpact, describeHealth, diagnose, windowStats } from '@kinora/core'
 
 const MAX_ERROR_CHARS = 4000
 const MAX_HISTORY_POINTS = 20
@@ -36,6 +36,14 @@ function point(p: TestPoint) {
   return { runId: p.runId, startedAt: p.startedAt, status: p.status, ...(p.sha && { sha: p.sha }), errorMessage: p.errorMessage }
 }
 
+// Accessibility check (Storybook's a11y addon), most severe violation first. An agent fixing it
+// needs the rule, the elements and the docs.
+function a11y(report: A11yReport | undefined) {
+  if (!report)
+    return {}
+  return { a11y: { ...report, violations: [...report.violations].sort(byImpact) } }
+}
+
 // Flaky or broken over the last 20 runs, as the dashboard shows it, with the reason in a sentence.
 function health(points: TestPoint[]) {
   const h = diagnose(points)
@@ -58,6 +66,7 @@ export function formatHistory(h: TestHistory) {
     newlyBroken: h.newlyBroken,
     newlyFlaky: h.newlyFlaky,
     ...health(h.points),
+    ...a11y(h.a11y),
     ...(h.stories?.length && { stories: h.stories }),
     recentPoints: h.points.slice(-MAX_HISTORY_POINTS).map(point),
   }
@@ -73,6 +82,7 @@ export function formatStory(s: StoryHealth) {
     lastStatus: s.lastStatus,
     unstable: recent.unstable,
     ...health(s.points),
+    ...a11y(s.a11y),
     failRate: recent.failRate,
     flakyRate: recent.flakyRate,
     recentStatuses: s.points.slice(-MAX_HISTORY_POINTS).map(p => p.status),

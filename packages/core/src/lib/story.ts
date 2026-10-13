@@ -1,4 +1,5 @@
-import type { NormTest, TestHistory, TestPoint } from '../contracts/kinora'
+import type { A11yReport, NormTest, TestHistory, TestPoint } from '../contracts/kinora'
+import { mergeA11y } from './a11y'
 
 // Annotation type stamped on a test for each component story it mounts (Playwright's
 // `mount` fixture). Annotations ride both ingest paths untouched, so the story id
@@ -25,6 +26,8 @@ export interface StoryHealth {
   /** One point per run in which any of the story's tests ran, oldest first. */
   points: TestPoint[]
   lastStatus: TestPoint['status']
+  /** Accessibility of the story, from the latest check of each of its tests. */
+  a11y?: A11yReport
 }
 
 export interface ComponentHealth {
@@ -98,7 +101,8 @@ export function buildComponents(histories: TestHistory[]): ComponentHealth[] {
     const points = storyPoints(tests)
     const cut = id.lastIndexOf('/')
     const path = cut === -1 ? '' : id.slice(0, cut)
-    const story: StoryHealth = { id, name: id.slice(cut + 1), tests, points, lastStatus: points.at(-1)?.status ?? 'skipped' }
+    const a11y = mergeA11y(tests.map(t => t.a11y))
+    const story: StoryHealth = { id, name: id.slice(cut + 1), tests, points, lastStatus: points.at(-1)?.status ?? 'skipped', ...(a11y && { a11y }) }
     byPath.set(path, [...(byPath.get(path) ?? []), story])
   }
 

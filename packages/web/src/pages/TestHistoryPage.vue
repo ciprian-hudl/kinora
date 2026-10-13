@@ -9,6 +9,7 @@ import { Textarea } from '@kinora/ui/textarea'
 import { ArrowLeft } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import A11yViolations from '@/components/a11y/A11yViolations.vue'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
 import IncidentScreenshots from '@/components/viz/IncidentScreenshots.vue'
@@ -226,6 +227,9 @@ function toggleQuarantine() {
           </div>
         </div>
       </div>
+
+      <!-- Accessibility check of the latest run, when the test has one (Storybook's a11y addon). -->
+      <A11yViolations v-if="history.a11y" :report="history.a11y" class="rounded-lg border border-border/70 bg-card/80 px-6 py-5" />
 
       <!-- Timeline -->
       <div class="flex flex-col gap-3 rounded-xl border border-border/70 bg-card/80 px-6 py-5">

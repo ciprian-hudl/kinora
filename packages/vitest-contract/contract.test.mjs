@@ -71,8 +71,8 @@ const byTitle = title => runs[0]?.tests.find(t => t.title === title)
 
 test('uploads one run with the browser and Storybook tests, without the Node test', () => {
   assert.equal(runs.length, 1)
-  assert.deepEqual(runs[0].tests.map(t => t.title).sort(), ['Broken', 'Primary', 'swatch matches its reference'])
-  assert.deepEqual(runs[0].run.counts, { total: 3, expected: 1, unexpected: 2, flaky: 0, skipped: 0 })
+  assert.deepEqual(runs[0].tests.map(t => t.title).sort(), ['Broken', 'Primary', 'Unlabeled', 'Unlabeled Strict', 'swatch matches its reference'])
+  assert.deepEqual(runs[0].run.counts, { total: 5, expected: 2, unexpected: 3, flaky: 0, skipped: 0 })
 })
 
 test('collects real test locations', () => {
@@ -96,7 +96,7 @@ test('strips Storybook\'s local debug link from errors', () => {
 test('attaches and uploads a trace for every browser test', () => {
   for (const t of runs[0].tests)
     assert.ok(t.attachments.some(a => a.name === 'trace'), `${t.title} has no trace`)
-  assert.equal(artifacts.filter(a => a.name === 'trace').length, 3)
+  assert.equal(artifacts.filter(a => a.name === 'trace').length, 5)
 })
 
 test('turns a failed toMatchScreenshot into a screenshot comparison', () => {
@@ -105,4 +105,32 @@ test('turns a failed toMatchScreenshot into a screenshot comparison', () => {
     assert.ok(names.includes(`swatch-matches-its-reference-${part}.png`), `missing the ${part} image: ${names.join(', ')}`)
   // Uploaded by default, as `snapshot` attachments.
   assert.equal(artifacts.filter(a => a.name?.startsWith('swatch-matches-its-reference-')).length, 3)
+})
+
+test('records the a11y check of each story, trimmed to its violations', () => {
+  assert.deepEqual(byTitle('Primary').a11y, { status: 'passed', violations: [] })
+  const { a11y } = byTitle('Unlabeled')
+  assert.equal(a11y.status, 'warning')
+  const v = a11y.violations.find(v => v.id === 'button-name')
+  assert.ok(v, `no button-name violation: ${a11y.violations.map(v => v.id).join(', ')}`)
+  assert.equal(v.impact, 'critical')
+  assert.match(v.helpUrl, /^https:\/\//)
+  assert.ok(v.nodes.length > 0 && v.nodeCount >= v.nodes.length)
+  // axe's passing rules and node HTML never travel.
+  assert.equal(JSON.stringify(a11y).includes('<button'), false)
+  assert.equal(byTitle('swatch matches its reference').a11y, undefined)
+})
+
+// In `error` mode the a11y addon throws before Storybook stores its report on the test, so the
+// reporter reads the violations from the failure message, which has no impact. If Storybook starts
+// keeping the report, the impact shows up here: switch the reporter and the docs to it.
+test('fails a story whose a11y check runs in error mode, with its violations read from the failure', () => {
+  const t = byTitle('Unlabeled Strict')
+  assert.equal(t.status, 'unexpected')
+  assert.equal(t.a11y.status, 'failed')
+  const v = t.a11y.violations.find(v => v.id === 'button-name')
+  assert.ok(v, `no button-name violation: ${JSON.stringify(t.a11y)}`)
+  assert.equal(v.impact, undefined)
+  assert.match(v.helpUrl, /^https:\/\//)
+  assert.ok(v.nodes.length > 0)
 })

@@ -75,6 +75,7 @@ export function toNormTest(t: TestRow, urls?: Map<string, string[]>, codeowners?
       return { ...a, url: urls?.get(a.name)?.[index] ?? a.url }
     }),
     codeOwners: codeowners?.length ? matchCodeowners(codeowners, t.file) : undefined,
+    a11y: t.a11y ?? undefined,
   }
 }
 

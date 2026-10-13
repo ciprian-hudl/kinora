@@ -1,11 +1,16 @@
-import type { NormTest } from '@kinora/core'
+import type { A11yReport, A11yViolation, NormTest } from '@kinora/core'
 import type { TestCase, TestModule } from 'vitest/node'
-import { makeTestKey, STORY_ANNOTATION, stripAnsi } from '@kinora/core'
+import { A11Y_IMPACTS, makeTestKey, MAX_A11Y_NODES, MAX_A11Y_VIOLATIONS, STORY_ANNOTATION, stripAnsi } from '@kinora/core'
 
 type Attachment = NormTest['attachments'][number]
 
-// What Storybook's Vitest addon puts on each story test (`task.meta`).
-interface StoryMeta { storyId?: string, componentName?: string }
+// What Storybook's Vitest addon puts on each story test (`task.meta`). `reports` holds what addons
+// record while the story runs, like the a11y addon's axe result.
+interface StoryMeta { storyId?: string, componentName?: string, reports?: ReportLike[] }
+
+// Read structurally: the reports are Storybook's, and axe's result is axe-core's.
+interface ReportLike { type?: string, status?: string, result?: unknown }
+interface AxeViolationLike { id?: string, impact?: string | null, help?: string, helpUrl?: string, nodes?: { target?: unknown }[] }
 
 // Vitest artifacts are experimental and typed as an open union, so read them structurally.
 interface ArtifactLike {
@@ -46,6 +51,70 @@ function storyOf(test: TestCase, titlePath: string[]): string | undefined {
     return meta.storyId.replace('--', '/')
   // titlePath is [file, story, ...tests of that story]: the story is its first title.
   return `${meta.componentName}/${titlePath[1]}`
+}
+
+const MAX_TEXT = 300
+const truncate = (s: string): string => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}…` : s)
+const isImpact = (v: unknown): v is A11yViolation['impact'] => A11Y_IMPACTS.includes(v as never)
+
+// axe targets an element by a list of selectors, nested when it crosses iframes or shadow roots.
+function selector(target: unknown): string {
+  if (!Array.isArray(target))
+    return ''
+  return truncate(target.map(t => (Array.isArray(t) ? t.join(' >>> ') : String(t))).join(' '))
+}
+
+function violation(v: AxeViolationLike): A11yViolation[] {
+  if (!v.id)
+    return []
+  const nodes = v.nodes ?? []
+  return [{
+    id: v.id,
+    ...(isImpact(v.impact) && { impact: v.impact }),
+    help: truncate(v.help ?? v.id),
+    ...(v.helpUrl && { helpUrl: v.helpUrl }),
+    nodes: nodes.slice(0, MAX_A11Y_NODES).map(n => selector(n.target)).filter(Boolean),
+    nodeCount: nodes.length,
+  }]
+}
+
+// One block per failing element in vitest-axe's `toHaveNoViolations` message: its selector, then the
+// rule's help and id, then the rule's documentation.
+const AXE_FAILURE = /Expected the HTML found at \$\('(.+?)'\) to have no violations:[\s\S]*?Received:\s*"(.+?) \(([\w-]+)\)"[\s\S]*?more information on this issue here:\s*(https:\/\/\S+)/g
+
+// A story in a11y `error` mode throws on its violations before Storybook stores the report
+// (`task.meta.reports` is only set once the story ran), so the error message is all that is left.
+// It names the rule, the element and the docs, but not the impact.
+function a11yFromError(test: TestCase): A11yReport | undefined {
+  const message = test.result().errors?.find(e => e.message.includes('toHaveNoViolations'))?.message
+  if (!message)
+    return undefined
+  const byRule = new Map<string, A11yViolation>()
+  for (const [, target, help, id, helpUrl] of stripAnsi(message).matchAll(AXE_FAILURE)) {
+    const v = byRule.get(id) ?? { id, help: truncate(help), helpUrl, nodes: [], nodeCount: 0 }
+    if (v.nodes.length < MAX_A11Y_NODES)
+      v.nodes.push(truncate(target))
+    v.nodeCount++
+    byRule.set(id, v)
+  }
+  return byRule.size ? { status: 'failed', violations: [...byRule.values()].slice(0, MAX_A11Y_VIOLATIONS) } : undefined
+}
+
+// The accessibility check of a story (Storybook's a11y addon), trimmed to its violations: axe's
+// full result lists every passing rule with the HTML of each node.
+function a11yOf(test: TestCase): A11yReport | undefined {
+  const report = (test.meta() as StoryMeta).reports?.find(r => r.type === 'a11y')
+  const status = report?.status
+  if (status !== 'passed' && status !== 'warning' && status !== 'failed')
+    return a11yFromError(test)
+  const result = (report?.result ?? {}) as { violations?: AxeViolationLike[], error?: unknown }
+  // axe itself failed: the result carries the error instead of violations.
+  if (result.error) {
+    const { message } = result.error as { message?: unknown }
+    const text = typeof message === 'string' ? message : typeof result.error === 'string' ? result.error : 'The accessibility check failed.'
+    return { status: 'failed', violations: [], error: truncate(text) }
+  }
+  return { status, violations: (result.violations ?? []).slice(0, MAX_A11Y_VIOLATIONS).flatMap(violation) }
 }
 
 function slug(name: string): string {
@@ -107,6 +176,7 @@ export function toNormTest(test: TestCase): NormTest | undefined {
   const { file, titlePath, projectName } = identity(test)
   const diagnostic = test.diagnostic()
   const story = storyOf(test, titlePath)
+  const a11y = a11yOf(test)
   return {
     testKey: makeTestKey(file, titlePath, projectName),
     title: test.name,
@@ -126,6 +196,7 @@ export function toNormTest(test: TestCase): NormTest | undefined {
     ],
     errors: (test.result().errors ?? []).map(e => ({ message: cleanMessage(e.message), stack: e.stack })),
     attachments: attachmentsOf(test),
+    ...a11y && { a11y },
   }
 }
 

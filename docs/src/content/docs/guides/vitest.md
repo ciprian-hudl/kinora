@@ -99,6 +99,25 @@ each story is a Vitest test. The reporter records which story each test renders,
 Components page with no extra setup. Interactions run by a story's `play` function are not
 Playwright actions, so the trace shows the rendered story rather than each step.
 
+### Accessibility
+
+With [Storybook's a11y addon](https://storybook.js.org/docs/writing-tests/accessibility-testing),
+each story's accessibility check (axe) is uploaded with the test: the rules it breaks, their impact
+(critical, serious, moderate, minor), the elements they hit and a link to each rule's
+documentation. Only the violations are sent, not axe's full result.
+
+The run and test pages list the violations, most severe first. On the Components page, each story
+shows how many rules it breaks, and **Accessibility hotspots** ranks the components by their
+stories' violations, weighted by impact, to point at where fixing pays off first.
+
+How a violation counts depends on the addon's `a11y.test` parameter:
+
+- `todo`: a warning. The test passes and kinora records the violations.
+- `error`: the test fails. Storybook throws before it stores the check on the test, so kinora reads
+  the violations from the failure message instead: you get the rules, elements and links, but not
+  their impact. Use `todo` to keep the impact, if your CI does not need to fail on violations.
+- `off`: no check, nothing recorded.
+
 ## Notes
 
 - Test identity is the file (relative to the Vitest root), the suite path and the Vitest project

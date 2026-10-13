@@ -134,6 +134,7 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
         annotations: item.annotations,
         errors: item.errors,
         attachments: item.attachments,
+        a11y: item.a11y ?? null,
       })))
     }
 

@@ -1,6 +1,7 @@
 export * from './contracts/ingest'
 export * from './contracts/kinora'
 export * from './contracts/playwright'
+export * from './lib/a11y'
 export * from './lib/aggregate'
 export * from './lib/ansi'
 export * from './lib/attachments'
