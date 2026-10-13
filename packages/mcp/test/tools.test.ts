@@ -72,11 +72,17 @@ describe('get_run', () => {
 })
 
 describe('test_history', () => {
-  it('with no testKey/query returns only unstable tests', async () => {
-    const histories = [hist({ testKey: 'stable', passed: 3 }), hist({ testKey: 'flaky', flaky: 2, lastStatus: 'flaky' })]
+  it('with no testKey/query returns only flaky and broken tests, with the reason', async () => {
+    const at = (status: TestPoint['status'], sha?: string): TestPoint => ({ runId: 'r', startedAt: '2026-01-01T00:00:00Z', status, duration: 1, retries: 0, ...(sha && { sha }) })
+    const histories = [
+      hist({ testKey: 'stable', points: [at('expected'), at('expected')] }),
+      hist({ testKey: 'flaky', points: [at('expected', 'abc1234'), at('unexpected', 'abc1234'), at('expected', 'def5678')] }),
+    ]
     const call = harness({ getHistory: vi.fn().mockResolvedValue(histories) })
     const { data } = await call('test_history', { project: 'p' })
     expect(data.histories.map((h: any) => h.testKey)).toEqual(['flaky'])
+    expect(data.histories[0]).toMatchObject({ health: 'flaky', healthReason: 'Passed and failed on the same commit abc1234.' })
+    expect(data.histories[0].recentPoints[0].sha).toBe('abc1234')
   })
 
   it('with query filters by title substring', async () => {
@@ -129,7 +135,7 @@ describe('component_health', () => {
     const { data } = await call('component_health', { project: 'p' })
     expect(data.components.map((c: any) => c.name)).toEqual(['Button', 'Dialog'])
     const disabled = data.components[0].stories.find((s: any) => s.name === 'Disabled')
-    expect(disabled).toMatchObject({ id: 'components/Button/Disabled', lastStatus: 'expected', unstable: true, flakyRate: 0.5, recentStatuses: ['flaky', 'expected'] })
+    expect(disabled).toMatchObject({ id: 'components/Button/Disabled', lastStatus: 'expected', unstable: true, health: 'flaky', flakyRate: 0.5, recentStatuses: ['flaky', 'expected'] })
     expect(disabled.tests).toEqual([{ testKey: 'b', title: 'disabled', file: 'f', lastStatus: 'expected' }])
     expect(data.note).toBeUndefined()
   })
@@ -139,6 +145,8 @@ describe('component_health', () => {
     expect((await call('component_health', { project: 'p', component: 'dialog' })).data.components.map((c: any) => c.name)).toEqual(['Dialog'])
     const unstable = (await call('component_health', { project: 'p', unstableOnly: true })).data.components
     expect(unstable.flatMap((c: any) => c.stories.map((s: any) => s.id))).toEqual(['components/Button/Disabled', 'components/Dialog/Default'])
+    const broken = (await call('component_health', { project: 'p', health: 'broken' })).data.components
+    expect(broken.flatMap((c: any) => c.stories.map((s: any) => [s.id, s.health]))).toEqual([['components/Dialog/Default', 'broken']])
   })
 
   it('explains an empty result on a project without stories', async () => {

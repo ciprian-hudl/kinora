@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { ComponentHealth, StoryHealth } from '@kinora/core'
-import { buildComponents, HEALTH_WINDOW, windowStats } from '@kinora/core'
+import type { ComponentHealth, StoryHealth, TestHealth } from '@kinora/core'
+import { buildComponents, diagnose, HEALTH_WINDOW } from '@kinora/core'
 import { Badge } from '@kinora/ui/badge'
 import { Button } from '@kinora/ui/button'
 import { Separator } from '@kinora/ui/separator'
@@ -14,8 +14,10 @@ import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
+import TestHealthBadge from '@/components/viz/TestHealthBadge.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
 import { useProjectHistory } from '@/composables/queries'
+import { matchesHealth, useHealthFilter } from '@/composables/useHealthFilter'
 import { useNewFeature } from '@/composables/useNewFeature'
 import { useQuarantine } from '@/composables/useQuarantine'
 import { testLabel } from '@/lib/test-display'
@@ -34,22 +36,34 @@ useNewFeature('components').markSeen()
 const DOCS_URL = 'https://docs.kinora.dev/guides/component-testing/'
 const VITEST_DOCS_URL = 'https://docs.kinora.dev/guides/vitest/'
 
-// Same window and same "unstable" rule as the Tests page, so a story and its tests agree.
+// Same window and same flaky / broken rules as the Tests page, so a story and its tests agree.
 const WINDOW = HEALTH_WINDOW
 
 const project = computed(() => state.value.project)
 const components = computed(() => buildComponents(state.value.histories))
 const stories = computed(() => components.value.flatMap(c => c.stories))
-const unstableIds = computed(() => new Set(stories.value.filter(s => windowStats(s.points).unstable).map(s => s.id)))
-const failingCount = computed(() => stories.value.filter(s => s.lastStatus === 'unexpected').length)
+const healthById = computed(() => new Map(stories.value.map(s => [s.id, diagnose(s.points)])))
+function health(s: StoryHealth): TestHealth {
+  return healthById.value.get(s.id) ?? { kind: 'stable' }
+}
+const flakyCount = computed(() => stories.value.filter(s => health(s).kind === 'flaky').length)
+const brokenCount = computed(() => stories.value.filter(s => health(s).kind === 'broken').length)
 
 const search = useRouteQuery('q', '')
-const unstableOnly = useRouteQuery<string, boolean>('unstable', 'false', {
-  transform: {
-    get: v => v === 'true',
-    set: v => (v ? 'true' : 'false'),
-  },
-})
+const filter = useHealthFilter('all')
+const FILTERS = [
+  { value: 'all', label: 'All stories', active: 'border-foreground/30 text-foreground' },
+  { value: 'attention', label: 'Needs attention', active: 'border-flaky/50 text-flaky hover:text-flaky' },
+  { value: 'flaky', label: 'Flaky', active: 'border-flaky/50 text-flaky hover:text-flaky' },
+  { value: 'broken', label: 'Broken', active: 'border-fail/50 text-fail hover:text-fail' },
+] as const
+const EMPTY = {
+  all: 'No stories match this filter.',
+  attention: 'No flaky or broken stories. All green.',
+  flaky: 'No flaky stories.',
+  broken: 'No broken stories.',
+  quarantined: 'No stories match this filter.',
+} as const
 
 // Tests sit folded under their story so a large catalog stays scannable. A story failing or
 // flaky right now opens by default: that is where you would look first. The rest wait for a click.
@@ -66,17 +80,13 @@ function testsLabel(s: StoryHealth): string {
   return `${s.tests.length} ${s.tests.length === 1 ? 'test' : 'tests'}`
 }
 
-function isUnstable(s: StoryHealth): boolean {
-  return unstableIds.value.has(s.id)
-}
-
 // Filters apply per story; a component stays as long as one of its stories does.
 const rows = computed<ComponentHealth[]>(() => {
   const q = search.value.trim().toLowerCase()
   return components.value
     .map(c => ({
       ...c,
-      stories: c.stories.filter(s => (!unstableOnly.value || isUnstable(s)) && (!q || s.id.toLowerCase().includes(q))),
+      stories: c.stories.filter(s => matchesHealth(filter.value, health(s)) && (!q || s.id.toLowerCase().includes(q))),
     }))
     .filter(c => c.stories.length)
 })
@@ -116,9 +126,9 @@ const rows = computed<ComponentHealth[]>(() => {
           <Separator orientation="vertical" class="h-10" />
           <StatBlock label="Stories" :value="stories.length" />
           <Separator orientation="vertical" class="h-10" />
-          <StatBlock label="Unstable" :value="unstableIds.size" :tone="unstableIds.size ? 'flaky' : 'pass'" />
+          <StatBlock label="Flaky" :value="flakyCount" :tone="flakyCount ? 'flaky' : 'pass'" />
           <Separator orientation="vertical" class="h-10" />
-          <StatBlock label="Failing now" :value="failingCount" :tone="failingCount ? 'fail' : 'default'" />
+          <StatBlock label="Broken" :value="brokenCount" :tone="brokenCount ? 'fail' : 'pass'" />
         </div>
       </div>
 
@@ -127,7 +137,7 @@ const rows = computed<ComponentHealth[]>(() => {
           No component stories recorded yet.
         </p>
         <p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          This page tracks the health of each component story across runs and points out the unstable ones.
+          This page tracks the health of each component story across runs and points out the flaky and broken ones.
         </p>
         <p class="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
           It fills in from Playwright component tests that import <code class="font-mono text-xs">test</code> from <code class="font-mono text-xs">@kinora/reporter/ct</code>, or from Storybook tests uploaded with <code class="font-mono text-xs">@kinora/vitest-reporter</code>.
@@ -147,22 +157,15 @@ const rows = computed<ComponentHealth[]>(() => {
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-2">
             <Button
+              v-for="f in FILTERS"
+              :key="f.value"
               variant="outline"
               size="sm"
               class="font-mono text-xs"
-              :class="!unstableOnly ? 'border-foreground/30 text-foreground' : ''"
-              @click="unstableOnly = false"
+              :class="filter === f.value ? f.active : ''"
+              @click="filter = f.value"
             >
-              All stories
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              class="font-mono text-xs"
-              :class="unstableOnly ? 'border-flaky/50 text-flaky hover:text-flaky' : ''"
-              @click="unstableOnly = true"
-            >
-              Unstable only
+              {{ f.label }}
             </Button>
           </div>
           <SearchInput v-model="search" placeholder="Filter by component or story..." />
@@ -205,6 +208,7 @@ const rows = computed<ComponentHealth[]>(() => {
                   <TestStatusBadge :status="s.lastStatus" />
                   <span class="truncate text-sm font-medium group-hover:underline">{{ s.name }}</span>
                   <span class="shrink-0 font-mono text-[10px] text-muted-foreground">{{ testsLabel(s) }}</span>
+                  <TestHealthBadge :health="health(s)" />
                 </button>
                 <div class="hidden w-40 sm:block">
                   <StatusTimeline :points="s.points" :project-id="projectId" :height="18" :slots="WINDOW" />
@@ -229,7 +233,7 @@ const rows = computed<ComponentHealth[]>(() => {
           </section>
 
           <div v-if="!rows.length" class="py-12 text-center font-mono text-sm text-muted-foreground">
-            {{ unstableOnly && !search ? 'No unstable stories. All green.' : 'No stories match this filter.' }}
+            {{ search ? 'No stories match this filter.' : EMPTY[filter] }}
           </div>
         </div>
       </template>

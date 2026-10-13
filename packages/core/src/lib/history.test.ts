@@ -44,6 +44,13 @@ describe('buildTestHistories', () => {
     expect(h.lastStatus).toBe('unexpected')
   })
 
+  it('stamps each point with the commit of its run, when the run has one', () => {
+    const r1 = { ...makeReport('r1', '2026-01-01T00:00:00Z', [makeTest({ testKey: 'K', status: 'expected' })]), meta: { git: { sha: 'abc' } } }
+    const r2 = makeReport('r2', '2026-01-02T00:00:00Z', [makeTest({ testKey: 'K', status: 'expected' })])
+    const [h] = buildTestHistories([r1, r2])
+    expect(h.points.map(p => p.sha)).toEqual(['abc', undefined])
+  })
+
   it('computes rates with skipped excluded from the denominator', () => {
     const runs = [
       makeReport('r1', '2026-01-01T00:00:00Z', [makeTest({ testKey: 'K', status: 'expected' })]),

@@ -30,7 +30,7 @@ test('a failed screenshot assertion shows its images as a comparison', async ({ 
 })
 
 test('the test history page loads the comparison of a failed screenshot run on demand', async ({ page }) => {
-  await page.goto('/projects/design-system/tests?unstable=false&q=button%20states%20match%20screenshots')
+  await page.goto('/projects/design-system/tests?show=all&q=button%20states%20match%20screenshots')
   await page.getByRole('link', { name: /button states match screenshots/ }).click()
 
   // Only the latest run has uploaded images, and nothing loads until asked.

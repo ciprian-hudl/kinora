@@ -406,6 +406,20 @@ describe('dashboard reads', () => {
     expect(h.histories[0].points).toHaveLength(2)
   })
 
+  it('projectHistory stamps each point with the commit of its run, for flaky detection', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    const onCommit = (status: 'expected' | 'unexpected') => {
+      const payload = runPayload('web-app', '@smoke', status)
+      return { ...payload, run: { ...payload.run, git: { sha: 'abc1234' } } }
+    }
+    await ingest(key, onCommit('expected'))
+    await ingest(key, onCommit('unexpected'))
+
+    const [h] = (await (await caller(a)).dashboard.projectHistory({ projectId: 'web-app' })).histories
+    expect(h.points.map(p => p.sha)).toEqual(['abc1234', 'abc1234'])
+  })
+
   it('projectHistory clusters failing tests by error signature', async () => {
     const a = await createUser('a@test.dev')
     const key = await createApiKey(a.id)

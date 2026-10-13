@@ -62,12 +62,14 @@ test('components link drops its New badge after the announcement window', async 
   await expect(link.getByText('New')).toHaveCount(0)
 })
 
-test('components page shares the unstable filter with the tests page', async ({ page }) => {
+test('components page shares the health filter with the tests page', async ({ page }) => {
   await page.goto('/projects/design-system/components')
 
-  await page.getByRole('button', { name: 'Unstable only' }).click()
-  await expect(page).toHaveURL(/unstable=true/)
-  await expect(page.getByText('Failing now')).toBeVisible()
+  await page.getByRole('button', { name: 'Needs attention' }).click()
+  await expect(page).toHaveURL(/show=attention/)
+  await expect(page.locator('[data-health]').first()).toBeVisible()
+  await page.getByRole('button', { name: 'Flaky', exact: true }).click()
+  await expect(page.locator('[data-health="broken"]')).toHaveCount(0)
 })
 
 test('a story badge on a run links to that story on the components page', async ({ page }) => {

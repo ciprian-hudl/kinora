@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { TestHistory, WindowStats } from '@kinora/core'
-import { formatPct, HEALTH_WINDOW, RECENT_WINDOW, windowStats } from '@kinora/core'
+import type { TestHealth, TestHistory, WindowStats } from '@kinora/core'
+import { diagnose, formatPct, HEALTH_WINDOW, RECENT_WINDOW, windowStats } from '@kinora/core'
 import { Badge } from '@kinora/ui/badge'
 import { Button } from '@kinora/ui/button'
 import {
@@ -23,8 +23,10 @@ import ErrorState from '@/components/app/ErrorState.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
 import FailureCausesCard from '@/components/project/FailureCausesCard.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
+import TestHealthBadge from '@/components/viz/TestHealthBadge.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
 import { useProjectHistory } from '@/composables/queries'
+import { matchesHealth, useHealthFilter } from '@/composables/useHealthFilter'
 import { useQuarantine } from '@/composables/useQuarantine'
 import { testLabel } from '@/lib/test-display'
 
@@ -43,45 +45,43 @@ const clusters = computed(() => state.value.clusters)
 const quarantinedCount = computed(() => quarantineByKey.value.size)
 
 const search = useRouteQuery('q', '')
-const unstableOnly = useRouteQuery<string, boolean>('unstable', 'true', {
-  transform: {
-    get: v => v !== 'false',
-    set: v => (v ? 'true' : 'false'),
-  },
-})
-const quarantinedOnly = useRouteQuery<string, boolean>('quarantined', 'false', {
-  transform: {
-    get: v => v === 'true',
-    set: v => (v ? 'true' : 'false'),
-  },
-})
+// Lands on what needs a look: the flaky and the broken tests.
+const filter = useHealthFilter('attention')
 
-// Everything on this page reads the same window as the timeline: the last WINDOW runs. Rates, the
-// "unstable" count/filter and the sort all derive from it, so the numbers match the bars.
+// Everything on this page reads the same window as the timeline: the last WINDOW runs. Rates,
+// flaky / broken and the sort all derive from it, so the numbers match the bars.
 const WINDOW = HEALTH_WINDOW
 
 const statsByKey = computed(() => new Map(histories.value.map(h => [h.testKey, windowStats(h.points)])))
 function stats(h: TestHistory): WindowStats {
   return statsByKey.value.get(h.testKey) ?? windowStats([])
 }
+const healthByKey = computed(() => new Map(histories.value.map(h => [h.testKey, diagnose(h.points)])))
+function health(h: TestHistory): TestHealth {
+  return healthByKey.value.get(h.testKey) ?? { kind: 'stable' }
+}
 
-const unstableCount = computed(() => histories.value.filter(h => stats(h).unstable).length)
+// "New failure" is gated on the test still failing now, so a recovered (green) test isn't badged.
+const isNewFailure = (h: TestHistory): boolean => h.newlyBroken && h.lastStatus === 'unexpected'
+
+const flakyCount = computed(() => histories.value.filter(h => health(h).kind === 'flaky').length)
+const brokenCount = computed(() => histories.value.filter(h => health(h).kind === 'broken').length)
 const newlyFlakyCount = computed(() => histories.value.filter(h => h.newlyFlaky).length)
-// "New failure" is gated on the test still failing now, so a recovered (green) test isn't badged broken.
-const newlyBrokenCount = computed(() => histories.value.filter(h => h.newlyBroken && h.lastStatus === 'unexpected').length)
+const newlyBrokenCount = computed(() => histories.value.filter(h => isNewFailure(h)).length)
 
-// Fresh breaks first (same gating as the badge), then by recent instability over the window.
+// Fresh breaks first (same gating as the badge), then broken before flaky, then by recent
+// instability over the window.
 function rank(h: TestHistory): number {
-  if (h.newlyBroken && h.lastStatus === 'unexpected')
-    return 2
+  if (isNewFailure(h))
+    return 4
   if (h.newlyFlaky)
-    return 1
-  return 0
+    return 3
+  return health(h).kind === 'broken' ? 2 : health(h).kind === 'flaky' ? 1 : 0
 }
 const rows = computed(() => {
   const q = search.value.trim().toLowerCase()
   return histories.value
-    .filter(h => (quarantinedOnly.value ? isQuarantined(h.testKey) : unstableOnly.value ? stats(h).unstable : true))
+    .filter(h => matchesHealth(filter.value, health(h), isQuarantined(h.testKey)))
     .filter(
       h =>
         !q
@@ -111,24 +111,24 @@ const currentPage = computed(() => pageIndex.value + 1)
 const paged = computed(() => rows.value.slice(pageIndex.value * PAGE_SIZE, pageIndex.value * PAGE_SIZE + PAGE_SIZE))
 
 // A changed filter should land on page 1, not a stale (clamped) page.
-watch([search, unstableOnly, quarantinedOnly], () => {
+watch([search, filter], () => {
   page.value = null
 })
 
-function showAllTests() {
-  unstableOnly.value = false
-  quarantinedOnly.value = false
-}
+const FILTERS = [
+  { value: 'all', label: 'All tests', active: 'border-foreground/30 text-foreground' },
+  { value: 'attention', label: 'Needs attention', active: 'border-flaky/50 text-flaky hover:text-flaky' },
+  { value: 'flaky', label: 'Flaky', active: 'border-flaky/50 text-flaky hover:text-flaky' },
+  { value: 'broken', label: 'Broken', active: 'border-fail/50 text-fail hover:text-fail' },
+] as const
 
-function showUnstableTests() {
-  unstableOnly.value = true
-  quarantinedOnly.value = false
-}
-
-function showQuarantinedTests() {
-  unstableOnly.value = false
-  quarantinedOnly.value = true
-}
+const EMPTY = {
+  all: 'No tests match this filter.',
+  attention: 'No flaky or broken tests. All green.',
+  flaky: 'No flaky tests.',
+  broken: 'No broken tests.',
+  quarantined: 'No quarantined tests.',
+} as const
 
 function setPage(p: number) {
   page.value = p > 1 ? String(p) : null
@@ -158,7 +158,7 @@ function setPage(p: number) {
               Tests
             </h1>
             <p class="mt-1 text-sm text-muted-foreground">
-              Per-test health over the last {{ WINDOW }} runs of {{ project?.name }}. 'New' = started failing or flaking in the last {{ RECENT_WINDOW }}.
+              Per-test health over the last {{ WINDOW }} runs of {{ project?.name }}. Hover a Flaky or Broken badge to see why. 'New' = started failing or flaking in the last {{ RECENT_WINDOW }}.
             </p>
           </div>
           <CopyLinkButton class="shrink-0" />
@@ -167,7 +167,9 @@ function setPage(p: number) {
         <div class="flex flex-wrap items-center gap-x-10 gap-y-4 rounded-lg border border-border/70 bg-card/80 px-6 py-5">
           <StatBlock label="Tests tracked" :value="histories.length" />
           <Separator orientation="vertical" class="h-10" />
-          <StatBlock label="Unstable" :value="unstableCount" :tone="unstableCount ? 'flaky' : 'pass'" />
+          <StatBlock label="Flaky" :value="flakyCount" :tone="flakyCount ? 'flaky' : 'pass'" />
+          <Separator orientation="vertical" class="h-10" />
+          <StatBlock label="Broken" :value="brokenCount" :tone="brokenCount ? 'fail' : 'pass'" />
           <Separator orientation="vertical" class="h-10" />
           <StatBlock label="New flakiness" :value="newlyFlakyCount" :tone="newlyFlakyCount ? 'flaky' : 'default'" />
           <Separator orientation="vertical" class="h-10" />
@@ -183,29 +185,22 @@ function setPage(p: number) {
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-2">
           <Button
+            v-for="f in FILTERS"
+            :key="f.value"
             variant="outline"
             size="sm"
             class="font-mono text-xs"
-            :class="!unstableOnly && !quarantinedOnly ? 'border-foreground/30 text-foreground' : ''"
-            @click="showAllTests"
+            :class="filter === f.value ? f.active : ''"
+            @click="filter = f.value"
           >
-            All tests
+            {{ f.label }}
           </Button>
           <Button
             variant="outline"
             size="sm"
             class="font-mono text-xs"
-            :class="unstableOnly && !quarantinedOnly ? 'border-flaky/50 text-flaky hover:text-flaky' : ''"
-            @click="showUnstableTests"
-          >
-            Unstable only
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            class="font-mono text-xs"
-            :class="quarantinedOnly ? 'border-flaky/50 text-flaky hover:text-flaky' : ''"
-            @click="showQuarantinedTests"
+            :class="filter === 'quarantined' ? 'border-flaky/50 text-flaky hover:text-flaky' : ''"
+            @click="filter = 'quarantined'"
           >
             Quarantined <span class="ml-1 tabular-nums text-muted-foreground">{{ quarantinedCount }}</span>
           </Button>
@@ -225,12 +220,17 @@ function setPage(p: number) {
             <div class="flex flex-wrap items-center gap-2">
               <TestStatusBadge :status="h.lastStatus" />
               <span class="truncate text-sm font-medium">{{ testLabel(h) }}</span>
-              <Badge v-if="h.newlyBroken && h.lastStatus === 'unexpected'" class="border-fail/30 bg-fail/15 text-[10px] text-fail">
+              <Badge v-if="isNewFailure(h)" class="border-fail/30 bg-fail/15 text-[10px] text-fail">
                 New failure
               </Badge>
               <Badge v-else-if="h.newlyFlaky" class="border-flaky/30 bg-flaky/15 text-[10px] text-flaky">
                 New flakiness
               </Badge>
+              <!-- Unless a "New" badge already says the same thing. -->
+              <TestHealthBadge
+                v-if="!(isNewFailure(h) && health(h).kind === 'broken') && !(h.newlyFlaky && health(h).kind === 'flaky')"
+                :health="health(h)"
+              />
               <Badge v-if="isQuarantined(h.testKey)" class="border-flaky/30 bg-flaky/10 text-[10px] text-flaky">
                 Quarantined
               </Badge>
@@ -268,7 +268,7 @@ function setPage(p: number) {
         </RouterLink>
 
         <div v-if="!rows.length" class="py-12 text-center font-mono text-sm text-muted-foreground">
-          {{ quarantinedOnly ? 'No quarantined tests.' : unstableOnly ? 'No unstable tests. All green.' : 'No tests match this filter.' }}
+          {{ search ? 'No tests match this filter.' : EMPTY[filter] }}
         </div>
       </div>
 

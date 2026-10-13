@@ -133,6 +133,7 @@ export const testPointSchema = z.object({
   duration: z.number(),
   retries: z.number(),
   errorMessage: z.string().optional(),
+  sha: z.string().optional(), // commit of the run, to tell flakiness from a change in the code
   // Failed screenshot assertions in that run (see lib/attachments). Their images are loaded on
   // demand, since a history spans hundreds of runs and image urls are signed at read time.
   screenshots: z.number().optional(),

@@ -90,6 +90,7 @@ export function buildTestHistories(reports: RunReport[]): TestHistory[] {
         duration: t.duration,
         retries: t.retries,
         errorMessage: t.errors[0]?.message,
+        ...(report.meta.git?.sha && { sha: report.meta.git.sha }),
         ...screenshotCount(t.attachments),
       })
     }

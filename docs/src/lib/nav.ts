@@ -24,6 +24,7 @@ export const NAV: NavGroup[] = [
       { label: 'CLI upload', slug: 'guides/cli' },
       { label: 'PR comments', slug: 'guides/pr-comments' },
       { label: 'Component testing', slug: 'guides/component-testing' },
+      { label: 'Flaky and broken tests', slug: 'guides/flaky-tests' },
       { label: 'Alerts', slug: 'guides/alerts' },
       { label: 'MCP for coding agents', slug: 'guides/mcp' },
       { label: 'Desktop app', slug: 'guides/desktop' },

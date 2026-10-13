@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 test('quarantines a test, edits the reason, then lifts it from a run', async ({ page }) => {
   const quarantinedList = `/projects/${PROJECT}/tests?quarantined=true`
 
-  await page.goto(`/projects/${PROJECT}/tests?unstable=false&q=${encodeURIComponent(TITLE)}`)
+  await page.goto(`/projects/${PROJECT}/tests?show=all&q=${encodeURIComponent(TITLE)}`)
   await page.getByRole('link', { name: new RegExp(TITLE) }).click()
 
   // A CI retry after a mid-test failure can start from an already quarantined test.

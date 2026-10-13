@@ -1,5 +1,5 @@
 import type { ComponentHealth, NormTest, StoryHealth, TestHistory, TestPoint } from '@kinora/core'
-import { windowStats } from '@kinora/core'
+import { describeHealth, diagnose, windowStats } from '@kinora/core'
 
 const MAX_ERROR_CHARS = 4000
 const MAX_HISTORY_POINTS = 20
@@ -33,7 +33,13 @@ export function formatFailure(t: NormTest) {
 }
 
 function point(p: TestPoint) {
-  return { runId: p.runId, startedAt: p.startedAt, status: p.status, errorMessage: p.errorMessage }
+  return { runId: p.runId, startedAt: p.startedAt, status: p.status, ...(p.sha && { sha: p.sha }), errorMessage: p.errorMessage }
+}
+
+// Flaky or broken over the last 20 runs, as the dashboard shows it, with the reason in a sentence.
+function health(points: TestPoint[]) {
+  const h = diagnose(points)
+  return { health: h.kind, ...(h.kind !== 'stable' && { healthReason: describeHealth(h) }) }
 }
 
 export function formatHistory(h: TestHistory) {
@@ -51,12 +57,14 @@ export function formatHistory(h: TestHistory) {
     recentFlakyRate: h.recentFlakyRate,
     newlyBroken: h.newlyBroken,
     newlyFlaky: h.newlyFlaky,
+    ...health(h.points),
     ...(h.stories?.length && { stories: h.stories }),
     recentPoints: h.points.slice(-MAX_HISTORY_POINTS).map(point),
   }
 }
 
-// Same window and "unstable" rule as the dashboard's Components page.
+// Same window and flaky / broken rules as the dashboard's Components page. `unstable` (failed or
+// flaked at least once) predates `health` and stays for existing clients.
 export function formatStory(s: StoryHealth) {
   const recent = windowStats(s.points)
   return {
@@ -64,6 +72,7 @@ export function formatStory(s: StoryHealth) {
     name: s.name,
     lastStatus: s.lastStatus,
     unstable: recent.unstable,
+    ...health(s.points),
     failRate: recent.failRate,
     flakyRate: recent.flakyRate,
     recentStatuses: s.points.slice(-MAX_HISTORY_POINTS).map(p => p.status),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatPct, HEALTH_WINDOW, stripAnsi, windowStats } from '@kinora/core'
+import { describeHealth, diagnose, formatPct, HEALTH_WINDOW, stripAnsi, windowStats } from '@kinora/core'
 import { Badge } from '@kinora/ui/badge'
 import { Button } from '@kinora/ui/button'
 import { Separator } from '@kinora/ui/separator'
@@ -14,6 +14,7 @@ import ErrorState from '@/components/app/ErrorState.vue'
 import IncidentScreenshots from '@/components/viz/IncidentScreenshots.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
 import StoryBadge from '@/components/viz/StoryBadge.vue'
+import TestHealthBadge from '@/components/viz/TestHealthBadge.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
 import { useDemo, useProjectHistory } from '@/composables/queries'
 import { useQuarantine } from '@/composables/useQuarantine'
@@ -42,6 +43,7 @@ const project = computed(() => state.value.project)
 const history = computed(() => state.value.histories.find(h => h.testKey === testKey.value))
 const quarantine = computed(() => quarantineByKey.value.get(testKey.value))
 const recent = computed(() => windowStats(history.value?.points ?? []))
+const health = computed(() => diagnose(history.value?.points ?? []))
 
 // Clusters this test shares with at least one other test: "the same error hits N others".
 const relatedClusters = computed(() =>
@@ -170,6 +172,19 @@ function toggleQuarantine() {
             <StatBlock label="Flaky rate" :value="formatPct(recent.flakyRate)" :tone="recent.flakyRate ? 'flaky' : 'default'" />
             <Separator orientation="vertical" class="h-10" />
             <StatBlock label="Fail rate" :value="formatPct(recent.failRate)" :tone="recent.failRate ? 'fail' : 'default'" />
+          </div>
+          <div v-if="health.kind !== 'stable'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" data-testid="test-health">
+            <TestHealthBadge :health="health" />
+            <span class="text-muted-foreground">{{ describeHealth(health) }}</span>
+            <template v-if="health.kind === 'broken'">
+              <RouterLink
+                :to="{ name: 'run', params: { projectId, runId: health.since.runId } }"
+                class="font-mono text-xs text-signal hover:underline"
+              >
+                {{ health.runs === 1 ? 'Failing run' : 'First failing run' }}, {{ formatDateTimeLong(health.since.startedAt) }}
+              </RouterLink>
+              <span v-if="!quarantine" class="text-muted-foreground">A broken test needs a fix: quarantining it would hide a real failure.</span>
+            </template>
           </div>
         </div>
 

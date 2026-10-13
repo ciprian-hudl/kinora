@@ -70,6 +70,7 @@ function storyPoints(tests: TestHistory[]): TestPoint[] {
       status: worst(points.map(p => p.status)),
       duration: points.reduce((sum, p) => sum + p.duration, 0),
       retries: points.reduce((sum, p) => sum + p.retries, 0),
+      ...(points[0].sha && { sha: points[0].sha }),
     }))
     .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
 }

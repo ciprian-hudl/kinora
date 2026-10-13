@@ -1,6 +1,6 @@
 import type { createReadClient } from '@kinora/core'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { buildComponents, byInstability, IngestError, isUnstable, windowStats } from '@kinora/core'
+import { buildComponents, byInstability, diagnose, IngestError } from '@kinora/core'
 import { z } from 'zod'
 import { formatComponent, formatFailure, formatHistory, traceUrlOf } from './format'
 
@@ -30,6 +30,13 @@ async function guard<T>(fn: () => Promise<T>, wrap: (v: T) => ReturnType<typeof 
       return fail(`kinora: ${err.message}`)
     return fail(`kinora: ${err instanceof Error ? err.message : String(err)}`)
   }
+}
+
+// `health` picks flaky or broken stories; the older `unstableOnly` means either of them.
+function matchesHealth(kind: 'stable' | 'flaky' | 'broken', health?: 'flaky' | 'broken', unstableOnly?: boolean): boolean {
+  if (health)
+    return kind === health
+  return !unstableOnly || kind !== 'stable'
 }
 
 export function registerTools(server: McpServer, client: ReadClient): void {
@@ -85,7 +92,7 @@ export function registerTools(server: McpServer, client: ReadClient): void {
 
   server.registerTool('test_history', {
     title: 'Per-test history',
-    description: 'History of a test across recent runs to tell a fresh regression from a chronic/flaky test: pass/fail/flaky rates, recent-window rates, newlyBroken/newlyFlaky flags, and recent per-run points. Pass testKey for one test, query to search by title, or neither to get the most unstable tests.',
+    description: 'History of a test across recent runs to tell a fresh regression from a chronic/flaky test: health over the last 20 runs (flaky: passed and failed on the same commit, needed a retry, or keeps flipping between pass and fail; broken: fails and keeps failing) with its reason, pass/fail/flaky rates, recent-window rates, newlyBroken/newlyFlaky flags, and recent per-run points with their commit. Pass testKey for one test, query to search by title, or neither to get the flaky and broken tests.',
     inputSchema: z.object({
       project: z.string().describe('Project slug.'),
       testKey: z.string().optional().describe('Exact test key (from list_failures) for a single test.'),
@@ -100,7 +107,7 @@ export function registerTools(server: McpServer, client: ReadClient): void {
         out = histories.filter(h => h.title.toLowerCase().includes(q))
       }
       else if (!testKey) {
-        out = histories.filter(isUnstable).sort(byInstability)
+        out = histories.filter(h => diagnose(h.points).kind !== 'stable').sort(byInstability)
       }
       return ok({ histories: out.slice(0, MAX_HISTORY_RESULTS).map(formatHistory) })
     },
@@ -108,13 +115,14 @@ export function registerTools(server: McpServer, client: ReadClient): void {
 
   server.registerTool('component_health', {
     title: 'Component and story health',
-    description: 'Health of the UI components a project tests, from Playwright component tests (stories recorded by @kinora/reporter/ct) or Storybook stories run by Vitest (@kinora/vitest-reporter), grouped by component: per story, its latest status, whether it failed or flaked in the last 20 runs, fail/flaky rates, and the tests that mount it. Filter by component name or story id, or ask for unstable stories only. Empty when the project records no stories.',
+    description: 'Health of the UI components a project tests, from Playwright component tests (stories recorded by @kinora/reporter/ct) or Storybook stories run by Vitest (@kinora/vitest-reporter), grouped by component: per story, its latest status, its health over the last 20 runs (flaky or broken, with the reason), fail/flaky rates, and the tests that mount it. Filter by component name or story id, or by health. Empty when the project records no stories.',
     inputSchema: z.object({
       project: z.string().describe('Project slug.'),
       component: z.string().optional().describe('Case-insensitive substring of a component name, path or story id, e.g. "Button".'),
-      unstableOnly: z.boolean().optional().describe('Only stories that failed or flaked in the last 20 runs.'),
+      health: z.enum(['flaky', 'broken']).optional().describe('Only flaky or only broken stories.'),
+      unstableOnly: z.boolean().optional().describe('Only flaky or broken stories.'),
     }),
-  }, ({ project, component, unstableOnly }) => guard(
+  }, ({ project, component, health, unstableOnly }) => guard(
     () => client.getHistory(project),
     (histories) => {
       const q = component?.toLowerCase()
@@ -122,7 +130,7 @@ export function registerTools(server: McpServer, client: ReadClient): void {
         .map(c => ({
           component: c,
           stories: c.stories.filter(s =>
-            (!unstableOnly || windowStats(s.points).unstable)
+            matchesHealth(diagnose(s.points).kind, health, unstableOnly)
             && (!q || c.path.toLowerCase().includes(q) || s.id.toLowerCase().includes(q))),
         }))
         .filter(c => c.stories.length)
