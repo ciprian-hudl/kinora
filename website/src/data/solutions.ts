@@ -124,6 +124,15 @@ export const SOLUTIONS: Solution[] = [
         body: 'Tests that flip between pass and fail across runs are surfaced and ranked, not buried inside a single run\'s retries.',
       },
       {
+        title: 'Flaky or broken',
+        body: 'A test that fails and keeps failing since a commit is broken, not flaky. kinora tells the two apart, says why, and names the commit where the breakage started.',
+        docs: [{ label: 'Flaky and broken tests', href: DOCS.flakyTests, event: 'docs-sol-flaky-rules' }],
+      },
+      {
+        title: 'No retries needed',
+        body: 'Playwright only reports a flake when a retry passes. kinora also reads it from the history: the same commit passing and failing, or a test that keeps flipping.',
+      },
+      {
         title: 'History behind every flake',
         body: 'See the full pass/fail timeline for a test to judge how bad a flake really is before you spend time on it.',
       },
@@ -140,7 +149,12 @@ export const SOLUTIONS: Solution[] = [
     faqs: [
       {
         q: 'How does kinora detect flaky tests?',
-        a: 'It compares each test\'s outcome across your run history. Tests that change status without a code change are flagged as flaky and ranked by how often they flip.',
+        a: 'It reads the last 20 runs of each test. A test is flaky when it passed and failed on the same commit, needed a retry to pass, or flipped between pass and fail at least 3 times. One bad run between two good ones is not enough: that is often a regression the next commit fixed.',
+        docs: [{ label: 'Flaky and broken tests', href: DOCS.flakyTests, event: 'docs-sol-flaky-faq' }],
+      },
+      {
+        q: 'What is the difference between a flaky and a broken test?',
+        a: 'A flaky test passes and fails on the same code: stabilize it or quarantine it. A broken test fails and keeps failing because a change broke it: fix it. kinora flags each test as one or the other and links a broken test to the run and commit where it started failing.',
       },
       {
         q: 'Can I get alerted about new flaky tests?',

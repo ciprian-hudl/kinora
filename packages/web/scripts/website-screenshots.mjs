@@ -14,6 +14,8 @@ const OUT = new URL('../../../website/src/assets/screenshots/', import.meta.url)
 const VIEWPORT = { width: 1440, height: 900 }
 const EMAIL = 'market@kinora.dev'
 const PASSWORD = 'password123'
+// Keys of NEW_UNTIL in src/composables/useNewFeature.ts.
+const NEW_FEATURES = ['components', 'analytics']
 
 const browser = await chromium.launch()
 
@@ -42,17 +44,24 @@ console.log('discovered:', { testHref, traceHref })
 const views = [
   { name: 'overview', url: `${WEB}/` },
   { name: 'project', url: `${WEB}/projects/checkout-api` },
+  // 90 days, where the seed's recovery shows as a trend. Settles past the chart's entry animation.
+  { name: 'analytics', url: `${WEB}/projects/web-app/analytics?range=90`, settle: 1800 },
   { name: 'tests', url: `${WEB}/projects/checkout-api/tests` },
   { name: 'test-history', url: `${WEB}${testHref}` },
   { name: 'compare', url: `${WEB}/projects/checkout-api/compare?base=checkout-api-run-89&head=checkout-api-run-90` },
   { name: 'trace-viewer', url: traceHref, settle: 3000 },
   { name: 'components', url: `${WEB}/projects/design-system/components` },
+  // Axe scans of a Playwright project: hotspots by test file and the tests breaking a rule.
+  { name: 'a11y', url: `${WEB}/projects/web-app/tests?show=all&a11y=true` },
 ].filter(v => !process.env.VIEWS || process.env.VIEWS.split(',').includes(v.name))
 
 for (const theme of ['light', 'dark']) {
   // kinora apps read `kinora-theme`; the vendored trace viewer themes off prefers-color-scheme.
   const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 2, colorScheme: theme, storageState })
   await ctx.addInitScript(`localStorage.setItem('kinora-theme', ${JSON.stringify(theme)})`)
+  // Marketing shots show the product, not its launch: mark every announced feature as seen so
+  // the "New" badges (useNewFeature) stay hidden.
+  await ctx.addInitScript(`for (const f of ${JSON.stringify(NEW_FEATURES)}) localStorage.setItem('kinora:seen:' + f, 'true')`)
   const page = await ctx.newPage()
   for (const v of views) {
     await page.goto(v.url)

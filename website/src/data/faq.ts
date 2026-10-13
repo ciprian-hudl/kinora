@@ -41,6 +41,16 @@ export const HOME_FAQS: Faq[] = [
     docs: [{ label: 'Vitest and Storybook guide', href: DOCS.vitest, event: 'docs-faq-vitest' }],
   },
   {
+    q: 'How does kinora detect flaky tests?',
+    a: 'Over the last 20 runs of a test. It is flaky when it passed and failed on the same commit, needed a retry to pass, or keeps flipping between pass and fail, so flakiness shows even when your suite runs without retries. A test that fails and keeps failing is broken instead, and kinora names the commit where it started.',
+    docs: [{ label: 'Flaky and broken tests', href: DOCS.flakyTests, event: 'docs-faq-flaky' }],
+  },
+  {
+    q: 'Does kinora track accessibility?',
+    a: 'Yes. It records the axe scans of your Playwright tests (attach the scan to the test, or use the scanA11y helper of @kinora/reporter) and the checks of Storybook\'s a11y addon. You get the rules broken with their impact, the elements they hit, and hotspots that rank your test files and components by violations. Violations can fail the test or stay warnings.',
+    docs: [{ label: 'Accessibility guide', href: DOCS.a11y, event: 'docs-faq-a11y' }],
+  },
+  {
     q: 'Does kinora work with my CI provider?',
     a: 'Yes, kinora is CI-agnostic. The ingest API is plain REST authed by an API key, so any CI provider such as GitHub Actions or GitLab CI, or a plain curl command, can push results.',
     docs: [{ label: 'REST API reference', href: DOCS.api, event: 'docs-faq-api' }],

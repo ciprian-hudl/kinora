@@ -71,6 +71,28 @@ Each mounted story id is recorded on the test as a `kinora:story` annotation. Al
 
 More in the [component testing guide](https://docs.kinora.dev/guides/component-testing/).
 
+## Accessibility
+
+kinora records the axe scans attached to a test: the rules broken, their impact and the elements
+they hit. `scanA11y` runs the scan with `@axe-core/playwright` (add it to your dev dependencies)
+and attaches the result:
+
+```ts
+import { scanA11y } from '@kinora/reporter/a11y'
+import { expect, test } from '@playwright/test'
+
+test('checkout is accessible', async ({ page }) => {
+  await page.goto('/checkout')
+  const { violations } = await scanA11y(page)
+  expect(violations).toEqual([]) // leave it out to record the violations as warnings
+})
+```
+
+A scan you build yourself works too, as long as it is attached to the test with
+`testInfo.attach(name, { body: JSON.stringify(results), contentType: 'application/json' })`.
+An assertion alone is invisible to a reporter. More in the
+[accessibility guide](https://docs.kinora.dev/guides/reporter/#accessibility).
+
 ## Documentation
 
 Full reporter options, PR/MR comments, CI examples, and self-hosting are in the docs:

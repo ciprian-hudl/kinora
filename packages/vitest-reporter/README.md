@@ -37,6 +37,13 @@ Create an API token in the kinora dashboard (Settings → Workspace). Self-hosti
 
 Only browser tests are uploaded by default: Node unit tests are usually thousands of fast tests with no trace, and would eat your plan's monthly result quota. Upload them too with `include: 'all'`.
 
+## Accessibility
+
+With Storybook's a11y addon, each story's check is uploaded too: the rules broken, their impact
+and the elements they hit, ranked by component on the Components page. Use the addon's `todo`
+mode to keep the impact: in `error` mode, Storybook drops the check when the story fails and
+kinora reads the violations from the failure instead.
+
 ## Documentation
 
 **https://docs.kinora.dev/guides/vitest/**

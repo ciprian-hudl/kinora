@@ -124,6 +124,27 @@ export default defineConfig({
 
 Only browser tests are uploaded; Node unit tests stay out unless the user asks for \`include: 'all'\`. If browser mode uses the Playwright provider, set \`trace: 'retain-on-failure'\` in its \`browser\` config so failures upload a trace, and do not set a custom \`tracesDir\`. Wire \`KINORA_TOKEN\` (and \`KINORA_URL\` for self-host) exactly as in the reporter path.
 
+## Accessibility (optional)
+
+Only if the repo already scans pages with \`@axe-core/playwright\` (search for \`AxeBuilder\`), or the user asks for accessibility tracking. kinora reads an axe scan from the test's attachments, so a scan that is only asserted on (\`expect(results.violations).toEqual([])\`) is invisible to it. Either attach the result before the assertion:
+
+\`\`\`ts
+const results = await new AxeBuilder({ page }).analyze()
+await testInfo.attach('accessibility-scan-results', { body: JSON.stringify(results), contentType: 'application/json' })
+expect(results.violations).toEqual([])
+\`\`\`
+
+or replace the scan with the reporter's helper, which runs it and attaches it (it needs \`@axe-core/playwright\` as a dev dependency):
+
+\`\`\`ts
+import { scanA11y } from '@kinora/reporter/a11y'
+
+const { violations } = await scanA11y(page)
+expect(violations).toEqual([])
+\`\`\`
+
+Keep existing assertions as they are: do not add or remove one, since that changes whether CI fails on violations. With Storybook's a11y addon and \`@kinora/vitest-reporter\`, nothing to do: the check of each story is uploaded as is.
+
 ## Done checklist
 
 - [ ] \`@kinora/reporter\` (or the CLI, or \`@kinora/vitest-reporter\`) is installed as a dev dependency.

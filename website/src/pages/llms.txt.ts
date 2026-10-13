@@ -16,7 +16,7 @@ export const GET: APIRoute = () => {
 
   const body = `# kinora
 
-> kinora is an open-source dashboard for Playwright test reports across projects and over time, with an embedded trace viewer. CI runs push their results to kinora; it tracks pass rates, trends, and flaky tests, and opens the full Playwright trace inline for any failure.
+> kinora is an open-source dashboard for Playwright, Vitest browser-mode and Storybook test reports across projects and over time, with an embedded trace viewer. CI runs push their results to kinora; it tracks pass rates, trends, flaky and broken tests, and accessibility violations, and opens the full Playwright trace inline for any failure.
 
 Playwright ships a great HTML report for a single run on one machine. kinora sits one level up: it ingests every run from CI, keeps history, and lets you compare runs, watch pass-rate trends, and surface flaky tests over time. The Playwright trace viewer is embedded directly in the dashboard, so a red test is one click from its full trace.
 
@@ -45,6 +45,9 @@ ${comparisons}
 - License: FSL-1.1-MIT. Server, web, and desktop are FSL-1.1 (source-available, converts to MIT after 2 years); the embeddable libraries (reporter, CLI, core, ui) and the trace viewer are MIT.
 - Ingest: add @kinora/reporter to playwright.config, or upload results.json with the kinora CLI from CI. Both derive the same cross-run test identity, so history stays stable regardless of upload path.
 - Vitest and Storybook: add @kinora/vitest-reporter to vitest.config. It uploads browser-mode and Storybook tests (Node unit tests only with include: 'all'), their Playwright traces and screenshot comparisons, and maps each Storybook story to the Components page.
+- Flaky and broken tests: read from the last 20 runs of each test. Flaky = passed and failed on the same commit, needed a retry to pass, or flipped between pass and fail at least 3 times, so it works for suites that run without retries. Broken = fails and keeps failing; kinora names the run and commit where it started. Docs: ${SITE.docs}/guides/flaky-tests/
+- Analytics: per project, the share of passed, flaky and failed results over the last 30 days (per day) or 90 days (per week), filterable by branch.
+- Accessibility: kinora records axe scans. Playwright: attach the scan to the test as JSON (testInfo.attach), or call scanA11y(page) from @kinora/reporter/a11y, which runs @axe-core/playwright and attaches the result; asserting on the violations fails the test, not asserting keeps them as warnings. Storybook: the a11y addon's check is uploaded by @kinora/vitest-reporter. The dashboard lists violations by impact (critical, serious, moderate, minor) and ranks test files and components by them. Docs: ${SITE.docs}/guides/reporter/#accessibility
 - Artifacts: trace.zip files are stored on local disk by default, or in any S3-compatible store (AWS, Cloudflare R2, MinIO, Hetzner). Self-hosted, everything stays on your own infrastructure.
 - Alerts: per-project notifications on new failures and regressions via Slack, email, and webhook.
 - PR comments: on a GitHub pull_request run or a GitLab merge request pipeline, the reporter/CLI post a summary comment on the PR/MR (pass/fail, tests newly failing vs the base branch, link to the run). GitHub uses the CI job's GITHUB_TOKEN; GitLab uses a GITLAB_TOKEN CI variable. No credentials are stored in kinora; works self-host and cloud.

@@ -25,6 +25,8 @@ export const DOCS = {
   gettingStarted: `${SITE.docs}/getting-started/`,
   reporter: `${SITE.docs}/guides/reporter/`,
   vitest: `${SITE.docs}/guides/vitest/`,
+  flakyTests: `${SITE.docs}/guides/flaky-tests/`,
+  a11y: `${SITE.docs}/guides/reporter/#accessibility`,
   cli: `${SITE.docs}/guides/cli/`,
   mcp: `${SITE.docs}/guides/mcp/`,
   desktop: `${SITE.docs}/guides/desktop/`,

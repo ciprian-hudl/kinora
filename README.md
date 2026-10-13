@@ -33,7 +33,7 @@
   </picture>
 </p>
 
-Playwright ships a great HTML report for a single run. kinora sits one level up: push every CI run to a kinora server and get one place to track pass rates, spot trends, and surface flaky tests over time. Failing tests get a **View trace** button that opens the full Playwright trace (DOM, timeline, network, console) right in the dashboard.
+Playwright ships a great HTML report for a single run. kinora sits one level up: push every CI run to a kinora server and get one place to track pass rates, spot trends, tell flaky tests from broken ones, and follow accessibility violations over time. Failing tests get a **View trace** button that opens the full Playwright trace (DOM, timeline, network, console) right in the dashboard.
 
 ## Send your tests
 

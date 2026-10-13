@@ -15,7 +15,8 @@ const mcpConfig = `{
 const tools = [
   { name: 'list_failures', desc: 'the last run\'s failures, with error and file:line' },
   { name: 'get_trace', desc: 'the Playwright trace for any failing test' },
-  { name: 'test_history', desc: 'flaky-vs-regression history per test' },
+  { name: 'test_history', desc: 'flaky or broken, and why, per test' },
+  { name: 'component_health', desc: 'each story\'s health and accessibility violations' },
   { name: 'list_projects', desc: 'every project and its latest run' },
   { name: 'get_run', desc: 'the full report for a single run' },
 ];

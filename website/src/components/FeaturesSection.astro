@@ -1,5 +1,9 @@
 ---
-import { Blocks, GitCompare, History, ScanLine, TrendingUp } from '@lucide/astro'
+import { Accessibility, Blocks, ChartArea, GitCompare, History, ScanLine, TrendingUp } from '@lucide/astro'
+import a11yDark from '../assets/screenshots/a11y-dark.png'
+import a11yLight from '../assets/screenshots/a11y-light.png'
+import analyticsDark from '../assets/screenshots/analytics-dark.png'
+import analyticsLight from '../assets/screenshots/analytics-light.png'
 import compareDark from '../assets/screenshots/compare-dark.png'
 import compareLight from '../assets/screenshots/compare-light.png'
 import componentsDark from '../assets/screenshots/components-dark.png'
@@ -26,17 +30,28 @@ const features = [
   },
   {
     num: '02',
-    icon: ScanLine,
-    eyebrow: 'Flakiness',
-    title: 'Catch flaky tests before they catch you.',
-    body: 'Every test gets a flaky rate and a fail rate computed across its run history. Flip on Unstable only to see what is quietly costing you retries, and spot the ones newly broken or newly flaky since the last run.',
-    light: testsLight,
-    dark: testsDark,
-    label: 'kinora.dev/project/checkout-api/tests',
-    alt: 'Tests page listing per-test flaky rate and fail rate across runs with an unstable-only filter',
+    icon: ChartArea,
+    eyebrow: 'Analytics',
+    title: 'Is the suite getting better or worse?',
+    body: 'The share of passed, flaky and failed results over the last 30 or 90 days, per day or per week, for every branch or just one. A flaky rate creeping up shows here weeks before anyone complains about CI.',
+    light: analyticsLight,
+    dark: analyticsDark,
+    label: 'kinora.dev/project/web-app/analytics',
+    alt: 'Analytics page with a stacked chart of the share of passed, flaky and failed test results per week over 90 days',
   },
   {
     num: '03',
+    icon: ScanLine,
+    eyebrow: 'Flaky or broken',
+    title: 'Catch flaky tests before they catch you.',
+    body: 'Playwright only calls a test flaky when it passes on a retry. kinora also catches the ones that pass and fail on the same commit, or keep flipping from one run to the next, and tells them apart from broken tests: the ones that fail and keep failing since a commit. Each badge says why.',
+    light: testsLight,
+    dark: testsDark,
+    label: 'kinora.dev/project/checkout-api/tests',
+    alt: 'Tests page listing flaky and broken tests with their flaky rate, fail rate and run history',
+  },
+  {
+    num: '04',
     icon: History,
     eyebrow: 'Per-test history',
     title: 'Follow a single test across runs.',
@@ -47,7 +62,7 @@ const features = [
     alt: 'Per-test history with a status timeline, pass and flaky rates, and a list of failures and flakes',
   },
   {
-    num: '04',
+    num: '05',
     icon: GitCompare,
     eyebrow: 'Run-to-run diff',
     title: 'See exactly what changed between two runs.',
@@ -58,7 +73,7 @@ const features = [
     alt: 'Run comparison page grouping tests into newly failing, fixed, newly flaky and still failing, with pass-rate delta',
   },
   {
-    num: '05',
+    num: '06',
     icon: Blocks,
     eyebrow: 'Component health',
     title: 'Every story of your design system, run after run.',
@@ -66,7 +81,18 @@ const features = [
     light: componentsLight,
     dark: componentsDark,
     label: 'kinora.dev/project/design-system/components',
-    alt: 'Components page listing each component with its stories, their status and a run history timeline',
+    alt: 'Components page with accessibility hotspots and each component listed with its stories, their status and a run history timeline',
+  },
+  {
+    num: '07',
+    icon: Accessibility,
+    eyebrow: 'Accessibility',
+    title: 'Know where accessibility breaks, and how badly.',
+    body: 'kinora reads the axe scans of your Playwright tests and of your Storybook stories: the rules broken, their impact, the elements they hit. Hotspots rank your test files and components by their violations, critical ones first, so you know where fixing pays off.',
+    light: a11yLight,
+    dark: a11yDark,
+    label: 'kinora.dev/project/web-app/tests',
+    alt: 'Tests page with accessibility hotspots ranking test files by axe violations and their impact, and the tests breaking a rule',
   },
 ];
 ---
