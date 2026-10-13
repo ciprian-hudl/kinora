@@ -202,15 +202,13 @@ function toggleQuarantine() {
                 class="font-mono text-signal hover:underline"
               >{{ healthText.sha }}</a><span v-else-if="healthText.sha" class="font-mono">{{ healthText.sha }}</span>{{ healthText.after }}
             </span>
-            <template v-if="health.kind === 'broken'">
-              <RouterLink
-                :to="{ name: 'run', params: { projectId, runId: health.since.runId } }"
-                class="font-mono text-xs text-signal hover:underline"
-              >
-                {{ health.runs === 1 ? 'Failing run' : 'First failing run' }}, {{ formatDateTimeLong(health.since.startedAt) }}
-              </RouterLink>
-              <span v-if="!quarantine" class="text-muted-foreground">A broken test needs a fix: quarantining it would hide a real failure.</span>
-            </template>
+            <RouterLink
+              v-if="health.kind === 'broken'"
+              :to="{ name: 'run', params: { projectId, runId: health.since.runId } }"
+              class="font-mono text-xs text-signal hover:underline"
+            >
+              {{ health.runs === 1 ? 'Failing run' : 'First failing run' }}, {{ formatDateTimeLong(health.since.startedAt) }}
+            </RouterLink>
           </div>
         </div>
 
