@@ -14,7 +14,7 @@ import { Separator } from '@kinora/ui/separator'
 import { Skeleton } from '@kinora/ui/skeleton'
 import { Sparkline } from '@kinora/ui/sparkline'
 import { StatBlock } from '@kinora/ui/stat-block'
-import { ArrowLeft, Blocks, History, Settings } from '@lucide/vue'
+import { ArrowLeft, Blocks, ChartArea, History, Settings } from '@lucide/vue'
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import ErrorState from '@/components/app/ErrorState.vue'
@@ -27,6 +27,7 @@ const props = defineProps<{ projectId: string }>()
 
 const { isAdmin } = useOrg()
 const { isNew: componentsIsNew } = useNewFeature('components')
+const { isNew: analyticsIsNew } = useNewFeature('analytics')
 const { state: manifest, isLoading, error, execute: retry } = useManifest()
 
 const project = computed(() =>
@@ -88,6 +89,16 @@ const health = computed(() => (latest.value ? runHealth(latest.value.counts) : '
                 <Blocks class="size-3" />
                 Components
                 <Badge v-if="componentsIsNew" class="border-signal/30 bg-signal px-1.5 py-0.5 text-[9px] leading-none tracking-wider text-white">
+                  New
+                </Badge>
+              </RouterLink>
+              <RouterLink
+                :to="{ name: 'analytics', params: { projectId: project.id } }"
+                class="flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
+              >
+                <ChartArea class="size-3" />
+                Analytics
+                <Badge v-if="analyticsIsNew" class="border-signal/30 bg-signal px-1.5 py-0.5 text-[9px] leading-none tracking-wider text-white">
                   New
                 </Badge>
               </RouterLink>

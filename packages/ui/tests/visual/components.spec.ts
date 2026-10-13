@@ -6,6 +6,10 @@ import { expect, test } from '../fixtures'
 // visual change, regenerate them with `pnpm --filter @kinora/ui test:visual:update`.
 type Mount = (story: string) => Promise<Locator>
 
+// Charts that animate in skip it under reduced motion, so the image is their final state, not
+// whichever frame of the transition the screenshot caught.
+test.use({ reducedMotion: 'reduce' })
+
 // Shrink the gallery root to the story and wait for the web fonts: a full-width root would make
 // every image mostly blank, and a screenshot taken before the fonts load would not be stable.
 async function shoot(mount: Mount, story: string, suffix = ''): Promise<void> {
@@ -36,6 +40,7 @@ const STORIES = [
   'Sparkline/Default',
   'RunStrip/Default',
   'AreaChart/Default',
+  'StackedAreaChart/Normalized',
 ]
 
 test.describe('light theme', () => {
@@ -50,7 +55,7 @@ test.describe('light theme', () => {
 test.describe('dark theme', () => {
   test.use({ colorScheme: 'dark' })
 
-  for (const story of ['Button/Primary', 'Card/Default', 'Table/Runs', 'AreaChart/Default']) {
+  for (const story of ['Button/Primary', 'Card/Default', 'Table/Runs', 'AreaChart/Default', 'StackedAreaChart/Normalized']) {
     test(story, async ({ page, mount }) => {
       await shoot(mount, story, '-dark')
       await expect(page.locator('html')).toContainClass('dark')

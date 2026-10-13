@@ -1,3 +1,4 @@
+import type { Counts } from '@kinora/core'
 import { randomUUID } from 'node:crypto'
 import { makeTestKey, STORY_ANNOTATION } from '@kinora/core'
 import { eq } from 'drizzle-orm'
@@ -81,6 +82,103 @@ describe('dashboard scoping', () => {
     await expect((await caller(b)).dashboard.compareRuns({ projectId: 'web-app', baseRunId: base.runId, headRunId: head.runId }))
       .rejects
       .toThrow()
+  })
+})
+
+describe('dashboard analytics', () => {
+  const DAY = 86_400_000
+  const day = (d: Date) => d.toISOString().slice(0, 10)
+
+  // An ingest creates the project; the extra runs are inserted directly to backdate them.
+  async function seed(runs: { daysAgo: number, counts: Partial<Counts>, branch?: string }[]) {
+    const a = await createUser('a@test.dev')
+    await ingest(await createApiKey(a.id), runPayload('web-app', '@smoke', 'expected'))
+    const p = await db.query.project.findFirst({ where: eq(project.slug, 'web-app') })
+    const now = Date.now()
+    if (!runs.length)
+      return { a, now }
+    await db.insert(run).values(runs.map(r => ({
+      id: randomUUID(),
+      projectId: p!.id,
+      startedAt: new Date(now - r.daysAgo * DAY),
+      duration: 0,
+      counts: { total: 0, expected: 0, unexpected: 0, flaky: 0, skipped: 0, ...r.counts },
+      git: r.branch ? { branch: r.branch } : undefined,
+    })))
+    return { a, now }
+  }
+
+  it('sums run outcomes per day over the range, oldest first', async () => {
+    const { a, now } = await seed([
+      { daysAgo: 3, counts: { expected: 8, flaky: 1, unexpected: 1 } },
+      { daysAgo: 3, counts: { expected: 9, skipped: 1 } },
+      { daysAgo: 45, counts: { expected: 5 } },
+    ])
+
+    const res = await (await caller(a)).dashboard.analytics({ projectId: 'web-app' })
+    expect(res).toMatchObject({ days: 30, bucket: 'day' })
+    expect(res.outcomes).toEqual([
+      { date: day(new Date(now - 3 * DAY)), runs: 2, expected: 17, flaky: 1, unexpected: 1, skipped: 1 },
+      { date: day(new Date(now)), runs: 1, expected: 1, flaky: 0, unexpected: 0, skipped: 0 },
+    ])
+  })
+
+  it('reads the 90 day range per week', async () => {
+    const { a } = await seed([{ daysAgo: 45, counts: { unexpected: 2 } }, { daysAgo: 120, counts: { unexpected: 7 } }])
+
+    const res = await (await caller(a)).dashboard.analytics({ projectId: 'web-app', days: 90 })
+    expect(res.bucket).toBe('week')
+    expect(res.outcomes.reduce((n, b) => n + b.unexpected, 0)).toBe(2)
+    expect(res.outcomes.reduce((n, b) => n + b.runs, 0)).toBe(2)
+  })
+
+  it('filters by branch and lists the branches of the range', async () => {
+    const { a } = await seed([
+      { daysAgo: 1, counts: { expected: 3 }, branch: 'main' },
+      { daysAgo: 2, counts: { unexpected: 4 }, branch: 'feat/x' },
+      { daysAgo: 60, counts: { expected: 1 }, branch: 'old' },
+    ])
+    const analytics = (await caller(a)).dashboard.analytics
+
+    expect((await analytics({ projectId: 'web-app' })).branches).toEqual(['feat/x', 'main'])
+    const main = await analytics({ projectId: 'web-app', branch: 'main' })
+    expect(main.outcomes).toHaveLength(1)
+    expect(main.outcomes[0]).toMatchObject({ runs: 1, expected: 3, unexpected: 0 })
+  })
+
+  it('buckets runs by day in the viewer time zone', async () => {
+    const { a } = await seed([])
+    const p = await db.query.project.findFirst({ where: eq(project.slug, 'web-app') })
+    // 23:30 UTC two days ago is already the next day in Paris (UTC+1 or +2).
+    const late = new Date(Date.now() - 2 * DAY)
+    late.setUTCHours(23, 30, 0, 0)
+    await db.insert(run).values({
+      id: randomUUID(),
+      projectId: p!.id,
+      startedAt: late,
+      duration: 0,
+      counts: { total: 1, expected: 0, unexpected: 1, flaky: 0, skipped: 0 },
+    })
+    const analytics = (await caller(a)).dashboard.analytics
+    const failedOn = async (timeZone: string) => (await analytics({ projectId: 'web-app', timeZone })).outcomes.find(b => b.unexpected)?.date
+
+    expect(await failedOn('UTC')).toBe(day(late))
+    expect(await failedOn('Europe/Paris')).toBe(day(new Date(late.getTime() + DAY)))
+  })
+
+  it('rejects a time zone that is not an IANA name', async () => {
+    const { a } = await seed([])
+    const analytics = (await caller(a)).dashboard.analytics
+
+    await expect(analytics({ projectId: 'web-app', timeZone: 'UTC\'; drop table run; --' })).rejects.toThrow()
+    await expect(analytics({ projectId: 'web-app', timeZone: 'Mars/Olympus' })).rejects.toThrow()
+  })
+
+  it('rejects analytics on a project owned by another user', async () => {
+    await seed([])
+    const b = await createUser('b@test.dev')
+
+    await expect((await caller(b)).dashboard.analytics({ projectId: 'web-app' })).rejects.toThrow()
   })
 })
 

@@ -5,6 +5,7 @@ import { computed } from 'vue'
 // feature, and for everyone after the given day: drop the entry and its call sites then.
 const NEW_UNTIL = {
   components: '2026-11-11',
+  analytics: '2026-12-15',
 } as const
 
 export function useNewFeature(feature: keyof typeof NEW_UNTIL) {

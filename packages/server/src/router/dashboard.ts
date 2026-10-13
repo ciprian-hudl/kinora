@@ -1,4 +1,5 @@
 import type { Manifest, ProjectEntry, ProjectHistory, RunComparison, RunReport } from '@kinora/core'
+import type { ProjectAnalytics } from '../reports/analytics'
 import { randomUUID } from 'node:crypto'
 import { compareRuns, SCHEMA_VERSION } from '@kinora/core'
 import { TRPCError } from '@trpc/server'
@@ -6,6 +7,7 @@ import { and, desc, eq, gt, isNull, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '../db'
 import { project, run, test, testQuarantine } from '../db/schemas/index'
+import { ANALYTICS_RANGES, isTimeZone, loadProjectAnalytics } from '../reports/analytics'
 import { findProject, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries, loadTestAttachments, MAX_DASHBOARD_RUNS, searchTests, toNormTest } from '../reports/queries'
 import { orgProcedure, router } from '../trpc/index'
 
@@ -59,6 +61,19 @@ export const dashboardRouter = router({
     .query(async ({ ctx, input }): Promise<ProjectHistory> => {
       const p = await ownedProject(ctx.organizationId, input.projectId)
       return loadProjectHistory(p)
+    }),
+
+  analytics: orgProcedure
+    .input(z.object({
+      projectId: z.string().min(1),
+      days: z.literal(ANALYTICS_RANGES).default(30),
+      branch: z.string().min(1).max(255).optional(),
+      timeZone: z.string().max(64).refine(isTimeZone, 'Invalid time zone').default('UTC'),
+    }))
+    .query(async ({ ctx, input }): Promise<ProjectAnalytics & { project: { id: string, name: string } }> => {
+      const p = await ownedProject(ctx.organizationId, input.projectId)
+      const analytics = await loadProjectAnalytics(p.id, input.days, input.branch, input.timeZone)
+      return { ...analytics, project: { id: p.slug, name: p.name } }
     }),
 
   // Command palette: tests across every project of the workspace. An unknown `projectId` only

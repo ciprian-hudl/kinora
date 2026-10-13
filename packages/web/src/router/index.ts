@@ -55,6 +55,12 @@ export const router = createRouter({
       props: true,
     },
     {
+      path: '/projects/:projectId/analytics',
+      name: 'analytics',
+      component: () => import('@/pages/AnalyticsPage.vue'),
+      props: true,
+    },
+    {
       path: '/projects/:projectId/components',
       name: 'components',
       component: () => import('@/pages/ComponentsPage.vue'),

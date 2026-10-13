@@ -1,5 +1,6 @@
+import type { MaybeRefOrGetter } from 'vue'
 import { useAsyncState } from '@vueuse/core'
-import { computed } from 'vue'
+import { computed, toValue, watch } from 'vue'
 import { reportQueryError } from '@/lib/errors'
 import { trpc } from '@/lib/trpc'
 
@@ -36,6 +37,19 @@ export function useProjectHistory(projectId: string) {
     { project: null, histories: [], clusters: [] },
     QUERY_OPTIONS,
   )
+}
+
+// Refetches when the range or branch changes. `branch` undefined = every branch. Buckets follow
+// the browser's time zone, so a day on the chart is the viewer's day.
+export function useProjectAnalytics(projectId: string, days: MaybeRefOrGetter<30 | 90>, branch: MaybeRefOrGetter<string | undefined>) {
+  const timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone
+  const query = useAsyncState(
+    () => trpc.dashboard.analytics.query({ projectId, days: toValue(days), branch: toValue(branch), timeZone }),
+    null,
+    { ...QUERY_OPTIONS, resetOnExecute: false },
+  )
+  watch(() => [toValue(days), toValue(branch)], () => void query.execute())
+  return query
 }
 
 export function useQuarantines(projectId: string) {
