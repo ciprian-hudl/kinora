@@ -26,17 +26,26 @@ test('axe scans of a real Playwright run show up with their violations', async (
     const { stdout } = await run(process.execPath, [PLAYWRIGHT_CLI, 'test', '-c', CONFIG], {
       env: { ...process.env, KINORA_URL: SERVER_URL, KINORA_TOKEN: await createApiToken(page), A11Y_PROJECT_SLUG: slug, A11Y_OUTPUT_DIR: outputDir },
     }).catch((error: { stdout: string }) => error)
-    expect(stdout).toContain('[kinora] uploaded 2 tests')
+    expect(stdout).toContain('[kinora] uploaded 4 tests')
   }
   finally {
     await rm(outputDir, { recursive: true, force: true })
   }
 
-  // Both tests broke the same rule, in one file: one hotspot, two tests with issues.
+  // Three of the four tests scanned a page with a violation, all in one file: one hotspot.
   await page.goto(`/projects/${slug}/tests?show=all`)
-  await expect(page.locator('[data-a11y]')).toHaveCount(2)
-  const hotspots = page.getByRole('region', { name: 'Accessibility hotspots' })
-  await expect(hotspots.getByRole('button', { name: /checkout\.a11y\.ts/ })).toBeVisible()
+  const rows = page.getByRole('link').filter({ hasText: 'checkout.a11y.ts' })
+  await expect(rows).toHaveCount(4)
+  await expect(page.locator('[data-a11y]')).toHaveCount(3)
+
+  // The hotspot narrows the list to the tests of its file that break a rule.
+  await page.getByRole('region', { name: 'Accessibility hotspots' }).getByRole('button', { name: /checkout\.a11y\.ts/ }).click()
+  await expect(page).toHaveURL(/a11y=true/)
+  await expect(rows).toHaveCount(3)
+  await expect(page.getByRole('link', { name: /checkout has a title/ })).toHaveCount(0)
+  // And the filter button gives the full list back.
+  await page.getByRole('button', { name: /A11y issues/ }).click()
+  await expect(page.getByRole('link', { name: /checkout has a title/ })).toBeVisible()
 
   // Scanned but not asserted: a warning on a passing test, with axe's impact and the element.
   await page.getByRole('link', { name: /checkout renders/ }).click()
@@ -52,4 +61,11 @@ test('axe scans of a real Playwright run show up with their violations', async (
   const failed = page.getByTestId('a11y-violations')
   await expect(failed).toContainText('1 violation failed the test')
   await expect(failed.getByRole('listitem')).toContainText('Critical')
+
+  // Attached by hand under another name: read all the same.
+  await page.goto(`/projects/${slug}/tests?show=all`)
+  await page.getByRole('link', { name: /product page shows the picture/ }).click()
+  const byHand = page.getByTestId('a11y-violations')
+  await expect(byHand.getByRole('link', { name: 'image-alt' })).toBeVisible()
+  await expect(byHand).toContainText('#picture')
 })
