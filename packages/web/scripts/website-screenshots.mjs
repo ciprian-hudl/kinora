@@ -31,7 +31,7 @@ await auth.close()
 // 2. Discover the dynamic URLs (test key + trace viewer URL change per reseed).
 const disc = await browser.newContext({ viewport: VIEWPORT, storageState })
 const dp = await disc.newPage()
-await dp.goto(`${WEB}/projects/checkout-api/runs/checkout-api-run-30`)
+await dp.goto(`${WEB}/projects/checkout-api/runs/checkout-api-run-90`)
 await dp.waitForLoadState('networkidle')
 // A currently-failing test -> its history page shows the red timeline + the error.
 const testHref = await dp.getByRole('link', { name: 'refunds an order' }).first().getAttribute('href')
@@ -44,7 +44,7 @@ const views = [
   { name: 'project', url: `${WEB}/projects/checkout-api` },
   { name: 'tests', url: `${WEB}/projects/checkout-api/tests` },
   { name: 'test-history', url: `${WEB}${testHref}` },
-  { name: 'compare', url: `${WEB}/projects/checkout-api/compare?base=checkout-api-run-29&head=checkout-api-run-30` },
+  { name: 'compare', url: `${WEB}/projects/checkout-api/compare?base=checkout-api-run-89&head=checkout-api-run-90` },
   { name: 'trace-viewer', url: traceHref, settle: 3000 },
   { name: 'components', url: `${WEB}/projects/design-system/components` },
 ].filter(v => !process.env.VIEWS || process.env.VIEWS.split(',').includes(v.name))

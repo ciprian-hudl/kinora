@@ -21,7 +21,10 @@ const EMAIL = 'market@kinora.dev'
 const PASSWORD = DEMO_PASSWORD
 const NAME = 'Kinora'
 
+// The newest RUNS runs carry the scripted story (statuses, traces, screenshots) the dashboard
+// pages read. HISTORY older runs, one a day before them, only fill the 90-day analytics range.
 const RUNS = 30
+const HISTORY = 60
 const DAY = 86_400_000
 const LATEST = RUNS - 1
 
@@ -43,10 +46,12 @@ type Profile
     | 'degrading' | 'outage' | 'recovering' | 'intermittent' | 'chronicFail'
     | 'newlyFlaky' | 'newlyBroken' | 'newlyFailing' | 'fixed' | 'fixmeSkip' | 'recurringFail'
 
-// Status sequence per profile across run ordinals (0 = oldest, LATEST = newest).
+// Status sequence per profile across the story run ordinals (0 = oldest story run, LATEST = newest).
 // Events are spread across the timeline (not just the tail) so per-run pass rates
 // vary -> moving trend lines + multi-colored sparklines. recent window = 25..29.
 function statusAt(profile: Profile, i: number): Status {
+  if (i < 0)
+    return historyAt(profile, i)
   switch (profile) {
     case 'solid':
       return 'expected'
@@ -72,7 +77,7 @@ function statusAt(profile: Profile, i: number): Status {
       return i === LATEST ? 'flaky' : 'expected'
     case 'newlyBroken':
       return i >= LATEST - 1 ? 'unexpected' : 'expected'
-    // Compare(run-29 -> run-30) story: pass->fail (newly failing) and fail->pass (fixed).
+    // Compare(run-89 -> run-90) story: pass->fail (newly failing) and fail->pass (fixed).
     case 'newlyFailing':
       return i === LATEST ? 'unexpected' : 'expected'
     case 'fixed':
@@ -81,6 +86,29 @@ function statusAt(profile: Profile, i: number): Status {
       return [22, 25, 28].includes(i) ? 'unexpected' : 'expected'
     case 'fixmeSkip':
       return 'skipped'
+  }
+}
+
+// Status of the older history runs (i < 0). The newly-* signals compare the recent window with
+// everything before it, so those tests stay clean here; `recovering` is rough the whole time
+// before its scripted recovery (an upward 90-day trend); the noisy profiles replay their pattern.
+function historyAt(profile: Profile, i: number): Status {
+  switch (profile) {
+    case 'recovering':
+      return i % 2 === 0 ? 'unexpected' : 'flaky'
+    case 'recurringFail': // never flaky
+      return i % 11 === 0 ? 'unexpected' : 'expected'
+    case 'mostlyGreen':
+    case 'flakyHistory':
+    case 'chronicFlaky':
+    case 'flakyCluster':
+    case 'intermittent':
+    case 'chronicFail':
+      return statusAt(profile, ((i % RUNS) + RUNS) % RUNS)
+    case 'fixmeSkip':
+      return 'skipped'
+    default:
+      return 'expected'
   }
 }
 
@@ -307,12 +335,14 @@ async function main(): Promise<void> {
     const projectId = randomUUID()
     await db.insert(project).values({ id: projectId, organizationId: orgId, slug: pdef.slug, name: pdef.name })
 
-    for (let i = 0; i < RUNS; i++) {
+    // k: chronological run index; i: ordinal in the scripted story, negative for history runs.
+    for (let k = 0; k < HISTORY + RUNS; k++) {
+      const i = k - HISTORY
       const startedAt = new Date(Date.now() - (LATEST - i) * DAY - jitter(6 * 3_600_000))
       const made = pdef.tests.map((d, idx) => makeTest(traces, pdef, d, i, 12 + idx * 9))
       const tests = made.map(m => m.test)
       // Readable run id: it's the run-page heading (the run table has no name column).
-      const runId = `${pdef.slug}-run-${i + 1}`
+      const runId = `${pdef.slug}-run-${k + 1}`
 
       await db.insert(run).values({
         id: runId,
@@ -322,14 +352,17 @@ async function main(): Promise<void> {
         counts: countsOf(tests),
         countsByTag: countsByTagFrom(tests),
         playwrightVersion: '1.60.0',
-        git: { sha: Math.floor(rng() * 0xFFFFFFF).toString(16).padStart(7, '0'), branch: i % 4 === 1 ? 'develop' : 'main' },
-        ci: { provider: 'github', runNumber: String(100 + i) },
+        git: { sha: Math.floor(rng() * 0xFFFFFFF).toString(16).padStart(7, '0'), branch: k % 4 === 1 ? 'develop' : 'main' },
+        ci: { provider: 'github', runNumber: String(100 + k) },
       })
 
       const traced: { id: string, storageKey: string, buf: Buffer }[] = []
       const shots: { id: string, name: string, storageKey: string, buf: Buffer }[] = []
-      const testRows = made.map(({ test: t, trace }) => {
+      const testRows = made.map(({ test: t, trace: found }) => {
         const id = randomUUID()
+        // History runs keep the error message but upload no trace or image: nobody opens them,
+        // and the daily demo reset would store three times the blobs.
+        const trace = i >= 0 ? found : undefined
         const hasTrace = !!trace
         if (trace)
           traced.push({ id, storageKey: `${projectId}/${runId}/${randomUUID()}-trace.zip`, buf: trace.buf })
@@ -392,7 +425,7 @@ async function main(): Promise<void> {
         })))
       }
     }
-    logger.info(`seeded market project ${pdef.slug} (${RUNS} runs)`)
+    logger.info(`seeded market project ${pdef.slug} (${HISTORY + RUNS} runs)`)
   }
 
   logger.info('-'.repeat(40))
