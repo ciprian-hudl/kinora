@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { DEMO, login } from './helpers'
+import { DEMO, login, scanPage } from './helpers'
 
 test('redirects guests to login', async ({ page }) => {
   await page.goto('/')
@@ -12,6 +12,7 @@ test('login page offers social and email sign-in', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Continue with Google/i })).toBeVisible()
   await expect(page.locator('input[type="email"]')).toBeVisible()
   await expect(page.locator('input[type="password"]')).toBeVisible()
+  await scanPage(page)
 })
 
 test('rejects invalid credentials', async ({ page }) => {

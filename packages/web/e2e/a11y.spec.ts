@@ -1,7 +1,7 @@
 import type { NormTest } from '@kinora/core'
 import { makeTestKey, STORY_ANNOTATION } from '@kinora/core'
 import { expect, test } from '@playwright/test'
-import { createApiToken, login, postRun, runOf } from './helpers'
+import { createApiToken, login, postRun, runOf, scanPage } from './helpers'
 
 // Story tests carrying the a11y check of Storybook's addon, as @kinora/vitest-reporter uploads them.
 function storyTest(story: string, a11y: NormTest['a11y']): NormTest {
@@ -66,4 +66,5 @@ test('a11y checks show on the components, test and run pages', async ({ page }) 
   await page.goto(`/projects/${slug}`)
   await page.getByRole('row').nth(1).click()
   await expect(page.getByTestId('a11y-violations')).toHaveCount(1)
+  await scanPage(page)
 })

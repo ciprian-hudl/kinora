@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { findTwoRuns, login } from './helpers'
+import { findTwoRuns, login, scanPage } from './helpers'
 
 test.beforeEach(async ({ page }) => {
   await login(page)
@@ -12,6 +12,7 @@ test('sorting the run table resets the page and keeps the order in the URL', asy
   const health = page.getByRole('columnheader').getByRole('button', { name: 'Health' })
   await health.click()
   await expect(page).toHaveURL(/[?&]sort=health(&|$)/)
+  await scanPage(page)
   await expect(page).not.toHaveURL(/[?&]page=/)
   await expect(page).not.toHaveURL(/[?&]dir=/)
 

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { createApiToken, login, postRun, runOf, testOf } from './helpers'
+import { createApiToken, login, postRun, runOf, scanPage, testOf } from './helpers'
 
 const DAY = 86_400_000
 
@@ -25,6 +25,7 @@ test('analytics shows the outcomes of the range and filters by branch', async ({
   await expect(stat('Failed')).toContainText('11.1%')
   await expect(page.locator('[data-slot="chart"] path[class$="-area"]')).toHaveCount(3)
   await expect(page.getByText('per day')).toBeVisible()
+  await scanPage(page)
 
   await page.getByRole('radio', { name: '90 days' }).click()
   await expect(page).toHaveURL(/range=90/)

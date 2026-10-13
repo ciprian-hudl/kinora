@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { createApiToken, login, postRun, runOf, testOf } from './helpers'
+import { createApiToken, login, postRun, runOf, scanPage, testOf } from './helpers'
 
 const DAY = 86_400_000
 const REPO = 'https://github.com/acme/shop'
@@ -31,6 +31,7 @@ test('a test that passed and failed on one commit is flaky, one failing since a 
   const flaky = page.getByTestId('test-health')
   await expect(flaky).toContainText('Passed and failed on the same commit b2b2b2b.')
   await expect(flaky.getByRole('link', { name: 'b2b2b2b' })).toHaveAttribute('href', `${REPO}/commit/b2b2b2b2b2`)
+  await scanPage(page)
 
   // A "New failure" badge stands in for Broken on the list; the test page names the commit.
   await page.goto(`/projects/${slug}/tests`)

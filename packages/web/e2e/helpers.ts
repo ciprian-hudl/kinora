@@ -5,6 +5,7 @@ import type { inferRouterOutputs } from '@trpc/server'
 import process from 'node:process'
 import { makeTestKey } from '@kinora/core'
 import { expect } from '@playwright/test'
+import { scanA11y } from '../../reporter/src/a11y'
 
 type Outputs = inferRouterOutputs<AppRouter>
 type Me = NonNullable<Outputs['user']['me']>
@@ -76,6 +77,13 @@ export async function createApiToken(page: Page): Promise<string> {
   if (!key)
     throw new Error(`token.create failed: ${JSON.stringify(json)}`)
   return key
+}
+
+// Scan the page with axe and attach the result, without asserting: the nightly uploads this suite
+// to kinora, where the violations show as warnings and feed the project's accessibility hotspots.
+// Called from existing tests, on the main pages of the dashboard.
+export async function scanPage(page: Page): Promise<void> {
+  await scanA11y(page)
 }
 
 // Upload a run through the public ingest API, as a reporter would, so a test sets up exactly the

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { login, openStory } from './helpers'
+import { login, openStory, scanPage } from './helpers'
 
 test.beforeEach(async ({ page }) => {
   await login(page)
@@ -21,6 +21,7 @@ test('components page groups seeded stories by component', async ({ page }) => {
   await expect(dialog.getByRole('button', { name: 'Default, 2 tests' })).toBeVisible()
   await openStory(dialog, 'Default')
   await expect(dialog.getByRole('link', { name: /closes on escape/ })).toBeVisible()
+  await scanPage(page)
   await dialog.getByRole('link', { name: /traps focus/ }).click()
   await expect(page).toHaveURL(/\/projects\/design-system\/test\?key=/)
 })

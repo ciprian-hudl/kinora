@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { login } from './helpers'
+import { login, scanPage } from './helpers'
 
 test.beforeEach(async ({ page }) => {
   await login(page)
@@ -9,6 +9,7 @@ test('lists the seeded projects', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Web App' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'API Gateway' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Marketing Site' })).toBeVisible()
+  await scanPage(page)
 })
 
 test('filters the overview by tag', async ({ page }) => {

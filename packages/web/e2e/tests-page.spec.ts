@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { findFailingRun, findTwoRuns, login } from './helpers'
+import { findFailingRun, findTwoRuns, login, scanPage } from './helpers'
 
 test.beforeEach(async ({ page }) => {
   await login(page)
@@ -12,6 +12,7 @@ test('tests page surfaces windowed flakiness stats', async ({ page }) => {
   await expect(page.getByText('New flakiness').first()).toBeVisible()
   await expect(page.getByText('New failures').first()).toBeVisible()
   await expect(page.getByText(/over the last \d+ runs/).first()).toBeVisible()
+  await scanPage(page)
 })
 
 test('tests page filters flaky and broken tests', async ({ page }) => {
