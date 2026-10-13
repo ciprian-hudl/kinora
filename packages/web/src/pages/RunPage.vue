@@ -24,7 +24,7 @@ import { useQuarantine } from '@/composables/useQuarantine'
 import { formatDateTimeLong } from '@/lib/format'
 import { testLabel } from '@/lib/test-display'
 import { isTraceAttachment, traceViewerHref } from '@/lib/trace'
-import { httpsUrl } from '@/lib/url'
+import { commitUrl, httpsUrl } from '@/lib/url'
 
 const props = defineProps<{ projectId: string, runId: string }>()
 
@@ -57,18 +57,7 @@ const previousRunId = computed(() => {
   return idx >= 0 && idx + 1 < sorted.length ? sorted[idx + 1].runId : undefined
 })
 
-// Link a sha to its commit. github/gitlab use /commit/, bitbucket /commits/.
-// repoUrl is only trusted as an href if it's https; a bad value yields no link (guards stored XSS).
-const commitHref = computed(() => {
-  const g = report.value?.meta.git
-  const url = httpsUrl(g?.repoUrl)
-  if (!url || !g?.sha)
-    return undefined
-  const base = url.replace(/\/$/, '')
-
-  const seg = new URL(url).hostname === 'bitbucket.org' ? 'commits' : 'commit'
-  return `${base}/${seg}/${g.sha}`
-})
+const commitHref = computed(() => commitUrl(report.value?.meta.git))
 const ciRunHref = computed(() => httpsUrl(report.value?.meta.ci?.runUrl))
 
 async function copyLink() {

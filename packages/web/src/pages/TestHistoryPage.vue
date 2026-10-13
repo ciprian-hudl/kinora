@@ -20,6 +20,7 @@ import { useDemo, useProjectHistory } from '@/composables/queries'
 import { useQuarantine } from '@/composables/useQuarantine'
 import { formatDateTimeLong } from '@/lib/format'
 import { testLabel } from '@/lib/test-display'
+import { commitUrl } from '@/lib/url'
 
 const props = defineProps<{ projectId: string }>()
 const route = useRoute()
@@ -44,6 +45,23 @@ const history = computed(() => state.value.histories.find(h => h.testKey === tes
 const quarantine = computed(() => quarantineByKey.value.get(testKey.value))
 const recent = computed(() => windowStats(history.value?.points ?? []))
 const health = computed(() => diagnose(history.value?.points ?? []))
+// The commit the diagnosis names (where the breakage started, or the one that both passed and
+// failed), and the sentence split around its short sha so the sha can link to the commit.
+const healthSha = computed(() => {
+  const h = health.value
+  return h.kind === 'broken' ? h.since.sha : h.kind === 'flaky' && h.reason.type === 'same-commit' ? h.reason.sha : undefined
+})
+const healthCommitHref = computed(() => {
+  const sha = healthSha.value
+  const run = sha ? state.value.project?.runs.find(r => r.git?.sha === sha && r.git.repoUrl) : undefined
+  return commitUrl(run?.git)
+})
+const healthText = computed(() => {
+  const text = describeHealth(health.value)
+  const short = healthSha.value?.slice(0, 7)
+  const at = short ? text.indexOf(short) : -1
+  return at < 0 ? { before: text, sha: '', after: '' } : { before: text.slice(0, at), sha: short!, after: text.slice(at + short!.length) }
+})
 
 // Clusters this test shares with at least one other test: "the same error hits N others".
 const relatedClusters = computed(() =>
@@ -175,7 +193,15 @@ function toggleQuarantine() {
           </div>
           <div v-if="health.kind !== 'stable'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" data-testid="test-health">
             <TestHealthBadge :health="health" />
-            <span class="text-muted-foreground">{{ describeHealth(health) }}</span>
+            <span class="text-muted-foreground">
+              {{ healthText.before }}<a
+                v-if="healthText.sha && healthCommitHref"
+                :href="healthCommitHref"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="font-mono text-signal hover:underline"
+              >{{ healthText.sha }}</a><span v-else-if="healthText.sha" class="font-mono">{{ healthText.sha }}</span>{{ healthText.after }}
+            </span>
             <template v-if="health.kind === 'broken'">
               <RouterLink
                 :to="{ name: 'run', params: { projectId, runId: health.since.runId } }"
