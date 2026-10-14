@@ -48,11 +48,15 @@ Keep this list short; every entry is a re-sync cost.
    the full upstream `@protocol/channels` (which pulls the whole protocol).
 2. `src/core/trace/*` - local type re-export shims for existing kinora imports.
 
-The vendored files themselves are unedited. `@zip.js/zip.js` is pinned to the
-exact version Playwright ships (`2.7.29`): newer 2.8.x dropped the
-`lib/zip-no-worker-inflate.js` subpath the service worker imports and split the
-`Entry` type, both of which would force edits to vendored files. Pinning keeps
-them pristine.
+The vendored files themselves are unedited. `@zip.js/zip.js` is pinned to
+`2.7.29`: later 2.7.x split the `Entry` type into `FileEntry | DirectoryEntry`
+(only files have `getData`), and 2.8+ also dropped the
+`lib/zip-no-worker-inflate.js` subpath the service worker imports. Both would
+force edits to vendored files, so the pin keeps them pristine. Renovate leaves it
+alone (`renovate.json`). Upstream Playwright pins a newer zip.js (`2.7.73` as of
+`v1.64.0`) that already has the split type, so following it would not help. If a Playwright sync starts using a zip.js
+API that 2.7.29 lacks, the trace viewer typecheck and build in the Playwright
+Update workflow fail and it opens an issue.
 
 ## Browser harness
 

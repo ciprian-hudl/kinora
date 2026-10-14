@@ -26,6 +26,11 @@
       "enabled": false
     },
     {
+      "description": "@zip.js/zip.js stays pinned at 2.7.29 for the vendored trace viewer service worker: later versions split the Entry type and 2.8+ dropped the lib/zip-no-worker-inflate.js subpath it imports, both of which would force edits to vendored files (see packages/trace-viewer/README.md)",
+      "matchPackageNames": ["@zip.js/zip.js"],
+      "enabled": false
+    },
+    {
       "description": "The Vitest reporter contract test runs on the oldest Vitest the reporter supports (its vitest peer range). Patches only; raise the floor deliberately, together with that peer range",
       "matchFileNames": ["packages/vitest-contract/package.json"],
       "matchPackageNames": ["vitest", "@vitest/**"],
