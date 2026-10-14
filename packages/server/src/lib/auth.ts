@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { apiKey } from '@better-auth/api-key'
+import { createCustomers, deleteExternalCustomers } from '@polar-sh/sdk/2026-10/services/customers'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin, bearer, deviceAuthorization, lastLoginMethod, organization } from 'better-auth/plugins'
@@ -55,7 +56,7 @@ export const auth = betterAuth({
         await purgeUserOwnedData(u.id)
         if (polarClient) {
           try {
-            await polarClient.customers.deleteExternal({ externalId: u.id })
+            await deleteExternalCustomers(polarClient)(u.id)
           }
           catch (error) {
             logger.warn({ error, userId: u.id }, 'polar customer deletion skipped')
@@ -96,7 +97,7 @@ export const auth = betterAuth({
 
           if (polarClient) {
             try {
-              await polarClient.customers.create({ email: createdUser.email, name: createdUser.name, externalId: createdUser.id })
+              await createCustomers(polarClient)({ email: createdUser.email, name: createdUser.name, external_id: createdUser.id })
             }
             catch (error) {
               logger.warn({ error, userId: createdUser.id }, 'polar customer creation skipped')

@@ -114,15 +114,15 @@ describe('pickResultsMeter', () => {
 
   it('reads the meter fed by the test_results event', () => {
     const items = [
-      { consumedUnits: 5, creditedUnits: 0, meter: { filter: filter('other_event') } },
-      { consumedUnits: 27_997, creditedUnits: 50_000, meter: { filter: filter('test_results') } },
+      { consumed_units: 5, credited_units: 0, meter: { filter: filter('other_event') } },
+      { consumed_units: 27_997, credited_units: 50_000, meter: { filter: filter('test_results') } },
     ]
     expect(pickResultsMeter(items)).toEqual({ consumed: 27_997, credited: 50_000 })
   })
 
   it('returns null when the customer has no such meter', () => {
     expect(pickResultsMeter([])).toBeNull()
-    expect(pickResultsMeter([{ consumedUnits: 5, creditedUnits: 0, meter: { filter: filter('other_event') } }])).toBeNull()
+    expect(pickResultsMeter([{ consumed_units: 5, credited_units: 0, meter: { filter: filter('other_event') } }])).toBeNull()
   })
 })
 

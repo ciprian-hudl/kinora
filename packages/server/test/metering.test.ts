@@ -5,8 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Tests run self-host, so re-import the graph with the stub in place.
 vi.mock('../src/billing/polar', async importOriginal => ({
   ...(await importOriginal<typeof import('../src/billing/polar')>()),
-  polarClient: { customers: { create: async () => ({}) } },
+  polarClient: {},
   meterTestResults: vi.fn(),
+}))
+vi.mock('@polar-sh/sdk/2026-10/services/customers', () => ({
+  createCustomers: () => async () => ({}),
+  deleteExternalCustomers: () => async () => {},
 }))
 vi.resetModules()
 

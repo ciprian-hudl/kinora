@@ -1,14 +1,17 @@
 import { checkout, polar, portal, usage, webhooks } from '@polar-sh/better-auth'
-import { Polar } from '@polar-sh/sdk'
+import { createPolarCore } from '@polar-sh/sdk/2026-10'
+import { listCustomerMeters } from '@polar-sh/sdk/2026-10/services/customer_meters'
+import { ingestEvents } from '@polar-sh/sdk/2026-10/services/events'
+import { getProducts } from '@polar-sh/sdk/2026-10/services/products'
 import * as Sentry from '@sentry/node'
 import { cloud, env } from '../lib/env'
 import { logger } from '../lib/logger'
 import { syncCustomerState } from './entitlements'
 
 export const polarClient = cloud
-  ? new Polar({
+  ? createPolarCore({
       accessToken: cloud.accessToken,
-      server: env.NODE_ENV === 'production' ? 'production' : 'sandbox',
+      environment: env.NODE_ENV === 'production' ? 'production' : 'sandbox',
     })
   : null
 
@@ -16,9 +19,7 @@ const TEST_RESULTS_EVENT = 'test_results'
 const INGEST_MAX_RETRIES = 3
 
 function retryAfterMs(error: unknown, attempt: number): number {
-  const headers = (error as { headers?: unknown }).headers
-  const raw = headers instanceof Headers ? headers.get('retry-after') : (headers as Record<string, string> | undefined)?.['retry-after']
-  const seconds = Number(raw)
+  const seconds = Number((error as { retryAfter?: number | null }).retryAfter)
   return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, 4000) : 2 ** attempt * 500
 }
 
@@ -31,7 +32,7 @@ export async function meterTestResults(externalCustomerId: string, results: numb
     return
   for (let attempt = 0; ; attempt++) {
     try {
-      await polarClient.events.ingest({ events: [{ name: TEST_RESULTS_EVENT, externalId: eventId, externalCustomerId, metadata: { results } }] })
+      await ingestEvents(polarClient)({ events: [{ name: TEST_RESULTS_EVENT, external_id: eventId, external_customer_id: externalCustomerId, metadata: { results } }] })
       return
     }
     catch (error) {
@@ -48,8 +49,8 @@ export interface MeteredUsage {
 }
 
 interface CustomerMeterLike {
-  consumedUnits: number
-  creditedUnits: number
+  consumed_units: number
+  credited_units: number
   meter: { filter: unknown }
 }
 
@@ -57,7 +58,7 @@ interface CustomerMeterLike {
 // meter id so no extra env var has to stay in sync with the Polar dashboard.
 export function pickResultsMeter(items: CustomerMeterLike[]): MeteredUsage | null {
   const item = items.find(i => JSON.stringify(i.meter.filter).includes(`"${TEST_RESULTS_EVENT}"`))
-  return item ? { consumed: Math.round(item.consumedUnits), credited: Math.round(item.creditedUnits) } : null
+  return item ? { consumed: Math.round(item.consumed_units), credited: Math.round(item.credited_units) } : null
 }
 
 // Usage as Polar bills it: summed over the subscription's billing cycle, not the calendar month.
@@ -66,8 +67,8 @@ export async function meteredResults(externalCustomerId: string): Promise<Metere
   if (!polarClient)
     return null
   try {
-    const page = await polarClient.customerMeters.list({ externalCustomerId, limit: 100 })
-    return pickResultsMeter(page.result.items)
+    const page = await listCustomerMeters(polarClient)({ external_customer_id: externalCustomerId, limit: 100 })
+    return pickResultsMeter(page.items)
   }
   catch (error) {
     logger.error({ error, externalCustomerId }, 'polar customer meter read failed')
@@ -109,14 +110,14 @@ async function productPricing(productId: string): Promise<ProductPricing | null>
   if (hit && Date.now() - hit.at < PRICE_TTL_MS)
     return hit.pricing
   try {
-    const product = await polarClient.products.get({ id: productId })
-    const live = product.prices.filter(p => !p.isArchived)
-    const metered = live.find(p => 'amountType' in p && p.amountType === 'metered_unit')
-    const fixed = live.find(p => 'amountType' in p && p.amountType === 'fixed')
+    const product = await getProducts(polarClient)(productId)
+    const live = product.prices.filter(p => !p.is_archived)
+    const metered = live.find(p => 'amount_type' in p && p.amount_type === 'metered_unit')
+    const fixed = live.find(p => 'amount_type' in p && p.amount_type === 'fixed')
     const pricing: ProductPricing = {
-      fixedAmount: fixed && 'priceAmount' in fixed ? fixed.priceAmount : null,
-      overage: metered && 'unitAmount' in metered
-        ? { unitAmount: Number(metered.unitAmount), capAmount: metered.capAmount, currency: metered.priceCurrency }
+      fixedAmount: fixed && 'price_amount' in fixed ? fixed.price_amount : null,
+      overage: metered && 'unit_amount' in metered
+        ? { unitAmount: Number(metered.unit_amount), capAmount: metered.cap_amount, currency: metered.price_currency }
         : null,
     }
     pricingCache.set(productId, { at: Date.now(), pricing })
@@ -163,14 +164,14 @@ export function polarAuthPlugin() {
         secret: cloud.webhookSecret,
         onCustomerStateChanged: async ({ data, timestamp }) => {
           await syncCustomerState({
-            userId: data.externalId,
+            userId: data.external_id,
             polarCustomerId: data.id,
-            eventAt: timestamp,
-            subscriptions: data.activeSubscriptions.map(s => ({
-              productId: s.productId,
+            eventAt: new Date(timestamp),
+            subscriptions: data.active_subscriptions.map(s => ({
+              productId: s.product_id,
               status: s.status,
-              currentPeriodEnd: s.currentPeriodEnd,
-              cancelAtPeriodEnd: s.cancelAtPeriodEnd,
+              currentPeriodEnd: new Date(s.current_period_end),
+              cancelAtPeriodEnd: s.cancel_at_period_end,
             })),
           })
         },
