@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ProjectEntry } from '@kinora/core'
 import type { ColorMode } from '@kinora/ui/theme'
-import type { SessionUser } from '../../src/bridge'
+import type { SessionUser } from '../../../src/bridge'
 import { Avatar, AvatarFallback, AvatarImage } from '@kinora/ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@kinora/ui/dropdown-menu'
 import { SegmentedControl } from '@kinora/ui/segmented-control'
