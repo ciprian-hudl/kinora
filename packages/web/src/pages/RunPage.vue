@@ -8,12 +8,13 @@ import { StatBlock } from '@kinora/ui/stat-block'
 import { Tabs, TabsList, TabsTrigger } from '@kinora/ui/tabs'
 import { ArrowLeft, ExternalLink, Film, GitBranch, GitCommitHorizontal, GitCompareArrows, Link2, Paperclip } from '@lucide/vue'
 import { useRouteQuery } from '@vueuse/router'
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
 import A11yViolations from '@/components/a11y/A11yViolations.vue'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
+import ListPagination from '@/components/app/ListPagination.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
 import FilterCombobox from '@/components/FilterCombobox.vue'
 import ScreenshotDiff from '@/components/viz/ScreenshotDiff.vue'
@@ -22,6 +23,7 @@ import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
 import { useDemo, useManifest, useRun } from '@/composables/queries'
 import { usePaletteCommands } from '@/composables/useCommandPalette'
 import { useQuarantine } from '@/composables/useQuarantine'
+import { useUrlPage } from '@/composables/useUrlPage'
 import { formatDateTimeLong } from '@/lib/format'
 import { testLabel } from '@/lib/test-display'
 import { isTraceAttachment, traceViewerHref } from '@/lib/trace'
@@ -122,6 +124,13 @@ const filtered = computed(() => {
     return searchMatched.value.filter(t => isQuarantined(t.testKey))
   return searchMatched.value.filter(t => t.status === filter.value)
 })
+
+// Paged: a run can carry tens of thousands of tests, and mounting a card per test froze the page
+// (20,000 tests made ~240,000 DOM nodes). A changed filter lands on page 1.
+const PAGE_SIZE = 50
+const { pageIndex, currentPage, setPage } = useUrlPage(() => filtered.value.length, PAGE_SIZE)
+const paged = computed(() => filtered.value.slice(pageIndex.value * PAGE_SIZE, (pageIndex.value + 1) * PAGE_SIZE))
+watch([filter, selectedTag, search], () => setPage(1))
 
 type Attachment = NonNullable<typeof report.value>['tests'][number]['attachments'][number]
 type Annotation = NonNullable<typeof report.value>['tests'][number]['annotations'][number]
@@ -279,7 +288,7 @@ const BADGE_CLASS = 'inline-flex items-center gap-1 rounded border border-border
       <!-- Tests -->
       <div class="flex flex-col gap-2">
         <div
-          v-for="t in filtered"
+          v-for="t in paged"
           :key="t.testKey"
           class="rounded-lg border border-border/70 bg-card/80 px-4 py-3 transition-colors hover:border-border"
         >
@@ -383,6 +392,8 @@ const BADGE_CLASS = 'inline-flex items-center gap-1 rounded border border-border
           No tests match this filter.
         </div>
       </div>
+
+      <ListPagination :total="filtered.length" :page-size="PAGE_SIZE" :page="currentPage" noun="tests" @update:page="setPage" />
     </template>
   </div>
 </template>

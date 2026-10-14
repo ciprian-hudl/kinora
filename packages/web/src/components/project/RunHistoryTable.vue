@@ -4,14 +4,6 @@ import type { ColumnDef, SortingState } from '@tanstack/vue-table'
 import { formatDuration, formatPct, passRate, runHealth } from '@kinora/core'
 import { HealthBadge } from '@kinora/ui/health-badge'
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@kinora/ui/pagination'
-import {
   Table,
   TableBody,
   TableCell,
@@ -19,11 +11,13 @@ import {
   TableHeader,
   TableRow,
 } from '@kinora/ui/table'
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown } from '@lucide/vue'
+import { ArrowDown, ArrowUp, ChevronsUpDown } from '@lucide/vue'
 import { getCoreRowModel, getPaginationRowModel, getSortedRowModel, useVueTable } from '@tanstack/vue-table'
 import { useRouteQuery } from '@vueuse/router'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import ListPagination from '@/components/app/ListPagination.vue'
+import { useUrlPage } from '@/composables/useUrlPage'
 import { formatDateTime } from '@/lib/format'
 
 const props = defineProps<{ runs: RunSummary[], projectId: string }>()
@@ -66,17 +60,7 @@ const sorting = computed<SortingState>(() => [{
 
 const PAGE_SIZE = 25
 
-// Page lives in the URL (?page=N) like the app's other view state; null = page 1 (clean URL).
-const page = useRouteQuery<string | null>('page', null)
-const totalRuns = computed(() => props.runs.length)
-const pageCount = computed(() => Math.max(1, Math.ceil(totalRuns.value / PAGE_SIZE)))
-const pageIndex = computed(() => {
-  const n = Math.floor(Number(page.value))
-  if (!page.value || !Number.isFinite(n) || n < 1)
-    return 0
-  return Math.min(n - 1, pageCount.value - 1)
-})
-const currentPage = computed(() => pageIndex.value + 1)
+const { pageIndex, currentPage, setPage } = useUrlPage(() => props.runs.length, PAGE_SIZE)
 
 const table = useVueTable({
   get data() { return props.runs },
@@ -91,13 +75,13 @@ const table = useVueTable({
     sortQuery.value = next.id === 'run' ? null : next.id
     dirQuery.value = next.desc ? null : 'asc'
     // A new order should land on page 1, not mid-list of an unrelated ranking.
-    page.value = null
+    setPage(1)
   },
   // Always sorted: the default (run desc) has no "unsorted" state to toggle back to.
   enableSortingRemoval: false,
   onPaginationChange: (updater) => {
     const next = typeof updater === 'function' ? updater({ pageIndex: pageIndex.value, pageSize: PAGE_SIZE }) : updater
-    page.value = next.pageIndex > 0 ? String(next.pageIndex + 1) : null
+    setPage(next.pageIndex + 1)
   },
   // URL is the source of truth for the page; don't let async data arrival reset a deep-linked page.
   autoResetPageIndex: false,
@@ -168,44 +152,13 @@ function sortDir(id: string) {
       </TableBody>
     </Table>
 
-    <div
-      v-if="totalRuns > PAGE_SIZE"
-      class="flex items-center justify-between gap-4 border-t border-border/70 px-4 py-3"
-    >
-      <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-        {{ totalRuns }} runs
-      </span>
-      <Pagination
-        :total="totalRuns"
-        :items-per-page="PAGE_SIZE"
-        :page="currentPage"
-        :sibling-count="1"
-        show-edges
-        class="mx-0 w-auto font-mono"
-        @update:page="(p: number) => table.setPageIndex(p - 1)"
-      >
-        <PaginationContent v-slot="{ items }" class="gap-0.5">
-          <PaginationPrevious size="icon-sm" class="text-muted-foreground">
-            <ChevronLeft class="size-3.5" />
-          </PaginationPrevious>
-          <template v-for="(item, i) in items" :key="i">
-            <PaginationItem
-              v-if="item.type === 'page'"
-              :value="item.value"
-              :is-active="item.value === currentPage"
-              size="icon-sm"
-              class="text-xs tabular-nums"
-              :class="item.value === currentPage ? '' : 'text-muted-foreground'"
-            >
-              {{ item.value }}
-            </PaginationItem>
-            <PaginationEllipsis v-else :index="i" class="size-8 text-muted-foreground" />
-          </template>
-          <PaginationNext size="icon-sm" class="text-muted-foreground">
-            <ChevronRight class="size-3.5" />
-          </PaginationNext>
-        </PaginationContent>
-      </Pagination>
-    </div>
+    <ListPagination
+      :total="runs.length"
+      :page-size="PAGE_SIZE"
+      :page="currentPage"
+      noun="runs"
+      class="border-t border-border/70 px-4 py-3"
+      @update:page="(p: number) => table.setPageIndex(p - 1)"
+    />
   </div>
 </template>

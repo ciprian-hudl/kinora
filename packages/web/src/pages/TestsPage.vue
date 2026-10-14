@@ -3,18 +3,10 @@ import type { TestHealth, TestHistory, WindowStats } from '@kinora/core'
 import { diagnose, formatPct, HEALTH_WINDOW, RECENT_WINDOW, windowStats } from '@kinora/core'
 import { Badge } from '@kinora/ui/badge'
 import { Button } from '@kinora/ui/button'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@kinora/ui/pagination'
 import { Separator } from '@kinora/ui/separator'
 import { Skeleton } from '@kinora/ui/skeleton'
 import { StatBlock } from '@kinora/ui/stat-block'
-import { ArrowLeft, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { ArrowLeft } from '@lucide/vue'
 import { useRouteQuery } from '@vueuse/router'
 import { computed, watch } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -22,6 +14,7 @@ import A11yBadge from '@/components/a11y/A11yBadge.vue'
 import A11yHotspots from '@/components/a11y/A11yHotspots.vue'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
+import ListPagination from '@/components/app/ListPagination.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
 import FailureCausesCard from '@/components/project/FailureCausesCard.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
@@ -30,6 +23,7 @@ import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
 import { useProjectHistory } from '@/composables/queries'
 import { matchesHealth, useHealthFilter } from '@/composables/useHealthFilter'
 import { useQuarantine } from '@/composables/useQuarantine'
+import { useUrlPage } from '@/composables/useUrlPage'
 import { testLabel } from '@/lib/test-display'
 
 const props = defineProps<{ projectId: string }>()
@@ -124,22 +118,11 @@ const rows = computed(() => {
 
 const PAGE_SIZE = 25
 
-// Page lives in the URL (?page=N) like the page's other view state; null = page 1 (clean URL).
-const page = useRouteQuery<string | null>('page', null)
-const pageCount = computed(() => Math.max(1, Math.ceil(rows.value.length / PAGE_SIZE)))
-const pageIndex = computed(() => {
-  const n = Math.floor(Number(page.value))
-  if (!page.value || !Number.isFinite(n) || n < 1)
-    return 0
-  return Math.min(n - 1, pageCount.value - 1)
-})
-const currentPage = computed(() => pageIndex.value + 1)
+const { pageIndex, currentPage, setPage } = useUrlPage(() => rows.value.length, PAGE_SIZE)
 const paged = computed(() => rows.value.slice(pageIndex.value * PAGE_SIZE, pageIndex.value * PAGE_SIZE + PAGE_SIZE))
 
 // A changed filter should land on page 1, not a stale (clamped) page.
-watch([search, filter, a11yOnly], () => {
-  page.value = null
-})
+watch([search, filter, a11yOnly], () => setPage(1))
 
 const FILTERS = [
   { value: 'all', label: 'All tests', active: 'border-foreground/30 text-foreground' },
@@ -155,10 +138,6 @@ const EMPTY = {
   broken: 'No broken tests.',
   quarantined: 'No quarantined tests.',
 } as const
-
-function setPage(p: number) {
-  page.value = p > 1 ? String(p) : null
-}
 </script>
 
 <template>
@@ -316,42 +295,7 @@ function setPage(p: number) {
         </div>
       </div>
 
-      <div v-if="rows.length > PAGE_SIZE" class="flex items-center justify-between gap-4">
-        <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          {{ rows.length }} tests
-        </span>
-        <Pagination
-          :total="rows.length"
-          :items-per-page="PAGE_SIZE"
-          :page="currentPage"
-          :sibling-count="1"
-          show-edges
-          class="mx-0 w-auto font-mono"
-          @update:page="setPage"
-        >
-          <PaginationContent v-slot="{ items }" class="gap-0.5">
-            <PaginationPrevious size="icon-sm" class="text-muted-foreground">
-              <ChevronLeft class="size-3.5" />
-            </PaginationPrevious>
-            <template v-for="(item, i) in items" :key="i">
-              <PaginationItem
-                v-if="item.type === 'page'"
-                :value="item.value"
-                :is-active="item.value === currentPage"
-                size="icon-sm"
-                class="text-xs tabular-nums"
-                :class="item.value === currentPage ? '' : 'text-muted-foreground'"
-              >
-                {{ item.value }}
-              </PaginationItem>
-              <PaginationEllipsis v-else :index="i" class="size-8 text-muted-foreground" />
-            </template>
-            <PaginationNext size="icon-sm" class="text-muted-foreground">
-              <ChevronRight class="size-3.5" />
-            </PaginationNext>
-          </PaginationContent>
-        </Pagination>
-      </div>
+      <ListPagination :total="rows.length" :page-size="PAGE_SIZE" :page="currentPage" noun="tests" @update:page="setPage" />
     </template>
   </div>
 </template>
