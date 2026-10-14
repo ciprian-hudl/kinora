@@ -27,6 +27,7 @@
     "db:reset:e2e": "tsx scripts/reset-e2e.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:market": "tsx scripts/seed-market.ts",
+    "db:seed:perf": "tsx scripts/seed-perf.ts",
     "demo-traces:generate": "tsx scripts/generate-demo-traces.ts",
     "migrate": "tsx scripts/migrate.ts",
     "purge-expired-runs": "tsx scripts/purge-expired-runs.ts",
