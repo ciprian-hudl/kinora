@@ -41,4 +41,14 @@ test('a test that passed and failed on one commit is flaky, one failing since a 
   await expect(broken).toContainText('Failed its latest run, on commit c3c3c3c.')
   await expect(broken.getByRole('link', { name: 'c3c3c3c' })).toHaveAttribute('href', `${REPO}/commit/c3c3c3c3c3`)
   await expect(broken.getByRole('link', { name: /Failing run/ })).toBeVisible()
+
+  // The failing run opens narrowed to this test, by its key, until asked for the whole run.
+  await broken.getByRole('link', { name: /Failing run/ }).click()
+  await expect(page).toHaveURL(/\/runs\/[^?]+\?test=/)
+  await expect(page.getByTestId('single-test')).toContainText('Showing one test of this run.')
+  await expect(page.getByText('shows the order total')).toBeVisible()
+  await expect(page.getByText('pays with a saved card')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Show all tests' }).click()
+  await expect(page).not.toHaveURL(/test=/)
+  await expect(page.getByText('pays with a saved card')).toBeVisible()
 })

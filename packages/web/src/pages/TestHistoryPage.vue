@@ -206,7 +206,7 @@ function toggleQuarantine() {
             </span>
             <RouterLink
               v-if="health.kind === 'broken'"
-              :to="{ name: 'run', params: { projectId, runId: health.since.runId } }"
+              :to="{ name: 'run', params: { projectId, runId: health.since.runId }, query: { test: history.testKey } }"
               class="font-mono text-xs text-signal hover:underline"
             >
               {{ health.runs === 1 ? 'Failing run' : 'First failing run' }}, {{ formatDateTimeLong(health.since.startedAt) }}
@@ -238,7 +238,7 @@ function toggleQuarantine() {
           <span>Status timeline</span>
           <span>{{ history.runs }} runs · oldest → newest</span>
         </div>
-        <StatusTimeline :points="history.points" :project-id="projectId" :height="32" :q="history.title" />
+        <StatusTimeline :points="history.points" :project-id="projectId" :height="32" :test-key="history.testKey" />
       </div>
 
       <!-- Incidents -->
@@ -277,7 +277,7 @@ function toggleQuarantine() {
         >
           <div class="flex items-center justify-between gap-3">
             <RouterLink
-              :to="{ name: 'run', params: { projectId, runId: p.runId }, query: { q: history.title } }"
+              :to="{ name: 'run', params: { projectId, runId: p.runId }, query: { test: history.testKey } }"
               class="group flex items-center gap-2"
             >
               <TestStatusBadge :status="p.status" />

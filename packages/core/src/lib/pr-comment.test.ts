@@ -128,6 +128,27 @@ describe('buildPrCommentBody', () => {
     expect(flakyTestsOf(tests)).toEqual([{ testKey: 'a', title: 'a', file: 'f.ts' }])
   })
 
+  it('links each listed test to the run narrowed to it', () => {
+    const key = 'tests/cart (v2).spec.ts::cart › adds an item::chromium'
+    const body = buildPrCommentBody({
+      projectSlug: 'web',
+      projectName: 'Web',
+      counts,
+      runUrl: 'https://app.kinora.dev/projects/web/runs/r1',
+      regression: { base: 'base-branch', newlyFailing: [{ testKey: key, title: 'adds an item', file: 'tests/cart (v2).spec.ts' }], newlyFlaky: [], fixed: 0 },
+      flaky: [{ testKey: 'k2', title: 'pays', file: 'pay.spec.ts' }],
+    })
+    // Encoded key, parentheses included, so they can't end the markdown link.
+    expect(body).toContain('- [`tests/cart (v2).spec.ts` › `adds an item`](https://app.kinora.dev/projects/web/runs/r1?test=tests%2Fcart%20%28v2%29.spec.ts%3A%3Acart%20%E2%80%BA%20adds%20an%20item%3A%3Achromium)')
+    expect(body).toContain('- [`pay.spec.ts` › `pays`](https://app.kinora.dev/projects/web/runs/r1?test=k2)')
+  })
+
+  it('lists tests as plain text without a run URL', () => {
+    const body = buildPrCommentBody({ projectSlug: 'web', projectName: 'Web', counts, flaky: [{ testKey: 'k', title: 'pays', file: 'pay.spec.ts' }] })
+    expect(body).toContain('- `pay.spec.ts` › `pays`')
+    expect(body).not.toContain('?test=')
+  })
+
   it('keys the marker by label for matrix legs', () => {
     expect(buildPrCommentBody({ projectSlug: 'web', projectName: 'Web', label: 'node20', counts })).toContain('<!-- kinora:pr:web:node20 -->')
   })

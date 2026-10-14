@@ -85,14 +85,18 @@ usePaletteCommands(() => {
 const filter = useRouteQuery<'all' | PwTestStatus | 'quarantined'>('status', 'all')
 const selectedTag = useRouteQuery('tag', 'all')
 const search = useRouteQuery('q', '')
+// One test of the run, by its key: where links about a given test land (its history page, the PR
+// comment), exact where a title search could match several tests or projects.
+const testKey = useRouteQuery<string | null>('test', null)
 
 const tests = computed(() => report.value?.tests ?? [])
 const tags = computed(() => [...new Set(tests.value.flatMap(t => t.tags))].sort())
+const scoped = computed(() => (testKey.value ? tests.value.filter(t => t.testKey === testKey.value) : tests.value))
 
 const tagMatched = computed(() => {
   if (selectedTag.value === 'all')
-    return tests.value
-  return tests.value.filter(t => t.tags.includes(selectedTag.value))
+    return scoped.value
+  return scoped.value.filter(t => t.tags.includes(selectedTag.value))
 })
 
 // Search-matched set, before the status tab. Tab counts derive from this so
@@ -130,7 +134,7 @@ const filtered = computed(() => {
 const PAGE_SIZE = 50
 const { pageIndex, currentPage, setPage } = useUrlPage(() => filtered.value.length, PAGE_SIZE)
 const paged = computed(() => filtered.value.slice(pageIndex.value * PAGE_SIZE, (pageIndex.value + 1) * PAGE_SIZE))
-watch([filter, selectedTag, search], () => setPage(1))
+watch([filter, selectedTag, search, testKey], () => setPage(1))
 
 type Attachment = NonNullable<typeof report.value>['tests'][number]['attachments'][number]
 type Annotation = NonNullable<typeof report.value>['tests'][number]['annotations'][number]
@@ -283,6 +287,17 @@ const BADGE_CLASS = 'inline-flex items-center gap-1 rounded border border-border
           />
           <SearchInput v-model="search" placeholder="Filter by title or file..." />
         </div>
+      </div>
+
+      <div
+        v-if="testKey"
+        class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-signal/30 bg-signal/5 px-4 py-2.5 text-sm"
+        data-testid="single-test"
+      >
+        <span>{{ scoped.length ? 'Showing one test of this run.' : 'This test is not in this run.' }}</span>
+        <Button variant="ghost" size="sm" class="h-7 font-mono text-xs" @click="testKey = null">
+          Show all tests
+        </Button>
       </div>
 
       <!-- Tests -->

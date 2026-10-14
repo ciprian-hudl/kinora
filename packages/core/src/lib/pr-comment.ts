@@ -140,12 +140,23 @@ function inlineCode(s: string): string {
   return `\`${s.replace(/`/g, '‘').replace(/\r?\n/g, ' ')}\``
 }
 
-// A titled list of tests, capped so the comment stays under GitHub's size limit.
-function pushTests(lines: string[], heading: string, tests: ListedTest[]): void {
+// The run page narrowed to one test (`?test=<testKey>`): its trace is one click away, signed when
+// the page opens, so the link outlives the trace URL. Parentheses are escaped too: they would end
+// the markdown link.
+function testUrl(runUrl: string, testKey: string): string {
+  const key = encodeURIComponent(testKey).replace(/[()]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+  return `${runUrl}${runUrl.includes('?') ? '&' : '?'}test=${key}`
+}
+
+// A titled list of tests, capped so the comment stays under GitHub's size limit. With the run's
+// URL, each test links to it.
+function pushTests(lines: string[], heading: string, tests: ListedTest[], runUrl?: string): void {
   lines.push('')
   lines.push(heading)
-  for (const t of tests.slice(0, MAX_LISTED))
-    lines.push(`- ${inlineCode(t.file)} › ${inlineCode(t.title)}`)
+  for (const t of tests.slice(0, MAX_LISTED)) {
+    const name = `${inlineCode(t.file)} › ${inlineCode(t.title)}`
+    lines.push(`- ${runUrl ? `[${name}](${testUrl(runUrl, t.testKey)})` : name}`)
+  }
   if (tests.length > MAX_LISTED)
     lines.push(`- …and ${tests.length - MAX_LISTED} more`)
 }
@@ -170,18 +181,18 @@ export function buildPrCommentBody(input: PrCommentInput): string {
 
   if (compared) {
     if (compared.newlyFailing.length)
-      pushTests(lines, `**${compared.newlyFailing.length} newly failing** vs ${vs}:`, compared.newlyFailing)
+      pushTests(lines, `**${compared.newlyFailing.length} newly failing** vs ${vs}:`, compared.newlyFailing, input.runUrl)
     if (newlyFlaky.length)
-      pushTests(lines, `**${newlyFlaky.length} newly flaky** vs ${vs}:`, newlyFlaky)
+      pushTests(lines, `**${newlyFlaky.length} newly flaky** vs ${vs}:`, newlyFlaky, input.runUrl)
     if (otherFlaky.length)
-      pushTests(lines, `**${otherFlaky.length} ${newlyFlaky.length ? 'more ' : ''}flaky**, already flaky on the ${vs}:`, otherFlaky)
+      pushTests(lines, `**${otherFlaky.length} ${newlyFlaky.length ? 'more ' : ''}flaky**, already flaky on the ${vs}:`, otherFlaky, input.runUrl)
     if (compared.fixed > 0)
       lines.push(`\n✅ ${compared.fixed} fixed vs ${vs}.`)
     if (!compared.newlyFailing.length && !newlyFlaky.length && compared.fixed === 0)
       lines.push(`\nNo change vs ${vs}.`)
   }
   else if (otherFlaky.length) {
-    pushTests(lines, `**${otherFlaky.length} flaky**:`, otherFlaky)
+    pushTests(lines, `**${otherFlaky.length} flaky**:`, otherFlaky, input.runUrl)
   }
 
   const links: string[] = []

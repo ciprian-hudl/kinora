@@ -15,7 +15,8 @@ import { formatDateTime } from '@/lib/format'
 // `slots`: render a fixed number of equal cells (recent on the right, empty slots padding the left)
 // so every row lines up. Omit it for the full adaptive timeline (detail view).
 const props = withDefaults(
-  defineProps<{ points: TestPoint[], projectId: string, height?: number, link?: boolean, q?: string, slots?: number }>(),
+  // `testKey`: the cells link to their run narrowed to that test.
+  defineProps<{ points: TestPoint[], projectId: string, height?: number, link?: boolean, testKey?: string, slots?: number }>(),
   { height: 20, link: true },
 )
 
@@ -61,7 +62,7 @@ const containerClass = computed(() => (props.slots ? 'justify-end gap-[2px]' : '
         <TooltipTrigger as-child>
           <component
             :is="link ? RouterLink : 'div'"
-            :to="link ? { name: 'run', params: { projectId, runId: c.point.runId }, query: q ? { q } : undefined } : undefined"
+            :to="link ? { name: 'run', params: { projectId, runId: c.point.runId }, query: testKey ? { test: testKey } : undefined } : undefined"
             class="group flex items-stretch"
             :class="cellClass"
           >
