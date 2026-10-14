@@ -66,7 +66,7 @@ Response `201`:
 
 `runUrl` is always returned; `regression` only when `regression=1` was passed.
 
-Errors: `401` invalid API key · `402` plan limit reached (cloud free tier) · `413` body over 25 MB.
+Errors: `400` invalid body, including more than 50,000 tests in one run · `401` invalid API key · `402` plan limit reached (cloud free tier) · `413` body over 25 MB.
 
 ### POST /api/v1/runs/:runId/artifacts
 
@@ -119,7 +119,12 @@ run.
 
 ### GET /api/v1/projects/:slug/history
 
-Per-test history across the project's runs. Query `testKey` to narrow to one test; omit it for all.
+Per-test history over the project's latest 500 runs: counts, rates, and one point per run.
+
+- With `testKey`: that one test, with every point.
+- Without it: every test. Counts and rates still cover all 500 runs, but each test only carries the
+  points its health reads: its last 20 runs and, for a test failing right now, its whole failing
+  streak. Query `testKey` for a test's full timeline.
 
 ```json
 { "histories": [{ "testKey": "…", "…": "…" }] }
