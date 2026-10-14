@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { apiKey } from '@better-auth/api-key'
 import { createCustomers, deleteExternalCustomers } from '@polar-sh/sdk/2026-10/services/customers'
-import { betterAuth } from 'better-auth'
+import { APIError, betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin, bearer, deviceAuthorization, lastLoginMethod, organization } from 'better-auth/plugins'
 import { and, eq } from 'drizzle-orm'
 import { polarAuthPlugin, polarClient } from '../billing/polar'
 import { db } from '../db'
 import { member, organization as organizationTable } from '../db/schemas/index'
-import { purgeUserOwnedData } from './account'
+import { hasBillingSubscription, purgeUserOwnedData } from './account'
 import { demo, env, githubOauthEnabled, googleOauthEnabled } from './env'
 import { logger } from './logger'
 import { mailerEnabled, sendMail } from './mailer'
@@ -53,6 +53,8 @@ export const auth = betterAuth({
       enabled: true,
       // Fresh session or password required by better-auth; we just clean up owned data first.
       beforeDelete: async (u) => {
+        if (await hasBillingSubscription(u.id))
+          throw new APIError('BAD_REQUEST', { message: 'Cancel your subscription first. You can delete your account once the current billing period ends.' })
         await purgeUserOwnedData(u.id)
         if (polarClient) {
           try {

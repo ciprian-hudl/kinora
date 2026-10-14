@@ -5,8 +5,9 @@ import { join, resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../src/db'
-import { artifact, member, organization, project, run } from '../src/db/schemas/index'
-import { purgeUserOwnedData } from '../src/lib/account'
+import { artifact, member, organization, project, run, subscription } from '../src/db/schemas/index'
+import { hasBillingSubscription, purgeUserOwnedData } from '../src/lib/account'
+import { auth } from '../src/lib/auth'
 import { env } from '../src/lib/env'
 import { storage } from '../src/lib/storage'
 import { createUser, ownedOrgId, resetDb } from './helpers'
@@ -66,5 +67,64 @@ describe('purgeUserOwnedData', () => {
 
   it('no-ops for a user that owns nothing', async () => {
     await expect(purgeUserOwnedData(randomUUID())).resolves.toBeUndefined()
+  })
+})
+
+async function subscribe(orgId: string, tier: 'free' | 'team' | 'pro', status: string | null) {
+  await db.insert(subscription).values({ organizationId: orgId, polarCustomerId: 'cus_test', tier, status })
+}
+
+async function deleteAccount(email: string) {
+  const { headers } = await auth.api.signInEmail({ body: { email, password: 'password123' }, returnHeaders: true })
+  const cookie = headers.get('set-cookie')!.split(';')[0]!
+  return auth.api.deleteUser({ body: { password: 'password123' }, headers: new Headers({ cookie }), asResponse: true })
+}
+
+describe('hasBillingSubscription', () => {
+  it('is true while an owned workspace has a paid plan Polar still bills', async () => {
+    for (const status of ['active', 'trialing', 'past_due']) {
+      await resetDb()
+      const user = await createUser()
+      await subscribe(await ownedOrgId(user.id), 'team', status)
+      expect(await hasBillingSubscription(user.id)).toBe(true)
+    }
+  })
+
+  it('is false once the subscription has ended, on the free plan, or for a mere member', async () => {
+    const ended = await createUser('ended@test.dev')
+    await subscribe(await ownedOrgId(ended.id), 'pro', 'canceled')
+    expect(await hasBillingSubscription(ended.id)).toBe(false)
+
+    const free = await createUser('free@test.dev')
+    await subscribe(await ownedOrgId(free.id), 'free', null)
+    expect(await hasBillingSubscription(free.id)).toBe(false)
+
+    const owner = await createUser('owner@test.dev')
+    const guest = await createUser('guest@test.dev')
+    await subscribe(await ownedOrgId(owner.id), 'team', 'active')
+    await db.insert(member).values({ id: randomUUID(), organizationId: await ownedOrgId(owner.id), userId: guest.id, role: 'member' })
+    expect(await hasBillingSubscription(guest.id)).toBe(false)
+  })
+})
+
+describe('account deletion', () => {
+  it('is refused while a paid subscription is billing, and keeps the workspace', async () => {
+    const user = await createUser()
+    const orgId = await ownedOrgId(user.id)
+    await subscribe(orgId, 'team', 'active')
+
+    const res = await deleteAccount(user.email)
+    expect(res.status).toBe(400)
+    expect(await orgExists(orgId)).toBeTruthy()
+  })
+
+  it('goes through once the subscription has ended', async () => {
+    const user = await createUser()
+    const orgId = await ownedOrgId(user.id)
+    await subscribe(orgId, 'team', 'canceled')
+
+    const res = await deleteAccount(user.email)
+    expect(res.status).toBe(200)
+    expect(await orgExists(orgId)).toBeFalsy()
   })
 })
