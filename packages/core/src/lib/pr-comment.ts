@@ -187,19 +187,20 @@ export async function postPrComment(
 ): Promise<UpsertOutcome> {
   if (ctx.isShard)
     return 'skipped'
+  // A green run under `on-failure` posts no new comment, but still updates the one an earlier
+  // failing run of the PR left: otherwise a fix, or a re-run that passes, would leave it red.
   // newlyFailing entries always have an unexpected head status, so counts.unexpected===0 covers them.
-  if (policy === 'on-failure' && input.counts.unexpected === 0)
-    return 'skipped'
+  const create = !(policy === 'on-failure' && input.counts.unexpected === 0)
 
   const body = buildPrCommentBody(input)
   const mark = marker(input.projectSlug, input.label)
   return ctx.provider === 'gitlab'
-    ? upsertGitLabNote(ctx, body, mark, fetchImpl)
-    : upsertGitHubComment(ctx, body, mark, fetchImpl)
+    ? upsertGitLabNote(ctx, body, mark, create, fetchImpl)
+    : upsertGitHubComment(ctx, body, mark, create, fetchImpl)
 }
 
 // A fork PR's GITHUB_TOKEN is read-only, so writes 403 -> treated as skipped, not an error.
-async function upsertGitHubComment(ctx: GitHubPrContext, body: string, mark: string, fetchImpl: typeof globalThis.fetch): Promise<UpsertOutcome> {
+async function upsertGitHubComment(ctx: GitHubPrContext, body: string, mark: string, create: boolean, fetchImpl: typeof globalThis.fetch): Promise<UpsertOutcome> {
   const headers = {
     'authorization': `Bearer ${ctx.token}`,
     'accept': 'application/vnd.github+json',
@@ -226,6 +227,8 @@ async function upsertGitHubComment(ctx: GitHubPrContext, body: string, mark: str
       break
   }
 
+  if (!existing && !create)
+    return 'skipped'
   const target = existing
     ? { url: `${base}/issues/comments/${existing.id}`, method: 'PATCH' as const, outcome: 'updated' as const }
     : { url: `${base}/issues/${ctx.prNumber}/comments`, method: 'POST' as const, outcome: 'created' as const }
@@ -241,7 +244,7 @@ async function upsertGitHubComment(ctx: GitHubPrContext, body: string, mark: str
 
 // GITLAB_TOKEN is set on purpose, so a rejected call is a misconfiguration worth surfacing (unlike
 // GitHub's read-only fork token): every failure throws.
-async function upsertGitLabNote(ctx: GitLabMrContext, body: string, mark: string, fetchImpl: typeof globalThis.fetch): Promise<UpsertOutcome> {
+async function upsertGitLabNote(ctx: GitLabMrContext, body: string, mark: string, create: boolean, fetchImpl: typeof globalThis.fetch): Promise<UpsertOutcome> {
   const headers = { 'private-token': ctx.token, 'content-type': 'application/json' }
   const base = `${ctx.apiUrl}/projects/${encodeURIComponent(ctx.projectId)}/merge_requests/${ctx.mrIid}`
 
@@ -263,6 +266,8 @@ async function upsertGitLabNote(ctx: GitLabMrContext, body: string, mark: string
       break
   }
 
+  if (!existing && !create)
+    return 'skipped'
   const target = existing
     ? { url: `${base}/notes/${existing.id}`, method: 'PUT' as const, outcome: 'updated' as const }
     : { url: `${base}/notes`, method: 'POST' as const, outcome: 'created' as const }

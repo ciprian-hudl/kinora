@@ -76,8 +76,9 @@ run on the base branch to compute what regressed.
   Per-shard runs are skipped. See [Sharded runs](/guides/reporter/#sharded-runs).
 - **Matrix builds sharing a PR**: give each leg its own label so they keep separate comments -
   reporter `prComment: { label: 'node20' }`, CLI `--pr-label node20`.
-- **Green runs**: `policy: 'on-failure'` (reporter) / `--pr-policy on-failure` (CLI) skips the
-  comment when the run passes. The default posts always.
+- **Green runs**: `policy: 'on-failure'` (reporter) / `--pr-policy on-failure` (CLI) posts no
+  comment when the run passes, but still updates the comment an earlier failing run left on the
+  PR, so a fix or a re-run that passes doesn't leave it red. The default posts always.
 
 ## How the comment stays single
 

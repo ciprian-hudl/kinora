@@ -34,7 +34,7 @@ Options:
   --pr-comment          Post/update a summary on the GitHub PR (needs GITHUB_TOKEN + pull-requests: write)
                         or the GitLab MR (needs a GITLAB_TOKEN variable with the api scope)
   --pr-label <label>    Distinguish matrix legs that share one PR
-  --pr-policy <policy>  always (default) | on-failure (skip the comment on green runs)
+  --pr-policy <policy>  always (default) | on-failure (no new comment on green runs)
   --concurrency <n>     Parallel uploads for bulk import (default 6)
   --upload-attachments <kinds>
                         Comma-separated: trace, snapshot (both default), video, screenshot.

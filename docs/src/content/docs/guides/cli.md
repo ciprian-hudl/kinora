@@ -57,7 +57,7 @@ npx @kinora/cli import ./reports --project web-app --token <project-token> --con
 --git-base-branch <b> PR base branch (auto-detected in CI); powers "regression vs base"
 --pr-comment          post/update a summary on the GitHub PR or GitLab MR (see PR comments guide)
 --pr-label <label>    distinguish matrix legs that share one PR
---pr-policy <policy>  always (default) | on-failure (skip the comment on green runs)
+--pr-policy <policy>  always (default) | on-failure (no new comment on green runs)
 --upload-attachments <kinds>
                       comma-separated: trace, snapshot (both default), video, screenshot.
                       snapshot = images of a failed screenshot assertion (comparison view)

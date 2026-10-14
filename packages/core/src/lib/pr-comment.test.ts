@@ -131,8 +131,21 @@ describe('postPrComment', () => {
     expect(await postPrComment({ ...ctx, isShard: true }, input, 'always', vi.fn() as unknown as typeof globalThis.fetch)).toBe('skipped')
   })
 
-  it('skips a green run under the on-failure policy', async () => {
-    expect(await postPrComment(ctx, { ...input, counts: green }, 'on-failure', vi.fn() as unknown as typeof globalThis.fetch)).toBe('skipped')
+  it('posts no new comment for a green run under the on-failure policy', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => [] })
+    expect(await postPrComment(ctx, { ...input, counts: green }, 'on-failure', fetch as unknown as typeof globalThis.fetch)).toBe('skipped')
+    expect(fetch).toHaveBeenCalledTimes(1) // the lookup, no POST
+  })
+
+  it('still updates the comment of an earlier failing run when a green run comes in under on-failure', async () => {
+    // A fix, or a re-run that passes: the red comment must not stay up.
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 9, body: '❌ failed\n<!-- kinora:pr:web -->', user: { type: 'Bot' } }] })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
+    expect(await postPrComment(ctx, { ...input, counts: green }, 'on-failure', fetch as unknown as typeof globalThis.fetch)).toBe('updated')
+    const [url, init] = fetch.mock.calls.at(-1)!
+    expect(url).toContain('/issues/comments/9')
+    expect(JSON.parse(init.body).body).toContain('✅')
   })
 })
 
@@ -167,6 +180,21 @@ describe('postPrComment on GitLab', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
     expect(await postPrComment(ctx, input, 'always', fetch as unknown as typeof globalThis.fetch)).toBe('created')
     expect(fetch).toHaveBeenLastCalledWith(base, expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('updates an earlier note for a green run under on-failure, and creates none', async () => {
+    const withNote = vi.fn()
+      .mockResolvedValueOnce(me)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 9, body: '❌ failed\n<!-- kinora:pr:web -->', author: { id: 3 } }] })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
+    expect(await postPrComment(ctx, { ...input, counts: green }, 'on-failure', withNote as unknown as typeof globalThis.fetch)).toBe('updated')
+    expect(withNote).toHaveBeenLastCalledWith(`${base}/9`, expect.objectContaining({ method: 'PUT' }))
+
+    const without = vi.fn()
+      .mockResolvedValueOnce(me)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+    expect(await postPrComment(ctx, { ...input, counts: green }, 'on-failure', without as unknown as typeof globalThis.fetch)).toBe('skipped')
+    expect(without).toHaveBeenCalledTimes(2) // token lookup + notes, no POST
   })
 
   it('surfaces a rejected token instead of skipping silently', async () => {
