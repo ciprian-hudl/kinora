@@ -1,6 +1,6 @@
 import type { Counts } from '../contracts/kinora'
 import { describe, expect, it, vi } from 'vitest'
-import { buildPrCommentBody, postPrComment, resolvePrContext } from './pr-comment'
+import { buildPrCommentBody, flakyTestsOf, postPrComment, resolvePrContext } from './pr-comment'
 
 const prEnv = {
   GITHUB_TOKEN: 'tok',
@@ -81,6 +81,51 @@ describe('buildPrCommentBody', () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ testKey: `k${i}`, title: `t${i}`, file: 'f' }))
     const body = buildPrCommentBody({ projectSlug: 'web', projectName: 'Web', counts, regression: { base: 'previous-run', newlyFailing: many, newlyFlaky: [], fixed: 0 } })
     expect(body).toContain('and 5 more')
+  })
+
+  it('names the newly flaky tests, then the run\'s other flaky tests', () => {
+    const t = (testKey: string) => ({ testKey, title: `test ${testKey}`, file: 'cart.spec.ts' })
+    const body = buildPrCommentBody({
+      projectSlug: 'web',
+      projectName: 'Web',
+      counts: { total: 10, expected: 7, unexpected: 0, flaky: 3, skipped: 0 },
+      regression: { base: 'base-branch', newlyFailing: [], newlyFlaky: [t('a')], fixed: 0 },
+      flaky: [t('a'), t('b'), t('c')],
+    })
+    expect(body).toContain('⚠️')
+    expect(body).toContain('**1 newly flaky** vs base branch:\n- `cart.spec.ts` › `test a`')
+    // The new one is not listed twice.
+    expect(body).toContain('**2 more flaky**, already flaky on the base branch:\n- `cart.spec.ts` › `test b`\n- `cart.spec.ts` › `test c`')
+    expect(body.indexOf('test a')).toBeLessThan(body.indexOf('test b'))
+  })
+
+  it('names every flaky test when there is no baseline, capped like the failures', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ testKey: `k${i}`, title: `t${i}`, file: 'f.ts' }))
+    const body = buildPrCommentBody({ projectSlug: 'web', projectName: 'Web', counts, flaky: many })
+    expect(body).toContain('**20 flaky**:')
+    expect(body).toContain('…and 5 more')
+    expect(buildPrCommentBody({ projectSlug: 'web', projectName: 'Web', counts, regression: { base: 'none', newlyFailing: [], newlyFlaky: [], fixed: 0 }, flaky: many.slice(0, 1) }))
+      .toContain('**1 flaky**:')
+  })
+
+  it('adds no flaky section to a run without flaky tests', () => {
+    const body = buildPrCommentBody({ projectSlug: 'web', projectName: 'Web', counts: green, regression: { base: 'base-branch', newlyFailing: [], newlyFlaky: [], fixed: 0 }, flaky: [] })
+    expect(body).not.toContain('flaky**')
+    expect(body).toContain('No change vs base branch.')
+  })
+
+  it('keeps a flaky test title from breaking out of its code span', () => {
+    const body = buildPrCommentBody({ projectSlug: 'web', projectName: 'Web', counts, flaky: [{ testKey: 'k', title: '`@maintainer`\nnext', file: 'a.ts' }] })
+    expect(body).toContain('`‘@maintainer‘ next`')
+  })
+
+  it('lists the flaky tests of a run from its tests', () => {
+    const tests = [
+      { testKey: 'a', title: 'a', file: 'f.ts', status: 'flaky' as const },
+      { testKey: 'b', title: 'b', file: 'f.ts', status: 'expected' as const },
+      { testKey: 'c', title: 'c', file: 'f.ts', status: 'unexpected' as const },
+    ]
+    expect(flakyTestsOf(tests)).toEqual([{ testKey: 'a', title: 'a', file: 'f.ts' }])
   })
 
   it('keys the marker by label for matrix legs', () => {

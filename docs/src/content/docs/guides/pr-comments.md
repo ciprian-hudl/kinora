@@ -4,7 +4,8 @@ description: Post a summary comment on the GitHub pull request or GitLab merge r
 ---
 
 On a pull request run, kinora can post (and keep updating) a summary comment on the PR:
-pass/fail counts, tests newly failing versus the base branch, and a link to the run. It works on
+pass/fail counts, tests newly failing versus the base branch, the flaky tests by name, and a link
+to the run. It works on
 GitHub pull requests and GitLab merge requests, and it posts from the CI job itself, so **no
 credentials are stored in kinora**. It works the same on cloud and self-host.
 
@@ -59,7 +60,9 @@ Self-managed instances work as is: the API URL comes from `CI_API_V4_URL`.
 
 ## Regression vs the base branch
 
-The comment lists tests **newly failing versus the PR's base branch**. This needs the base
+The comment lists tests **newly failing versus the PR's base branch**, then the **flaky tests**
+(passed on a retry): the newly flaky ones first, then those already flaky on the base branch, so a
+reviewer sees which tests flaked before merging. Long lists are capped at 15 tests. This needs the base
 branch name, which auto-detects from `GITHUB_BASE_REF` on a `pull_request` run and from the MR
 target branch on a GitLab merge request pipeline (or set it explicitly: reporter
 `git.baseBranch`, CLI `--git-base-branch`). kinora compares the PR run's tests against the latest

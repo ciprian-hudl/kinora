@@ -166,6 +166,7 @@ async function main(): Promise<void> {
           ciRunUrl: ci?.runUrl,
           counts: res.counts,
           regression: res.regression,
+          flaky: res.flaky,
         }, policy)
         if (outcome !== 'skipped')
           console.log(`PR comment ${outcome}`)

@@ -1,8 +1,9 @@
 import type { AttachmentKind, CiMeta, Counts, GitMeta, IngestRunResult } from '@kinora/core'
 import { readFile } from 'node:fs/promises'
-import { buildIngestRun, createIngestClient, DEFAULT_UPLOAD_ATTACHMENTS, isUploadableAttachment } from '@kinora/core'
+import { buildIngestRun, createIngestClient, DEFAULT_UPLOAD_ATTACHMENTS, flakyTestsOf, isUploadableAttachment } from '@kinora/core'
 
-export type UploadResult = IngestRunResult & { counts: Counts }
+// `flaky`: the run's flaky tests, which the PR comment names.
+export type UploadResult = IngestRunResult & { counts: Counts, flaky: ReturnType<typeof flakyTestsOf> }
 
 export interface UploadOptions {
   project: { slug: string, name?: string }
@@ -43,5 +44,5 @@ export async function uploadReport(raw: unknown, opts: UploadOptions): Promise<U
     }
   }
 
-  return { ...res, counts: payload.run.counts }
+  return { ...res, counts: payload.run.counts, flaky: flakyTestsOf(payload.tests) }
 }

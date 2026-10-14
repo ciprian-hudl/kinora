@@ -1,5 +1,7 @@
 import type { RunRegression } from '../contracts/ingest'
-import type { Counts } from '../contracts/kinora'
+import type { Counts, NormTest } from '../contracts/kinora'
+
+type ListedTest = RunRegression['newlyFlaky'][number]
 
 // Post/update a single PR/MR comment from the CI job: on GitHub with the ambient GITHUB_TOKEN, on
 // GitLab with a GITLAB_TOKEN CI variable (the job token can only read merge request notes).
@@ -37,6 +39,14 @@ export interface PrCommentInput {
   ciRunUrl?: string
   counts: Counts
   regression?: RunRegression
+  // The run's flaky tests (passed on a retry), named in the comment. The regression only knows the
+  // newly flaky ones; the rest come from the uploader, which has the whole run.
+  flaky?: ListedTest[]
+}
+
+// The flaky tests of a run, as the comment lists them.
+export function flakyTestsOf(tests: Pick<NormTest, 'testKey' | 'title' | 'file' | 'status'>[]): ListedTest[] {
+  return tests.filter(t => t.status === 'flaky').map(({ testKey, title, file }) => ({ testKey, title, file }))
 }
 
 const MAX_LISTED = 15 // cap the failing-test list so the comment stays under GitHub's size limit
@@ -130,6 +140,16 @@ function inlineCode(s: string): string {
   return `\`${s.replace(/`/g, '‘').replace(/\r?\n/g, ' ')}\``
 }
 
+// A titled list of tests, capped so the comment stays under GitHub's size limit.
+function pushTests(lines: string[], heading: string, tests: ListedTest[]): void {
+  lines.push('')
+  lines.push(heading)
+  for (const t of tests.slice(0, MAX_LISTED))
+    lines.push(`- ${inlineCode(t.file)} › ${inlineCode(t.title)}`)
+  if (tests.length > MAX_LISTED)
+    lines.push(`- …and ${tests.length - MAX_LISTED} more`)
+}
+
 export function buildPrCommentBody(input: PrCommentInput): string {
   const { counts, regression } = input
   const failed = counts.unexpected
@@ -140,22 +160,28 @@ export function buildPrCommentBody(input: PrCommentInput): string {
   lines.push('')
   lines.push(`\`${counts.expected + counts.flaky}/${counts.total} passed\` · **${failed} failed** · ${counts.flaky} flaky · ${counts.skipped} skipped`)
 
-  if (regression && regression.base !== 'none') {
-    const vs = regression.base === 'base-branch' ? 'base branch' : 'previous run'
-    if (regression.newlyFailing.length) {
-      lines.push('')
-      lines.push(`**${regression.newlyFailing.length} newly failing** vs ${vs}:`)
-      for (const t of regression.newlyFailing.slice(0, MAX_LISTED))
-        lines.push(`- ${inlineCode(t.file)} › ${inlineCode(t.title)}`)
-      if (regression.newlyFailing.length > MAX_LISTED)
-        lines.push(`- …and ${regression.newlyFailing.length - MAX_LISTED} more`)
-    }
-    if (regression.newlyFlaky.length)
-      lines.push(`\n**${regression.newlyFlaky.length} newly flaky** vs ${vs}.`)
-    if (regression.fixed > 0)
-      lines.push(`\n✅ ${regression.fixed} fixed vs ${vs}.`)
-    if (!regression.newlyFailing.length && !regression.newlyFlaky.length && regression.fixed === 0)
+  const compared = regression && regression.base !== 'none' ? regression : undefined
+  const vs = compared?.base === 'base-branch' ? 'base branch' : 'previous run'
+  // New flakes first, named against the baseline; then the run's other flaky tests, which were
+  // already flaky there. Without a baseline, every flaky test of the run.
+  const newlyFlaky = compared?.newlyFlaky ?? []
+  const newKeys = new Set(newlyFlaky.map(t => t.testKey))
+  const otherFlaky = (input.flaky ?? []).filter(t => !newKeys.has(t.testKey))
+
+  if (compared) {
+    if (compared.newlyFailing.length)
+      pushTests(lines, `**${compared.newlyFailing.length} newly failing** vs ${vs}:`, compared.newlyFailing)
+    if (newlyFlaky.length)
+      pushTests(lines, `**${newlyFlaky.length} newly flaky** vs ${vs}:`, newlyFlaky)
+    if (otherFlaky.length)
+      pushTests(lines, `**${otherFlaky.length} ${newlyFlaky.length ? 'more ' : ''}flaky**, already flaky on the ${vs}:`, otherFlaky)
+    if (compared.fixed > 0)
+      lines.push(`\n✅ ${compared.fixed} fixed vs ${vs}.`)
+    if (!compared.newlyFailing.length && !newlyFlaky.length && compared.fixed === 0)
       lines.push(`\nNo change vs ${vs}.`)
+  }
+  else if (otherFlaky.length) {
+    pushTests(lines, `**${otherFlaky.length} flaky**:`, otherFlaky)
   }
 
   const links: string[] = []

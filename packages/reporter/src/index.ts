@@ -4,7 +4,7 @@ import type { Buffer } from 'node:buffer'
 import { readFileSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import process from 'node:process'
-import { a11yFromScans, createIngestClient, DEFAULT_KINORA_URL, DEFAULT_UPLOAD_ATTACHMENTS, detectCiEnv, effectiveAttachments, IngestError, isUploadableAttachment, makeTestKey, parseAxeScan, postPrComment, resolvePrContext } from '@kinora/core'
+import { a11yFromScans, createIngestClient, DEFAULT_KINORA_URL, DEFAULT_UPLOAD_ATTACHMENTS, detectCiEnv, effectiveAttachments, flakyTestsOf, IngestError, isUploadableAttachment, makeTestKey, parseAxeScan, postPrComment, resolvePrContext } from '@kinora/core'
 
 export interface KinoraReporterOptions {
   /** kinora server base URL. Defaults to env KINORA_URL, then the hosted cloud. Set for self-host. */
@@ -205,6 +205,7 @@ export default class KinoraReporter implements Reporter {
         ciRunUrl: payload.run.ci?.runUrl,
         counts: payload.run.counts,
         regression: res.regression,
+        flaky: flakyTestsOf(payload.tests),
       }, policy ?? 'always')
       if (outcome !== 'skipped')
         console.warn(`[kinora] PR comment ${outcome}`)
