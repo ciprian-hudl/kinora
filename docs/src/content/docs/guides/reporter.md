@@ -150,6 +150,61 @@ e2e:
     - npx playwright test # KINORA_TOKEN is a masked CI/CD variable
 ```
 
+## Sharded runs
+
+kinora does not merge shards: each upload is one run. Shard with Playwright's
+[blob reporter](https://playwright.dev/docs/test-sharding#merging-reports-from-multiple-shards)
+and upload once, from the job that merges the shards: you get one complete run per CI run, with
+every trace, and a single PR comment.
+
+The merge step needs its own config. `merge-reports --reporter=@kinora/reporter` would load the
+reporter without its options (no project), so set the reporter in a config passed with `-c`, with
+the same `testDir` as your main config so tests keep their identity:
+
+```ts
+// merge.config.ts
+import { defineConfig } from '@playwright/test'
+
+export default defineConfig({
+  testDir: './tests',
+  reporter: [['@kinora/reporter', { project: { slug: 'web-app' } }]],
+})
+```
+
+```yaml
+jobs:
+  e2e:
+    strategy:
+      matrix:
+        shard: [1/4, 2/4, 3/4, 4/4]
+    steps:
+      # ... checkout, install
+      - run: npx playwright test --shard=${{ matrix.shard }} --reporter=blob
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: blob-report-${{ strategy.job-index }}
+          path: blob-report
+  report:
+    needs: e2e
+    if: ${{ !cancelled() }}
+    steps:
+      # ... checkout, install
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+      - run: npx playwright merge-reports -c merge.config.ts ./all-blob-reports
+        env:
+          KINORA_TOKEN: ${{ secrets.KINORA_TOKEN }}
+```
+
+If each shard uploads on its own instead, every shard lands as a separate run holding its part of
+the tests. Each test's history and its flaky or broken diagnosis stay right, since a test runs in
+one shard, but run pass rates, run comparisons and run counts are per shard, and the PR comment is
+skipped on purpose so you don't get one per shard.
+
 ## Notes
 
 - If `KINORA_TOKEN` is missing, the reporter logs a warning and skips the upload, so local runs
