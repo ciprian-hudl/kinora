@@ -39,6 +39,17 @@ export function useProjectHistory(projectId: string) {
   )
 }
 
+// Every point of one test (the project history trims them). Refetches when the test changes.
+export function useTestHistory(projectId: string, testKey: MaybeRefOrGetter<string>) {
+  const query = useAsyncState(
+    async () => (toValue(testKey) ? trpc.dashboard.testHistory.query({ projectId, testKey: toValue(testKey) }) : null),
+    null,
+    QUERY_OPTIONS,
+  )
+  watch(() => toValue(testKey), () => void query.execute())
+  return query
+}
+
 // Refetches when the range or branch changes. `branch` undefined = every branch. Buckets follow
 // the browser's time zone, so a day on the chart is the viewer's day.
 export function useProjectAnalytics(projectId: string, days: MaybeRefOrGetter<30 | 90>, branch: MaybeRefOrGetter<string | undefined>) {

@@ -1,6 +1,6 @@
 import type { Counts, IngestRun } from '@kinora/core'
 import { randomUUID } from 'node:crypto'
-import { makeTestKey, STORY_ANNOTATION } from '@kinora/core'
+import { diagnose, makeTestKey, STORY_ANNOTATION } from '@kinora/core'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { db } from '../src/db'
@@ -404,6 +404,33 @@ describe('dashboard reads', () => {
     expect(h.project?.id).toBe('web-app')
     expect(h.histories.length).toBeGreaterThan(0)
     expect(h.histories[0].points).toHaveLength(2)
+  })
+
+  it('projectHistory trims points to what health reads, testHistory keeps them all', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    const statuses = [
+      ...Array.from({ length: 40 }, () => 'expected' as const),
+      'flaky' as const,
+      ...Array.from({ length: 30 }, () => 'expected' as const),
+      // A failing streak longer than the health window: diagnose dates it from its first failure.
+      ...Array.from({ length: 25 }, () => 'unexpected' as const),
+    ]
+    for (const [i, status] of statuses.entries()) {
+      const payload = runPayload('web-app', '@smoke', status)
+      payload.run.startedAt = new Date(Date.UTC(2026, 0, 1, i)).toISOString()
+      await ingest(key, payload)
+    }
+
+    const [listed] = (await (await caller(a)).dashboard.projectHistory({ projectId: 'web-app' })).histories
+    const full = (await (await caller(a)).dashboard.testHistory({ projectId: 'web-app', testKey: listed.testKey }))!
+    expect(full.points).toHaveLength(statuses.length)
+    expect(listed.points).toHaveLength(25)
+    expect(diagnose(listed.points)).toEqual(diagnose(full.points))
+    expect({ ...listed, points: [] }).toEqual({ ...full, points: [] })
+    expect(listed).toMatchObject({ runs: 96, failed: 25, flaky: 1, newlyBroken: false, lastStatus: 'unexpected' })
+
+    await expect((await caller(a)).dashboard.testHistory({ projectId: 'web-app', testKey: 'nope' })).resolves.toBeNull()
   })
 
   it('run returns the a11y report of a test, and drops a malformed one without rejecting the run', async () => {

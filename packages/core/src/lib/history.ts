@@ -103,38 +103,76 @@ export function buildTestHistories(reports: RunReport[]): TestHistory[] {
     }
   }
 
-  for (const h of byKey.values()) {
-    for (const p of h.points) {
-      h.runs++
-      if (p.status === 'expected')
-        h.passed++
-      else if (p.status === 'unexpected')
-        h.failed++
-      else if (p.status === 'flaky')
-        h.flaky++
-      else h.skipped++
-    }
-    h.executed = h.runs - h.skipped
-    const d = Math.max(1, h.executed)
-    h.flakyRate = h.flaky / d
-    h.failRate = h.failed / d
-    h.passRate = h.executed === 0 ? 1 : (h.passed + h.flaky) / d
-    h.lastStatus = h.points.at(-1)?.status ?? h.lastStatus
-
-    // Windowed view: rates over the last N runs, and whether instability is new.
-    const recent = h.points.slice(-RECENT_WINDOW)
-    const prior = h.points.slice(0, -RECENT_WINDOW)
-    const recentExecuted = recent.filter(p => p.status !== 'skipped').length
-    const recentFlaky = recent.filter(p => p.status === 'flaky').length
-    const recentFailed = recent.filter(p => p.status === 'unexpected').length
-    const rd = Math.max(1, recentExecuted)
-    h.recentFlakyRate = recentFlaky / rd
-    h.recentFailRate = recentFailed / rd
-    h.newlyFlaky = prior.length > 0 && !prior.some(p => p.status === 'flaky') && recentFlaky > 0
-    h.newlyBroken = prior.length > 0 && !prior.some(p => p.status === 'unexpected') && recentFailed > 0
-  }
+  for (const h of byKey.values())
+    applyTotals(h, countStatuses(h.points))
 
   return [...byKey.values()]
+}
+
+export interface StatusCounts { passed: number, failed: number, flaky: number, skipped: number }
+
+export function countStatuses(points: Pick<TestPoint, 'status'>[]): StatusCounts {
+  const c = { passed: 0, failed: 0, flaky: 0, skipped: 0 }
+  for (const p of points) {
+    if (p.status === 'expected')
+      c.passed++
+    else if (p.status === 'unexpected')
+      c.failed++
+    else if (p.status === 'flaky')
+      c.flaky++
+    else c.skipped++
+  }
+  return c
+}
+
+// Counts and rates of a history. `totals` may cover more runs than `h.points` holds (a server that
+// trimmed the points, see trimPoints); the recent window still reads the newest points.
+export function applyTotals(h: TestHistory, totals: StatusCounts): void {
+  h.passed = totals.passed
+  h.failed = totals.failed
+  h.flaky = totals.flaky
+  h.skipped = totals.skipped
+  h.runs = totals.passed + totals.failed + totals.flaky + totals.skipped
+  h.executed = h.runs - h.skipped
+  const d = Math.max(1, h.executed)
+  h.flakyRate = h.flaky / d
+  h.failRate = h.failed / d
+  h.passRate = h.executed === 0 ? 1 : (h.passed + h.flaky) / d
+  h.lastStatus = h.points.at(-1)?.status ?? h.lastStatus
+
+  // Windowed view: rates over the last N runs, and whether instability is new.
+  const recent = countStatuses(h.points.slice(-RECENT_WINDOW))
+  const recentRuns = recent.passed + recent.failed + recent.flaky + recent.skipped
+  const priorRuns = h.runs - recentRuns
+  const rd = Math.max(1, recentRuns - recent.skipped)
+  h.recentFlakyRate = recent.flaky / rd
+  h.recentFailRate = recent.failed / rd
+  h.newlyFlaky = priorRuns > 0 && h.flaky === recent.flaky && recent.flaky > 0
+  h.newlyBroken = priorRuns > 0 && h.failed === recent.failed && recent.failed > 0
+}
+
+// The points a test's health needs, oldest first: the last `window` runs (timelines, windowStats,
+// the recent window), its last `window` executed runs (diagnose), and the whole failing streak it
+// is in (diagnose dates a broken test from its first failure). Older points, mostly skipped runs or
+// settled history, are dropped: a project's full history is tests x runs points, too big to send.
+export function trimPoints<P extends Pick<TestPoint, 'status'>>(points: P[], window = HEALTH_WINDOW): P[] {
+  const keep = new Set<number>()
+  for (let i = Math.max(0, points.length - window); i < points.length; i++)
+    keep.add(i)
+  let executed = 0
+  let streak = true
+  for (let i = points.length - 1; i >= 0; i--) {
+    const status = points[i].status
+    if (status === 'skipped')
+      continue
+    streak &&= status === 'unexpected'
+    if (executed < window || streak)
+      keep.add(i)
+    executed++
+    if (executed >= window && !streak)
+      break
+  }
+  return points.filter((_, i) => keep.has(i))
 }
 
 // Most unstable first: weight failures above flakiness.

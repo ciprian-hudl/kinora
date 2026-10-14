@@ -1,5 +1,5 @@
 import type { Hono } from 'hono'
-import { findProject, listProjects, loadLatestRun, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries } from '../reports/queries'
+import { findProject, listProjects, loadLatestRun, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries, loadTestHistory } from '../reports/queries'
 
 type ReadApi = Hono<{ Variables: { orgId: string } }>
 
@@ -64,7 +64,11 @@ export function registerReadRoutes(api: ReadApi): void {
     if (!p)
       return c.json({ error: 'Project not found' }, 404)
     const testKey = c.req.query('testKey')
+    if (testKey) {
+      const history = await loadTestHistory(p, testKey)
+      return c.json({ histories: history ? [history] : [] })
+    }
     const { histories } = await loadProjectHistory(p)
-    return c.json({ histories: testKey ? histories.filter(h => h.testKey === testKey) : histories })
+    return c.json({ histories })
   })
 }

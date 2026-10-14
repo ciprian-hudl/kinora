@@ -1,4 +1,4 @@
-import type { Manifest, ProjectEntry, ProjectHistory, RunComparison, RunReport } from '@kinora/core'
+import type { Manifest, ProjectEntry, ProjectHistory, RunComparison, RunReport, TestHistory } from '@kinora/core'
 import type { ProjectAnalytics } from '../reports/analytics'
 import { randomUUID } from 'node:crypto'
 import { compareRuns, SCHEMA_VERSION } from '@kinora/core'
@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { db } from '../db'
 import { project, run, test, testQuarantine } from '../db/schemas/index'
 import { ANALYTICS_RANGES, isTimeZone, loadProjectAnalytics } from '../reports/analytics'
-import { findProject, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries, loadTestAttachments, MAX_DASHBOARD_RUNS, searchTests, toNormTest } from '../reports/queries'
+import { findProject, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries, loadTestAttachments, loadTestHistory, MAX_DASHBOARD_RUNS, searchTests, toNormTest } from '../reports/queries'
 import { orgProcedure, router } from '../trpc/index'
 
 export { MAX_DASHBOARD_RUNS }
@@ -61,6 +61,14 @@ export const dashboardRouter = router({
     .query(async ({ ctx, input }): Promise<ProjectHistory> => {
       const p = await ownedProject(ctx.organizationId, input.projectId)
       return loadProjectHistory(p)
+    }),
+
+  // Every point of one test; the project history trims them to what the list pages read.
+  testHistory: orgProcedure
+    .input(z.object({ projectId: z.string().min(1), testKey: z.string().min(1) }))
+    .query(async ({ ctx, input }): Promise<TestHistory | null> => {
+      const p = await ownedProject(ctx.organizationId, input.projectId)
+      return (await loadTestHistory(p, input.testKey)) ?? null
     }),
 
   analytics: orgProcedure

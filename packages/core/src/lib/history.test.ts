@@ -1,7 +1,8 @@
 import type { NormTest, RunReport } from '../contracts/kinora'
 import { describe, expect, it } from 'vitest'
 import { SCHEMA_VERSION } from '../contracts/kinora'
-import { buildTestHistories, byInstability, byRecency, isUnstable, windowStats } from './history'
+import { diagnose } from './health'
+import { applyTotals, buildTestHistories, byInstability, byRecency, countStatuses, isUnstable, trimPoints, windowStats } from './history'
 
 function makeTest(over: Partial<NormTest> & { testKey: string, status: NormTest['status'] }): NormTest {
   return {
@@ -187,5 +188,54 @@ describe('buildTestHistories screenshots', () => {
     const [h] = buildTestHistories([r1, r2])
     expect(h.points[0]).not.toHaveProperty('screenshots')
     expect(h.points[1].screenshots).toBe(2)
+  })
+})
+
+describe('trimPoints', () => {
+  const STATUSES: NormTest['status'][] = ['expected', 'unexpected', 'flaky', 'skipped']
+  // Deterministic pseudo-random timelines, biased so long failing streaks and skipped stretches occur.
+  function timeline(seed: number, length: number) {
+    let x = seed
+    const next = () => (x = (x * 1103515245 + 12345) % 2 ** 31) / 2 ** 31
+    let status: NormTest['status'] = 'expected'
+    return Array.from({ length }, (_, i) => {
+      if (next() < 0.3)
+        status = STATUSES[Math.floor(next() * STATUSES.length)]
+      return { runId: `r${i}`, startedAt: new Date(Date.UTC(2026, 0, 1, i)).toISOString(), status, sha: `c${Math.floor(i / 3)}` }
+    })
+  }
+
+  it('keeps everything diagnose, windowStats and the recent window read', () => {
+    for (let seed = 1; seed <= 300; seed++) {
+      const points = timeline(seed, 1 + (seed % 120))
+      const trimmed = trimPoints(points)
+      expect(diagnose(trimmed)).toEqual(diagnose(points))
+      expect(windowStats(trimmed)).toEqual(windowStats(points))
+      expect(trimmed.slice(-5)).toEqual(points.slice(-5))
+    }
+  })
+
+  it('drops settled history and old skipped runs', () => {
+    const points = [
+      ...Array.from({ length: 200 }, () => ({ status: 'skipped' as const })),
+      ...Array.from({ length: 200 }, () => ({ status: 'expected' as const })),
+    ]
+    expect(trimPoints(points)).toHaveLength(20)
+  })
+
+  it('keeps a whole failing streak, however long', () => {
+    const points = [{ status: 'expected' as const }, ...Array.from({ length: 300 }, () => ({ status: 'unexpected' as const }))]
+    expect(trimPoints(points)).toEqual(points.slice(1))
+  })
+})
+
+describe('applyTotals', () => {
+  it('matches the full history when the points were trimmed', () => {
+    const statuses: NormTest['status'][] = ['flaky', 'expected', 'unexpected', ...Array.from({ length: 40 }, () => 'expected' as const), 'flaky', 'expected']
+    const reports = statuses.map((status, i) => makeReport(`r${i}`, new Date(Date.UTC(2026, 0, 1, i)).toISOString(), [makeTest({ testKey: 'K', status })]))
+    const [full] = buildTestHistories(reports)
+    const [trimmed] = buildTestHistories(reports.slice(-20))
+    applyTotals(trimmed, countStatuses(full.points))
+    expect({ ...trimmed, points: [] }).toEqual({ ...full, points: [] })
   })
 })

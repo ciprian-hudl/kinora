@@ -17,7 +17,7 @@ import StatusTimeline from '@/components/viz/StatusTimeline.vue'
 import StoryBadge from '@/components/viz/StoryBadge.vue'
 import TestHealthBadge from '@/components/viz/TestHealthBadge.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
-import { useDemo, useProjectHistory } from '@/composables/queries'
+import { useDemo, useProjectHistory, useTestHistory } from '@/composables/queries'
 import { useQuarantine } from '@/composables/useQuarantine'
 import { formatDateTimeLong } from '@/lib/format'
 import { testLabel } from '@/lib/test-display'
@@ -26,13 +26,8 @@ import { commitUrl } from '@/lib/url'
 const props = defineProps<{ projectId: string }>()
 const route = useRoute()
 const isDemo = useDemo()
-const { state, isLoading, error, execute: reloadHistory } = useProjectHistory(props.projectId)
+const { state, isLoading: projectLoading, error: projectError, execute: reloadHistory } = useProjectHistory(props.projectId)
 const { byKey: quarantineByKey, savingKey, save, toggle, reload: reloadQuarantines } = useQuarantine(props.projectId)
-// Quarantines fail with the same outage as the history, so a retry reloads both.
-function retry() {
-  void reloadHistory()
-  void reloadQuarantines()
-}
 const savingQuarantine = computed(() => savingKey.value !== null)
 const quarantineReason = ref('')
 
@@ -41,8 +36,19 @@ const testKey = computed(() => {
   return Array.isArray(k) ? (k[0] ?? '') : (k ?? '')
 })
 
+// The project history (trimmed points) labels the related tests; this test's own history has every point.
+const { state: testState, isLoading: testLoading, error: testError, execute: reloadTest } = useTestHistory(props.projectId, testKey)
+const isLoading = computed(() => projectLoading.value || testLoading.value)
+const error = computed(() => projectError.value ?? testError.value)
+// Quarantines fail with the same outage as the history, so a retry reloads all of them.
+function retry() {
+  void reloadHistory()
+  void reloadTest()
+  void reloadQuarantines()
+}
+
 const project = computed(() => state.value.project)
-const history = computed(() => state.value.histories.find(h => h.testKey === testKey.value))
+const history = computed(() => testState.value ?? undefined)
 const quarantine = computed(() => quarantineByKey.value.get(testKey.value))
 const recent = computed(() => windowStats(history.value?.points ?? []))
 const health = computed(() => diagnose(history.value?.points ?? []))
