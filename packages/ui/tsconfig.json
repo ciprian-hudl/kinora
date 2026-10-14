@@ -10,5 +10,12 @@
     },
     "types": ["node"]
   },
+  // Template checks off by default in vue-tsc: an unimported component, an undeclared event or an
+  // unknown directive otherwise only shows up as a Vue warning at runtime.
+  "vueCompilerOptions": {
+    "checkUnknownComponents": true,
+    "checkUnknownEvents": true,
+    "checkUnknownDirectives": true
+  },
   "include": ["src/**/*.ts", "src/**/*.vue", "playwright/**/*.ts", "tests/**/*.ts", "*.config.ts"]
 }
