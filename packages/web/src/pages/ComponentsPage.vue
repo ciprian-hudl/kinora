@@ -18,14 +18,14 @@ import SearchInput from '@/components/app/SearchInput.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
 import TestHealthBadge from '@/components/viz/TestHealthBadge.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
-import { useProjectHistory } from '@/composables/queries'
+import { useComponentHistory } from '@/composables/queries'
 import { matchesHealth, useHealthFilter } from '@/composables/useHealthFilter'
 import { useNewFeature } from '@/composables/useNewFeature'
 import { useQuarantine } from '@/composables/useQuarantine'
 import { testLabel } from '@/lib/test-display'
 
 const props = defineProps<{ projectId: string }>()
-const { state, isLoading, error, execute: reloadHistory } = useProjectHistory(props.projectId)
+const { state, isLoading, error, execute: reloadHistory } = useComponentHistory(props.projectId)
 const { isQuarantined, reload: reloadQuarantines } = useQuarantine(props.projectId)
 // Quarantines fail with the same outage as the history, so a retry reloads both.
 function retry() {

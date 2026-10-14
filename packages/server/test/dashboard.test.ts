@@ -423,14 +423,51 @@ describe('dashboard reads', () => {
     }
 
     const [listed] = (await (await caller(a)).dashboard.projectHistory({ projectId: 'web-app' })).histories
-    const full = (await (await caller(a)).dashboard.testHistory({ projectId: 'web-app', testKey: listed.testKey }))!
+    const full = (await (await caller(a)).dashboard.testHistory({ projectId: 'web-app', testKey: listed.testKey })).history!
     expect(full.points).toHaveLength(statuses.length)
     expect(listed.points).toHaveLength(25)
     expect(diagnose(listed.points)).toEqual(diagnose(full.points))
     expect({ ...listed, points: [] }).toEqual({ ...full, points: [] })
     expect(listed).toMatchObject({ runs: 96, failed: 25, flaky: 1, newlyBroken: false, lastStatus: 'unexpected' })
 
-    await expect((await caller(a)).dashboard.testHistory({ projectId: 'web-app', testKey: 'nope' })).resolves.toBeNull()
+    expect((await (await caller(a)).dashboard.testHistory({ projectId: 'web-app', testKey: 'nope' })).history).toBeNull()
+  })
+
+  it('testHistory returns the clusters the test shares, with the titles of the other tests', async () => {
+    const a = await createUser('a@test.dev')
+    const payload = runPayload('web-app', '@smoke', 'unexpected')
+    const [base] = payload.tests
+    const failing = (title: string) => {
+      const titlePath = [base.file, title]
+      return { ...base, title, titlePath, testKey: makeTestKey(base.file, titlePath, 'chromium'), errors: [{ message: 'Error: connection refused' }] }
+    }
+    payload.tests = [failing('checks out'), failing('pays'), { ...failing('logs in'), errors: [{ message: 'Error: timeout' }] }]
+    payload.run.counts = { total: 3, expected: 0, unexpected: 3, flaky: 0, skipped: 0 }
+    await ingest(await createApiKey(a.id), payload)
+
+    const page = await (await caller(a)).dashboard.testHistory({ projectId: 'web-app', testKey: payload.tests[0].testKey })
+    expect(page.project.id).toBe('web-app')
+    expect(page.clusters).toHaveLength(1)
+    expect(page.clusters[0].testKeys.sort()).toEqual([payload.tests[0].testKey, payload.tests[1].testKey].sort())
+    expect(page.titles[payload.tests[1].testKey]).toEqual({ title: 'pays', titlePath: [base.file, 'pays'] })
+  })
+
+  it('componentHistory only reads the tests that mount stories', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    await ingest(key, runPayload('api'))
+    expect((await (await caller(a)).dashboard.componentHistory({ projectId: 'api' })).histories).toEqual([])
+
+    const payload = runPayload('web-app')
+    const [plain] = payload.tests
+    const titlePath = [plain.file, 'renders the button']
+    payload.tests.push({ ...plain, title: 'renders the button', titlePath, testKey: makeTestKey(plain.file, titlePath, 'chromium'), annotations: [{ type: STORY_ANNOTATION, description: 'components/Button/Primary' }] })
+    await ingest(key, payload)
+
+    const h = await (await caller(a)).dashboard.componentHistory({ projectId: 'web-app' })
+    expect(h.histories.map(x => x.title)).toEqual(['renders the button'])
+    expect(h.histories[0].stories).toEqual(['components/Button/Primary'])
+    expect(h.clusters).toEqual([])
   })
 
   it('run returns the a11y report of a test, and drops a malformed one without rejecting the run', async () => {

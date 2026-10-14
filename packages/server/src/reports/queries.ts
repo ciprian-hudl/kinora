@@ -1,4 +1,4 @@
-import type { NormError, NormTest, ProjectEntry, ProjectHistory, RunReport, RunSummary, StatusCounts, TestHistory } from '@kinora/core'
+import type { FailureCluster, NormError, NormTest, ProjectEntry, ProjectHistory, RunReport, RunSummary, StatusCounts, TestHistory } from '@kinora/core'
 import type { CodeownersRule } from '../lib/codeowners'
 import { applyTotals, buildFailureClusters, buildTestHistories, HEALTH_WINDOW, SCHEMA_VERSION, storiesOf, trimPoints } from '@kinora/core'
 import { and, asc, desc, eq, ilike, lte, sql } from 'drizzle-orm'
@@ -224,16 +224,35 @@ async function windowClusters(slug: string, runs: RunRow[]) {
   return buildFailureClusters(runs.filter(r => byRun.has(r.id)).map(r => ({ ...runReport(slug, r, []), tests: byRun.get(r.id)! })))
 }
 
+function projectEntry(p: ProjectRow, runs: RunRow[]): ProjectEntry {
+  return { id: p.slug, name: p.name, runs: runs.map(r => runSummary(p.slug, r)) }
+}
+
+const storyFilter = (alias: string) => sql.raw(`${alias}.annotations @> '[{"type": "kinora:story"}]'`)
+
 // Every test of the project over its newest runs, for the list pages. Each history carries counts
 // and rates over the whole window but only the points its health reads (see trimPoints), and
 // Postgres does the picking: loading every row put a 3,000-test project at ~2 GB of server memory
-// and ~150 MB of JSON per page load.
-export async function loadProjectHistory(p: ProjectRow): Promise<ProjectHistory> {
+// and ~150 MB of JSON per page load. `componentsOnly`: just the tests that mount stories, without
+// failure clusters, for the Components page.
+export async function loadProjectHistory(p: ProjectRow, opts: { componentsOnly?: boolean } = {}): Promise<ProjectHistory> {
   const runs = await windowRuns(p.id)
-  const entry: ProjectEntry = { id: p.slug, name: p.name, runs: runs.map(r => runSummary(p.slug, r)) }
+  const entry = projectEntry(p, runs)
   if (!runs.length)
     return { project: entry, histories: [], clusters: [] }
   const ids = sql.join(runs.map(r => sql`${r.id}`), sql`, `)
+
+  // Stories: the latest run that mounted any, wherever it sits in the window.
+  const storyRows = await db.execute<{ testKey: string, annotations: NormTest['annotations'] }>(sql`
+    select distinct on (t.test_key) t.test_key as "testKey", t.annotations
+    from test t join run r on r.id = t.run_id
+    where t.run_id in (${ids}) and ${storyFilter('t')}
+    order by t.test_key, r.started_at desc`)
+  if (opts.componentsOnly && !storyRows.rows.length)
+    return { project: entry, histories: [], clusters: [] }
+  const onlyStories = opts.componentsOnly
+    ? sql`and t.test_key in (select s.test_key from test s where s.run_id in (${ids}) and ${storyFilter('s')})`
+    : sql``
 
   // Per test, newest first: its rank among all and among executed runs, the newest run it did not
   // fail (the end of a failing streak), and its counts. A superset of trimPoints, which then trims.
@@ -249,20 +268,13 @@ export async function loadProjectHistory(p: ProjectRow): Promise<ProjectHistory>
         count(*) filter (where t.status = 'flaky') over key as flaky,
         count(*) filter (where t.status = 'skipped') over key as skipped
       from test t join run r on r.id = t.run_id
-      where t.run_id in (${ids})
+      where t.run_id in (${ids}) ${onlyStories}
       window key as (partition by t.test_key), newest as (partition by t.test_key order by r.started_at desc)
     )
     select ${pointColumns}, ranked.passed::int, ranked.failed::int, ranked.flaky::int, ranked.skipped::int
     from ranked join test t on t.id = ranked.id
     where ranked.raw_rank <= ${HEALTH_WINDOW}
       or (ranked.status <> 'skipped' and (ranked.exec_rank <= ${HEALTH_WINDOW} or ranked.started_at > coalesce(ranked.last_ok_at, '-infinity')))`)
-
-  // Stories: the latest run that mounted any, wherever it sits in the window.
-  const storyRows = await db.execute<{ testKey: string, annotations: NormTest['annotations'] }>(sql`
-    select distinct on (t.test_key) t.test_key as "testKey", t.annotations
-    from test t join run r on r.id = t.run_id
-    where t.run_id in (${ids}) and t.annotations @> '[{"type": "kinora:story"}]'
-    order by t.test_key, r.started_at desc`)
 
   const totals = new Map<string, StatusCounts>()
   for (const r of rows.rows)
@@ -277,12 +289,11 @@ export async function loadProjectHistory(p: ProjectRow): Promise<ProjectHistory>
     if (s?.length)
       h.stories = s
   }
-  return { project: entry, histories, clusters: await windowClusters(p.slug, runs) }
+  const clusters = opts.componentsOnly ? [] : await windowClusters(p.slug, runs)
+  return { project: entry, histories, clusters }
 }
 
-// One test over the project's newest runs, every point: the test history page and agents.
-export async function loadTestHistory(p: ProjectRow, testKey: string): Promise<TestHistory | undefined> {
-  const runs = await windowRuns(p.id)
+async function testHistoryOver(p: ProjectRow, runs: RunRow[], testKey: string): Promise<TestHistory | undefined> {
   if (!runs.length)
     return undefined
   const rows = await db.execute<PointRow & Record<string, unknown>>(sql`
@@ -291,6 +302,43 @@ export async function loadTestHistory(p: ProjectRow, testKey: string): Promise<T
     where t.project_id = ${p.id} and t.test_key = ${testKey}
       and t.run_id in (${sql.join(runs.map(r => sql`${r.id}`), sql`, `)})`)
   return buildTestHistories(pointReports(p.slug, runs, rows.rows, parseCodeowners(p.codeownersText)))[0]
+}
+
+// One test over the project's newest runs, every point: agents reading one test's history.
+export async function loadTestHistory(p: ProjectRow, testKey: string): Promise<TestHistory | undefined> {
+  return testHistoryOver(p, await windowRuns(p.id), testKey)
+}
+
+export interface TestHistoryPage {
+  project: ProjectEntry
+  history: TestHistory | null
+  // The failure clusters this test is part of, and the titles of the tests they share.
+  clusters: FailureCluster[]
+  titles: Record<string, Pick<TestHistory, 'title' | 'titlePath'>>
+}
+
+// What the test history page shows: the test with every point, plus what it needs of the project
+// (its runs, the clusters this test is in), without the history of every other test.
+export async function loadTestHistoryPage(p: ProjectRow, testKey: string): Promise<TestHistoryPage> {
+  const runs = await windowRuns(p.id)
+  const history = (await testHistoryOver(p, runs, testKey)) ?? null
+  const clusters = history && (history.failed || history.flaky)
+    ? (await windowClusters(p.slug, runs)).filter(c => c.testKeys.includes(testKey))
+    : []
+  const keys = [...new Set(clusters.flatMap(c => c.testKeys))]
+  const titleRows = keys.length
+    ? await db.execute<{ testKey: string, title: string, titlePath: string[] }>(sql`
+        select distinct on (t.test_key) t.test_key as "testKey", t.title, t.title_path as "titlePath"
+        from test t
+        where t.project_id = ${p.id} and t.test_key in (${sql.join(keys.map(k => sql`${k}`), sql`, `)})
+        order by t.test_key, t.created_at desc`)
+    : { rows: [] }
+  return {
+    project: projectEntry(p, runs),
+    history,
+    clusters,
+    titles: Object.fromEntries(titleRows.rows.map(r => [r.testKey, { title: r.title, titlePath: r.titlePath }])),
+  }
 }
 
 // Tests of a workspace whose file, title path or project contains every word of the query, one

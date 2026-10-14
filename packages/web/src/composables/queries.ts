@@ -39,7 +39,8 @@ export function useProjectHistory(projectId: string) {
   )
 }
 
-// Every point of one test (the project history trims them). Refetches when the test changes.
+// The test history page: one test with every point (the project history trims them) and the
+// failure clusters it shares. Refetches when the test changes.
 export function useTestHistory(projectId: string, testKey: MaybeRefOrGetter<string>) {
   const query = useAsyncState(
     async () => (toValue(testKey) ? trpc.dashboard.testHistory.query({ projectId, testKey: toValue(testKey) }) : null),
@@ -48,6 +49,15 @@ export function useTestHistory(projectId: string, testKey: MaybeRefOrGetter<stri
   )
   watch(() => toValue(testKey), () => void query.execute())
   return query
+}
+
+// The Components page: only the tests that mount stories.
+export function useComponentHistory(projectId: string) {
+  return useAsyncState(
+    () => trpc.dashboard.componentHistory.query({ projectId }),
+    { project: null, histories: [], clusters: [] },
+    QUERY_OPTIONS,
+  )
 }
 
 // Refetches when the range or branch changes. `branch` undefined = every branch. Buckets follow
