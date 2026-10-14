@@ -1,8 +1,9 @@
-import { eq } from 'drizzle-orm'
+import { makeTestKey, MAX_TESTS_PER_RUN } from '@kinora/core'
+import { count, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { currentPeriodResults } from '../src/billing/usage'
 import { db } from '../src/db'
-import { organization } from '../src/db/schemas/index'
+import { organization, test } from '../src/db/schemas/index'
 import { createApiKey, createUser, ingest, ownedOrgId, runPayload } from './helpers'
 
 describe('ingest /api/v1/runs', () => {
@@ -37,6 +38,24 @@ describe('ingest /api/v1/runs', () => {
     expect(tests).toHaveLength(1)
     expect(tests[0].tags).toEqual(['@smoke'])
   })
+
+  // A single insert hit Postgres' 65,535 bind-parameter cap past 3,449 tests and failed the upload.
+  it('stores a run carrying the most tests the contract allows', async () => {
+    const user = await createUser()
+    const key = await createApiKey(user.id)
+    const payload = runPayload()
+    const [base] = payload.tests
+    payload.tests = Array.from({ length: MAX_TESTS_PER_RUN }, (_, i) => {
+      const titlePath = [base.file, `case ${i}`]
+      return { ...base, title: `case ${i}`, titlePath, testKey: makeTestKey(base.file, titlePath, base.projectName) }
+    })
+    payload.run.counts = { total: MAX_TESTS_PER_RUN, expected: MAX_TESTS_PER_RUN, unexpected: 0, flaky: 0, skipped: 0 }
+
+    const res = await ingest(key, payload)
+    expect(res.status).toBe(201)
+    const [stored] = await db.select({ n: count() }).from(test)
+    expect(stored.n).toBe(MAX_TESTS_PER_RUN)
+  }, 60_000)
 
   it('counts a run when it is received, whatever date it carries', async () => {
     const user = await createUser()

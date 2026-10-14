@@ -26,6 +26,9 @@ const BEARER_PREFIX = 'Bearer '
 const INGEST_MAX_JSON_MB = 25
 // Matches the /api/v1 bodyLimit; busboy truncates the file part past this so RAM/disk stay bounded.
 const MAX_ARTIFACT_BYTES = 100 * 1024 * 1024
+// Postgres caps a statement at 65,535 bind parameters; a test row binds 19, so one insert topped
+// out at 3,449 tests while a run may carry up to MAX_TESTS_PER_RUN.
+const TEST_INSERT_BATCH = 1000
 
 // Public ingest API (api-key authed) - the reporter / cli upload here. The token's
 // referenceId is the owning organization id.
@@ -114,29 +117,29 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
       meterPending: billable,
     })
 
-    if (input.tests.length) {
-      await tx.insert(test).values(input.tests.map(item => ({
-        id: randomUUID(),
-        runId,
-        projectId,
-        testKey: item.testKey,
-        title: item.title,
-        titlePath: item.titlePath,
-        file: item.file,
-        line: item.line,
-        column: item.column,
-        projectName: item.projectName,
-        status: item.status,
-        ok: item.ok,
-        duration: Math.round(item.duration),
-        retries: item.retries,
-        tags: item.tags,
-        annotations: item.annotations,
-        errors: item.errors,
-        attachments: item.attachments,
-        a11y: item.a11y ?? null,
-      })))
-    }
+    const rows = input.tests.map(item => ({
+      id: randomUUID(),
+      runId,
+      projectId,
+      testKey: item.testKey,
+      title: item.title,
+      titlePath: item.titlePath,
+      file: item.file,
+      line: item.line,
+      column: item.column,
+      projectName: item.projectName,
+      status: item.status,
+      ok: item.ok,
+      duration: Math.round(item.duration),
+      retries: item.retries,
+      tags: item.tags,
+      annotations: item.annotations,
+      errors: item.errors,
+      attachments: item.attachments,
+      a11y: item.a11y ?? null,
+    }))
+    for (let i = 0; i < rows.length; i += TEST_INSERT_BATCH)
+      await tx.insert(test).values(rows.slice(i, i + TEST_INSERT_BATCH))
 
     await recordResults(tx, orgId, history ? startedAt : new Date(), input.tests.length)
 
