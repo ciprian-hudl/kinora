@@ -3,12 +3,12 @@ name: Playwright Update
 # The only thing that updates Playwright in this repo (Renovate is told to leave it alone).
 # A new Playwright can change the trace format, and the viewer refuses traces newer than the
 # engine it vendors: every day we lag, users on the latest Playwright cannot open their traces.
-# Each day this checks npm, and when a newer @playwright/test is out it opens a pull request
+# Every 6 hours this checks npm, and when a newer @playwright/test is out it opens a pull request
 # with the bump and the re-vendored engine. CI on that pull request (including the viewer's
 # live-trace spec) decides whether it is safe to merge.
 on:
   schedule:
-    - cron: '17 5 * * *'
+    - cron: '17 */6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -49,6 +49,8 @@ jobs:
           node-version-file: package.json
           cache: pnpm
 
+      # pnpm's minimumReleaseAge (24 hours by default) makes CI reject a lockfile with a younger
+      # release, so a version under that age is left for a later run instead of opening a red PR.
       - name: Compare with the latest Playwright
         id: version
         env:
@@ -56,12 +58,16 @@ jobs:
         run: |
           current=$(node -p "require('./packages/trace-viewer/package.json').devDependencies['@playwright/test'].replace(/^[^0-9]*/, '')")
           latest=$(npm view @playwright/test version)
+          age_hours=$(npm view @playwright/test time --json | node -e "const t = JSON.parse(require('fs').readFileSync(0, 'utf8')); console.log(Math.floor((Date.now() - Date.parse(t[process.argv[1]])) / 36e5))" "$latest")
           echo "current=$current" >> "$GITHUB_OUTPUT"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           branch="chore/playwright-$latest"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           if [ "$current" = "$latest" ]; then
             echo "Already on Playwright $latest."
+            echo "update=false" >> "$GITHUB_OUTPUT"
+          elif [ "$age_hours" -lt 24 ]; then
+            echo "Playwright $latest was published ${age_hours}h ago, under pnpm's 24h minimumReleaseAge. A later run picks it up."
             echo "update=false" >> "$GITHUB_OUTPUT"
           elif [ -n "$(git ls-remote --heads origin "$branch")" ]; then
             echo "A pull request for Playwright $latest is already open."

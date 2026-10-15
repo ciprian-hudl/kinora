@@ -34,7 +34,7 @@ pnpm --filter @kinora/trace-viewer test:e2e
 ```
 
 You rarely need to do this by hand: the **Playwright Update** workflow
-(`.github/workflows/playwright-update.yml`) checks npm daily and opens a pull request
+(`.github/workflows/playwright-update.yml`) checks npm every 6 hours and opens a pull request
 with the bump and the re-synced engine.
 
 `pnpm vendor:playwright-trace:check` verifies that the checked-in files match the
