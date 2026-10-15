@@ -52,7 +52,7 @@ async function load(): Promise<void> {
     <div v-else-if="attachments" class="flex flex-col gap-3">
       <ScreenshotDiff v-for="(c, i) in comparisons" :key="`${c.name}-${i}`" :comparison="c" />
       <p v-if="!comparisons.length" class="font-mono text-[11px] text-muted-foreground">
-        The images of this run were not uploaded.
+        {{ attachments.some(a => a.expired) ? 'The images of this run expired: the artifact retention deleted them.' : 'The images of this run were not uploaded.' }}
       </p>
     </div>
   </div>

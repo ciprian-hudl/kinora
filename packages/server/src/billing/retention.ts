@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, lt, notInArray } from 'drizzle-orm'
 import { db } from '../db'
-import { artifact, project, run, subscription } from '../db/schemas/index'
+import { artifact, project, run, subscription, test } from '../db/schemas/index'
 import { cloud, retentionPolicy } from '../lib/env'
 import { logger } from '../lib/logger'
 import { storage } from '../lib/storage'
@@ -81,14 +81,33 @@ export async function purgeScope(before: Date, scope: Scope, stats?: PurgeStats)
   return total
 }
 
+// Mark the attachments whose file was just deleted as expired, so the dashboard says the trace or
+// images expired instead of showing a dead badge (an attachment never uploaded has no file either).
+async function markExpired(deleted: { testId: string | null, name: string }[]): Promise<void> {
+  const byTest = new Map<string, Set<string>>()
+  for (const d of deleted) {
+    if (d.testId)
+      byTest.set(d.testId, (byTest.get(d.testId) ?? new Set()).add(d.name))
+  }
+  if (!byTest.size)
+    return
+  const rows = await db.select({ id: test.id, attachments: test.attachments }).from(test).where(inArray(test.id, [...byTest.keys()]))
+  for (const row of rows) {
+    const names = byTest.get(row.id)!
+    await db.update(test)
+      .set({ attachments: row.attachments.map(a => (names.has(a.name) ? { ...a, expired: true } : a)) })
+      .where(eq(test.id, row.id))
+  }
+}
+
 // Drop the blobs of older runs but keep the rows: pass rates, trends and flaky history survive,
-// the attachment just loses its URL at read time.
+// the attachment loses its URL at read time and is marked expired.
 export async function purgeArtifactsBefore(before: Date, stats?: PurgeStats): Promise<number> {
   let total = 0
   let fetched = BATCH
   while (fetched === BATCH) {
     const batch = await db
-      .select({ id: artifact.id, key: artifact.storageKey })
+      .select({ id: artifact.id, key: artifact.storageKey, testId: artifact.testId, name: artifact.name })
       .from(artifact)
       .innerJoin(run, eq(artifact.runId, run.id))
       .where(lt(run.startedAt, before))
@@ -99,6 +118,7 @@ export async function purgeArtifactsBefore(before: Date, stats?: PurgeStats): Pr
       break
 
     await deleteBlobs(batch.map(b => b.key), stats)
+    await markExpired(batch)
     await db.delete(artifact).where(inArray(artifact.id, batch.map(b => b.id)))
     total += fetched
   }

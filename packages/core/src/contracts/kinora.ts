@@ -74,6 +74,9 @@ export const normAttachmentSchema = z.object({
   path: z.string().optional(),
   hasBody: z.boolean(), // body stripped on ingest; flag that one existed
   url: z.string().optional(), // relative path to the copied artifact (e.g. trace.zip), if hosted
+  // The hosted file was deleted by the server's artifact retention: the test keeps its history,
+  // the attachment no longer has a file behind it. Set by the server only.
+  expired: z.boolean().optional(),
 })
 
 export const normErrorSchema = z.object({

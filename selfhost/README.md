@@ -69,7 +69,8 @@ Self-host runs with `KINORA_CLOUD=false` (no billing; every feature, including a
 Nothing is deleted by default. Traces are what fills the disk (a `trace.zip` carries the
 screenshots and video of its test), so the first knob to reach for is
 `KINORA_ARTIFACT_RETENTION_DAYS`: it deletes the stored files past N days but keeps the runs, so
-pass rates, trends and flaky history stay intact. Old runs simply lose their "View trace" link.
+pass rates, trends and flaky history stay intact. Old runs lose their "View trace" link and their
+screenshot comparisons, and say so: their tests show "Trace expired" instead.
 
 ```bash
 # keep traces for 30 days, history forever

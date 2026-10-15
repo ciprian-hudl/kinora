@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { purgeArtifactsBefore, purgeBeyondLastRuns, purgeExpiredRuns, purgeScope } from '../src/billing/retention'
 import { storageBytes } from '../src/billing/usage'
 import { db } from '../src/db'
-import { artifact, project, run } from '../src/db/schemas/index'
+import { artifact, project, run, test } from '../src/db/schemas/index'
 import { env } from '../src/lib/env'
 import { storage } from '../src/lib/storage'
 import { createUser, ownedOrgId, resetDb } from './helpers'
@@ -154,6 +154,44 @@ describe('purgeArtifactsBefore', () => {
     expect(existsSync(recentKey)).toBe(true)
     expect(await db.query.artifact.findMany({ where: eq(artifact.runId, old) })).toHaveLength(0)
     expect(await exists(old)).toBeTruthy() // history survives the blob sweep
+  })
+
+  it('marks the attachments whose file it deleted as expired, and only those', async () => {
+    const u = await createUser()
+    const projectId = await seedProject(u.id)
+    const runId = await seedRunIn(projectId, new Date(Date.now() - 100 * DAY))
+    const testId = randomUUID()
+    await db.insert(test).values({
+      id: testId,
+      runId,
+      projectId,
+      testKey: 'k',
+      title: 't',
+      titlePath: ['t'],
+      file: 'f.spec.ts',
+      line: 1,
+      column: 1,
+      projectName: 'chromium',
+      status: 'unexpected',
+      ok: false,
+      duration: 1,
+      retries: 0,
+      tags: [],
+      annotations: [],
+      errors: [],
+      // A hosted trace, and a video the reporter never uploaded (no file to expire).
+      attachments: [{ name: 'trace', contentType: 'application/zip', hasBody: false }, { name: 'video', contentType: 'video/webm', hasBody: false }],
+    })
+    await storage.put(`${projectId}/${runId}/trace.zip`, Buffer.from('zip'))
+    await db.insert(artifact).values({ id: randomUUID(), projectId, runId, testId, name: 'trace', contentType: 'application/zip', storageKey: `${projectId}/${runId}/trace.zip`, size: 3 })
+
+    await purgeArtifactsBefore(new Date(Date.now() - 30 * DAY))
+
+    const row = await db.query.test.findFirst({ where: eq(test.id, testId) })
+    expect(row?.attachments).toEqual([
+      { name: 'trace', contentType: 'application/zip', hasBody: false, expired: true },
+      { name: 'video', contentType: 'video/webm', hasBody: false },
+    ])
   })
 })
 

@@ -135,7 +135,8 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
       tags: item.tags,
       annotations: item.annotations,
       errors: item.errors,
-      attachments: item.attachments,
+      // `expired` is the retention's to set, not a client's.
+      attachments: item.attachments.map(({ expired: _expired, ...a }) => a),
       a11y: item.a11y ?? null,
     }))
     for (let i = 0; i < rows.length; i += TEST_INSERT_BATCH)

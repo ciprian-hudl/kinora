@@ -6,7 +6,7 @@ import { Separator } from '@kinora/ui/separator'
 import { Skeleton } from '@kinora/ui/skeleton'
 import { StatBlock } from '@kinora/ui/stat-block'
 import { Tabs, TabsList, TabsTrigger } from '@kinora/ui/tabs'
-import { ArrowLeft, ExternalLink, Film, GitBranch, GitCommitHorizontal, GitCompareArrows, Link2, Paperclip } from '@lucide/vue'
+import { ArrowLeft, Clock, ExternalLink, Film, GitBranch, GitCommitHorizontal, GitCompareArrows, Link2, Paperclip } from '@lucide/vue'
 import { useRouteQuery } from '@vueuse/router'
 import { computed, watch } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -149,8 +149,23 @@ function screenshotDiffs(attachments: Attachment[]): ScreenshotComparison<Attach
 // viewer's attachments tab; their own `path` is a CI-runner path the server never received.
 function attachmentBadges(attachments: Attachment[]): Attachment[] {
   const inline = new Set(screenshotDiffs(attachments).flatMap(c => [c.expected, c.actual, c.diff, c.previous]))
-  const badges = attachments.filter(a => !inline.has(a))
+  const badges = attachments.filter(a => !inline.has(a) && !a.expired)
   return traceViewerHref(attachments) ? badges.filter(a => !isTraceAttachment(a)) : badges
+}
+
+// Files the server's artifact retention deleted: one badge for all of them, rather than dead ones.
+function expiredLabel(attachments: Attachment[]): string | undefined {
+  const expired = attachments.filter(a => a.expired)
+  if (!expired.length)
+    return undefined
+  const others = expired.filter(a => !isTraceAttachment(a)).length
+  const files = (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`
+  if (others === expired.length)
+    return `${files(others)} expired`
+  return others ? `Trace and ${files(others)} expired` : 'Trace expired'
+}
+function expiredTitle(attachments: Attachment[]): string {
+  return `${attachments.filter(a => a.expired).map(a => a.name).join(', ')}: deleted by the artifact retention`
 }
 
 // An uploaded attachment links straight to its file; otherwise fall back to the trace viewer,
@@ -400,6 +415,9 @@ const BADGE_CLASS = 'inline-flex items-center gap-1 rounded border border-border
                 <Paperclip class="size-3" />{{ a.name }}
               </span>
             </template>
+            <span v-if="expiredLabel(t.attachments)" :class="BADGE_CLASS" :title="expiredTitle(t.attachments)" data-testid="expired-artifacts">
+              <Clock class="size-3" />{{ expiredLabel(t.attachments) }}
+            </span>
           </div>
         </div>
 

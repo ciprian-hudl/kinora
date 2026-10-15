@@ -491,6 +491,16 @@ describe('dashboard reads', () => {
     expect((await dashboard.run({ projectId: 'web-app', runId })).tests[0].a11y).toBeUndefined()
   })
 
+  it('ignores an expired flag sent by a client: only the retention sets it', async () => {
+    const a = await createUser('a@test.dev')
+    const payload = runPayload('web-app')
+    const sent = { ...payload, tests: [{ ...payload.tests[0], attachments: [{ name: 'trace', contentType: 'application/zip', hasBody: false, expired: true }] }] } as IngestRun
+    const { runId } = await (await ingest(await createApiKey(a.id), sent)).json() as { runId: string }
+
+    const { tests } = await (await caller(a)).dashboard.run({ projectId: 'web-app', runId })
+    expect(tests[0].attachments).toEqual([{ name: 'trace', contentType: 'application/zip', hasBody: false }])
+  })
+
   it('projectHistory stamps each point with the commit of its run, for flaky detection', async () => {
     const a = await createUser('a@test.dev')
     const key = await createApiKey(a.id)
