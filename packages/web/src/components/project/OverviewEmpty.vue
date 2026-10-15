@@ -159,6 +159,10 @@ const runSnippet = isSelfHost
               <a href="https://docs.kinora.dev/guides/vitest/" target="_blank" rel="noopener" class="font-medium text-foreground underline-offset-4 hover:underline">Use @kinora/vitest-reporter</a>
               instead.
             </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              Already have a JSON report, or can't change the config?
+              <a href="https://docs.kinora.dev/guides/cli/" target="_blank" rel="noopener" class="font-medium text-foreground underline-offset-4 hover:underline">Upload it with @kinora/cli</a>.
+            </p>
             <div class="mt-2 overflow-hidden rounded-md border border-border bg-background/60">
               <div class="border-b border-border/80 px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
                 playwright.config.ts
@@ -197,6 +201,8 @@ const runSnippet = isSelfHost
         <RouterLink :to="{ name: 'settings-workspace' }" class="font-medium text-foreground underline-offset-4 hover:underline">
           Workspace settings
         </RouterLink>.
+        New to kinora?
+        <a href="https://docs.kinora.dev/getting-started/" target="_blank" rel="noopener" class="font-medium text-foreground underline-offset-4 hover:underline">Read the setup guide</a>.
       </p>
     </div>
   </div>
