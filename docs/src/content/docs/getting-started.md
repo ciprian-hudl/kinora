@@ -37,7 +37,7 @@ KINORA_TOKEN=<token> npx playwright test
 ```
 
 On GitHub Actions and GitLab CI, git and CI metadata (branch, commit, PR) are filled in automatically. For all
-reporter options and a full CI example, see the [reporter package](https://github.com/kinora-dev/kinora/tree/main/packages/reporter).
+reporter options and a full CI example, see the [reporter guide](/guides/reporter/).
 
 
 Using **Vitest browser mode or Storybook** instead? Add
@@ -59,7 +59,7 @@ npx @kinora/cli upload results.json --project web-app --token <token>
 ```
 
 Both paths derive the same test identity, so history stays stable no matter how a result was
-uploaded. See the [CLI package](https://github.com/kinora-dev/kinora/tree/main/packages/cli) for
+uploaded. See the [CLI guide](/guides/cli/) for
 all flags, and `kinora import <dir>` to bulk-import a backlog of historical reports.
 
 ## Next steps
