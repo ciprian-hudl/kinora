@@ -58,8 +58,8 @@ const sourceReveal = ref<SourceReveal | null>(null)
 const pickedLocator = ref<PickedLocator | null>(null)
 const inspectingLocator = ref(false)
 const playing = ref(false)
-const PLAYBACK_SPEEDS = [0.5, 1, 2] as const
-const playbackSpeedIndex = ref(1)
+const PLAYBACK_SPEEDS = [0.25, 0.5, 1, 2] as const
+const playbackSpeedIndex = ref(PLAYBACK_SPEEDS.indexOf(1))
 const playbackSpeed = computed(() => PLAYBACK_SPEEDS[playbackSpeedIndex.value])
 // Trace time the playback clock is at; null while paused, when the selected action drives the view.
 const playhead = ref<number | null>(null)
