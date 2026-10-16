@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ActionEntry } from '@isomorphic/trace/entries'
+import type { ActionGroup } from '../store'
 import { cn } from '@kinora/ui'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@kinora/ui/dropdown-menu'
 import { Check, ChevronRight, Filter, X } from '@lucide/vue'
@@ -7,15 +7,12 @@ import { computed, ref } from 'vue'
 import { actionDuration, actionStatus, actionTitle } from '../lib/action'
 import { formatMs } from '../lib/format'
 import { actionInWindow } from '../lib/timeline'
-import { useTraceStore } from '../store'
+import { ACTION_GROUPS, useTraceStore } from '../store'
 import FilterInput from './FilterInput.vue'
 import TextTooltip from './TextTooltip.vue'
 
 const store = useTraceStore()
 const filter = ref('')
-
-const ACTION_GROUPS = ['getter', 'route', 'configuration'] as const
-type ActionGroup = typeof ACTION_GROUPS[number]
 
 const groupLabels: Record<ActionGroup, string> = {
   getter: 'Getters',
@@ -23,35 +20,15 @@ const groupLabels: Record<ActionGroup, string> = {
   configuration: 'Configuration',
 }
 
-const visibleGroups = ref<Set<ActionGroup>>(new Set(ACTION_GROUPS))
-
 const filtering = computed(() => filter.value.trim().length > 0)
 
-function groupFor(action: ActionEntry): ActionGroup | undefined {
-  return ACTION_GROUPS.find(group => group === action.group)
-}
-
-function actionPassesGroup(action: ActionEntry): boolean {
-  const group = groupFor(action)
-  return !group || visibleGroups.value.has(group)
-}
-
-function setGroup(group: ActionGroup, checked: boolean): void {
-  const next = new Set(visibleGroups.value)
-  if (checked)
-    next.add(group)
-  else
-    next.delete(group)
-  visibleGroups.value = next
-}
-
-const hiddenByGroupCount = computed(() => store.items.value.filter(item => !actionPassesGroup(item.action)).length)
+const hiddenByGroupCount = computed(() => store.items.value.filter(item => !store.actionPassesGroup(item.action)).length)
 
 const groupRows = computed(() => ACTION_GROUPS.map(group => ({
   group,
   label: groupLabels[group],
   count: store.model.value?.actionCounters.get(group) ?? 0,
-  checked: visibleGroups.value.has(group),
+  checked: !store.hiddenGroups.value.includes(group),
 })))
 
 const rows = computed(() => {
@@ -60,7 +37,7 @@ const rows = computed(() => {
   // While filtering or zoomed, search the full flat list; otherwise follow collapse state.
   const source = f || range ? store.items.value : store.visibleItems.value
   return source
-    .filter(item => actionPassesGroup(item.action))
+    .filter(item => store.actionPassesGroup(item.action))
     .filter(item => !range || actionInWindow(item.action, range))
     .map(item => ({
       item,
@@ -107,7 +84,7 @@ const countLabel = computed(() => {
             :key="row.group"
             :model-value="row.checked"
             :disabled="row.count === 0"
-            @update:model-value="setGroup(row.group, $event)"
+            @update:model-value="store.setGroupVisible(row.group, $event)"
           >
             <span class="min-w-0 flex-1">{{ row.label }}</span>
             <span class="ml-auto font-mono text-[11px] text-muted-foreground">{{ row.count }}</span>

@@ -3,9 +3,11 @@ import type { StackFrame } from '@trace/trace'
 import type { Snapshot, SnapshotTab } from './lib/snapshots'
 import type { TimeRange } from './lib/timeline'
 import { buildActionTree, TraceModel } from '@isomorphic/trace/traceModel'
+import { useStorage } from '@vueuse/core'
 import { computed, ref, shallowRef } from 'vue'
+import { advance, indexAt } from './lib/playback'
 import { collectSnapshots, snapshotInfoUrl, snapshotUrl } from './lib/snapshots'
-import { normalizeRange } from './lib/timeline'
+import { actionInWindow, normalizeRange } from './lib/timeline'
 
 export interface ActionItem {
   id: string
@@ -23,6 +25,9 @@ export interface PickedLocator {
   selector: string
   locator: string
 }
+
+export const ACTION_GROUPS = ['getter', 'route', 'configuration'] as const
+export type ActionGroup = typeof ACTION_GROUPS[number]
 
 export const DETAIL_TABS = ['source', 'call', 'locator', 'log', 'network', 'attachments', 'errors', 'console', 'metadata', 'annotations'] as const
 export type DetailTab = typeof DETAIL_TABS[number]
@@ -56,6 +61,10 @@ const playing = ref(false)
 const PLAYBACK_SPEEDS = [0.5, 1, 2] as const
 const playbackSpeedIndex = ref(1)
 const playbackSpeed = computed(() => PLAYBACK_SPEEDS[playbackSpeedIndex.value])
+// Trace time the playback clock is at; null while paused, when the selected action drives the view.
+const playhead = ref<number | null>(null)
+// Hidden rather than shown, so a group added later starts visible. Remembered across traces and reloads.
+const hiddenGroups = useStorage<ActionGroup[]>('kinora-tv-hidden-action-groups', [])
 // When set, a brushed time window that filters/zooms every tab; null = follow the selected action.
 const timeRange = ref<TimeRange | null>(null)
 const PENDING_LOAD_KEY = 'kinora.traceViewer.pendingLoad'
@@ -66,7 +75,7 @@ interface PendingLoad {
   name: string
 }
 
-let playTimer: ReturnType<typeof setInterval> | undefined
+let playFrame: number | undefined
 let sourceRevealVersion = 0
 
 function initialDetailTab(): DetailTab {
@@ -126,6 +135,7 @@ function consumePendingLoad(): PendingLoad | null {
 }
 
 async function load(uri: string, name = ''): Promise<void> {
+  stopPlay()
   status.value = 'loading'
   errorKind.value = 'generic'
   traceUri.value = uri
@@ -245,10 +255,30 @@ function clearTimeRange(): void {
   timeRange.value = null
 }
 
-function select(id: string): void {
+function groupOf(action: ActionEntry): ActionGroup | undefined {
+  return ACTION_GROUPS.find(group => group === action.group)
+}
+
+function actionPassesGroup(action: ActionEntry): boolean {
+  const group = groupOf(action)
+  return !group || !hiddenGroups.value.includes(group)
+}
+
+function setGroupVisible(group: ActionGroup, visible: boolean): void {
+  const rest = hiddenGroups.value.filter(g => g !== group)
+  hiddenGroups.value = visible ? rest : [...rest, group]
+}
+
+function showSelection(id: string): void {
   selectedId.value = id
   sourceReveal.value = null
   pickedLocator.value = null
+}
+
+// Picking an action by hand pauses playback, as in Playwright's viewer.
+function select(id: string): void {
+  stopPlay()
+  showSelection(id)
 }
 
 function selectIndex(index: number): void {
@@ -284,42 +314,79 @@ function pickLocator(locator: PickedLocator): void {
   detailTab.value = 'locator'
 }
 
+// What playback walks: the actions the list shows (group filters, zoom window), by start time.
+const playbackItems = computed(() => {
+  const range = timeRange.value
+  return items.value
+    .filter(item => actionPassesGroup(item.action) && (!range || actionInWindow(item.action, range)))
+    .sort((a, b) => a.action.startTime - b.action.startTime)
+})
+
+const screencastFrames = computed(() => {
+  const m = model.value
+  if (!m)
+    return []
+  return m.pages
+    .flatMap(page => page.screencastFrames)
+    .map(frame => ({ timestamp: frame.timestamp, url: m.createRelativeUrl(`file/${frame.file}`) }))
+    .sort((a, b) => a.timestamp - b.timestamp)
+})
+
+// The screencast frame at the playhead: playback shows the page like a video instead of
+// reloading a DOM snapshot per action. Undefined when paused or the trace has no screencast.
+const playbackFrameUrl = computed(() => {
+  const t = playhead.value
+  const frames = screencastFrames.value
+  return t === null ? undefined : frames[indexAt(frames, t, frame => frame.timestamp)]?.url
+})
+
 function stopPlay(): void {
   playing.value = false
-  if (playTimer) {
-    clearInterval(playTimer)
-    playTimer = undefined
-  }
-}
-
-function startPlayTimer(): void {
-  if (playTimer)
-    clearInterval(playTimer)
-  playTimer = setInterval(() => {
-    if (selectedIndex.value >= items.value.length - 1) {
-      stopPlay()
-      return
-    }
-    step(1)
-  }, 700 / playbackSpeed.value)
+  playhead.value = null
+  if (playFrame !== undefined)
+    cancelAnimationFrame(playFrame)
+  playFrame = undefined
 }
 
 function cyclePlaybackSpeed(): void {
   playbackSpeedIndex.value = (playbackSpeedIndex.value + 1) % PLAYBACK_SPEEDS.length
-  if (playing.value)
-    startPlayTimer()
 }
 
-// Auto-advance selection through actions (slideshow). Stops at the last action.
+// Real-time playback, as in Playwright's trace viewer: a clock moves along the trace at the chosen
+// speed and the selection follows whichever action started last. Starts from the selected action,
+// or from the beginning when that is the last one; stops at the end of the trace or zoom window.
 function togglePlay(): void {
   if (playing.value) {
     stopPlay()
     return
   }
-  if (selectedIndex.value >= items.value.length - 1)
-    selectIndex(0)
+  const list = playbackItems.value
+  const m = model.value
+  if (!list.length || !m)
+    return
+  const start = timeRange.value?.start ?? m.startTime
+  const end = timeRange.value?.end ?? m.endTime
+  const current = list.findIndex(item => item.id === selectedId.value)
+  let t = current >= 0 && current < list.length - 1 ? Math.max(start, list[current].action.startTime) : start
+  let last: number | undefined
   playing.value = true
-  startPlayTimer()
+  const tick = (now: number): void => {
+    if (!playing.value)
+      return
+    if (last !== undefined)
+      t = advance(t, now - last, playbackSpeed.value, end)
+    last = now
+    playhead.value = t
+    const item = list[indexAt(list, t, entry => entry.action.startTime)]
+    if (item && item.id !== selectedId.value)
+      showSelection(item.id)
+    if (t >= end) {
+      stopPlay()
+      return
+    }
+    playFrame = requestAnimationFrame(tick)
+  }
+  playFrame = requestAnimationFrame(tick)
 }
 
 async function refreshSnapshotInfo(): Promise<void> {
@@ -365,6 +432,12 @@ export function useTraceStore() {
     inspectingLocator,
     playing,
     playbackSpeed,
+    playhead,
+    playbackFrameUrl,
+    screencastFrames,
+    hiddenGroups,
+    actionPassesGroup,
+    setGroupVisible,
     timeRange,
     boundaries,
     load,
