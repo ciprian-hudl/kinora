@@ -368,7 +368,7 @@ const alignEnd = new Set(['size', 'duration', 'status'])
       <template v-if="selected">
         <ResizableHandle with-handle />
         <ResizablePanel id="net-detail" :order="2" :default-size="netCols[1]" :min-size="20" :max-size="60">
-          <div class="h-full overflow-auto p-3 text-xs">
+          <div data-testid="net-detail" class="h-full overflow-auto p-3 text-xs">
             <div class="mb-3 flex items-start gap-2">
               <div class="min-w-0 flex-1">
                 <div class="mb-1 flex items-center gap-2">
