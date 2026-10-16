@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../src/db'
-import { artifact, project } from '../src/db/schemas/index'
+import { artifact, project, test } from '../src/db/schemas/index'
 import { caller, createApiKey, createUser, ingest, resetDb } from './helpers'
 
 beforeEach(resetDb)
@@ -77,5 +77,31 @@ describe('project router', () => {
     await (await caller(u)).project.delete({ projectId: 'web-app' })
     expect(await db.query.project.findFirst({ where: eq(project.slug, 'web-app') })).toBeUndefined()
     expect(await db.query.artifact.findMany()).toHaveLength(0)
+  })
+
+  // A test-scoped attachment is removed through test -> artifact, which needs artifact.test_id indexed:
+  // otherwise every deleted test row scans the artifact table and large projects hit statement_timeout.
+  it('delete cascades through test-scoped attachments', async () => {
+    const u = await createUser()
+    const key = await createApiKey(u.id)
+    const { runId } = await (await ingest(key)).json() as { runId: string }
+    const t = await db.query.test.findFirst({ where: eq(test.runId, runId) })
+    await db.insert(artifact).values({
+      id: randomUUID(),
+      projectId: t!.projectId,
+      runId,
+      testId: t!.id,
+      name: 'trace',
+      contentType: 'application/zip',
+      storageKey: `${t!.projectId}/${runId}/trace.zip`,
+      size: 1,
+    })
+
+    await (await caller(u)).project.delete({ projectId: 'web-app' })
+    expect(await db.query.test.findMany()).toHaveLength(0)
+    expect(await db.query.artifact.findMany()).toHaveLength(0)
+
+    const { rows } = await db.execute(sql`select indexname from pg_indexes where tablename = 'artifact' and indexname = 'artifact_testId_idx'`)
+    expect(rows).toHaveLength(1)
   })
 })
