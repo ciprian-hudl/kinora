@@ -82,8 +82,15 @@ watch(frameSrc, () => {
           </div>
         </div>
         <div class="relative min-h-0 flex-1 bg-white">
+          <img
+            v-if="store.playbackFrameUrl.value"
+            data-testid="playback-frame"
+            :src="store.playbackFrameUrl.value"
+            alt=""
+            class="size-full object-contain object-top"
+          >
           <DomSnapshotView
-            v-if="mode === 'dom'"
+            v-else-if="mode === 'dom'"
             :set-iframe="setIframe"
             :src="frameSrc"
             @loaded="installInspector"

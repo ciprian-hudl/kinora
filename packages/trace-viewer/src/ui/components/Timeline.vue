@@ -50,7 +50,7 @@ const errorMarkers = computed(() => {
 const cursor = computed(() => {
   const action = store.selectedAction.value
   const { min, max, span } = bounds.value
-  const time = action?.startTime ?? min
+  const time = store.playhead.value ?? action?.startTime ?? min
   if (time < min || time > max)
     return undefined
   return {
@@ -60,23 +60,10 @@ const cursor = computed(() => {
 })
 
 const frames = computed(() => {
-  const m = store.model.value
-  if (!m)
-    return []
   const { min, max, span } = bounds.value
-  const out: { url: string, left: number, timestamp: number }[] = []
-  for (const page of m.pages) {
-    for (const f of page.screencastFrames) {
-      if (f.timestamp < min || f.timestamp > max)
-        continue
-      out.push({
-        url: m.createRelativeUrl(`file/${f.file}`),
-        left: ((f.timestamp - min) / span) * 100,
-        timestamp: f.timestamp,
-      })
-    }
-  }
-  return out.sort((a, b) => a.timestamp - b.timestamp)
+  return store.screencastFrames.value
+    .filter(f => f.timestamp >= min && f.timestamp <= max)
+    .map(f => ({ ...f, left: ((f.timestamp - min) / span) * 100 }))
 })
 
 // Drag-to-zoom: brush a window on the action track to filter every tab.
