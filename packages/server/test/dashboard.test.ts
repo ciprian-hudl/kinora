@@ -164,6 +164,8 @@ describe('dashboard analytics', () => {
 
     expect(await failedOn('UTC')).toBe(day(late))
     expect(await failedOn('Europe/Paris')).toBe(day(new Date(late.getTime() + DAY)))
+    // Legacy name browsers report, missing from the Debian tzdata Postgres reads (Asia/Kolkata there).
+    expect(await failedOn('Asia/Calcutta')).toBe(day(new Date(late.getTime() + DAY)))
   })
 
   it('rejects a time zone that is not an IANA name', async () => {

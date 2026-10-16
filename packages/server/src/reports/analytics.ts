@@ -47,10 +47,48 @@ export function isTimeZone(tz: string): boolean {
   }
 }
 
+// Postgres reads the system tzdata, and recent Debian ones ship without the legacy links that
+// browsers still report (`Asia/Calcutta`, `Europe/Kiev`), so such a name maps to the one Postgres
+// knows for the same zone. UTC when there is none: days a few hours off beat a failed page.
+let postgresZones: Promise<string[]> | undefined
+const resolvedZones = new Map<string, string>()
+
+async function postgresTimeZone(tz: string): Promise<string> {
+  const cached = resolvedZones.get(tz)
+  if (cached)
+    return cached
+  postgresZones ??= db.execute<{ name: string }>(sql`select name from pg_timezone_names`)
+    .then(r => r.rows.map(row => row.name))
+    .catch((error) => {
+      postgresZones = undefined
+      throw error
+    })
+  const names = await postgresZones
+  let resolved = 'UTC'
+  if (names.includes(tz)) {
+    resolved = tz
+  }
+  else {
+    const now = Temporal.Now.instant()
+    const zoned = now.toZonedDateTimeISO(tz)
+    resolved = names.find((name) => {
+      try {
+        return zoned.equals(now.toZonedDateTimeISO(name))
+      }
+      catch {
+        return false
+      }
+    }) ?? resolved
+  }
+  resolvedZones.set(tz, resolved)
+  return resolved
+}
+
 // `timeZone` is the viewer's: a run at 00:30 in Paris belongs to that day, not to the UTC one before.
-export async function loadProjectAnalytics(projectId: string, days: AnalyticsRange, branch?: string, timeZone = 'UTC'): Promise<ProjectAnalytics> {
-  if (!isTimeZone(timeZone))
-    throw new Error(`Invalid time zone: ${timeZone}`)
+export async function loadProjectAnalytics(projectId: string, days: AnalyticsRange, branch?: string, viewerTimeZone = 'UTC'): Promise<ProjectAnalytics> {
+  if (!isTimeZone(viewerTimeZone))
+    throw new Error(`Invalid time zone: ${viewerTimeZone}`)
+  const timeZone = await postgresTimeZone(viewerTimeZone)
   const bucket = bucketFor(days)
   const since = new Date(Date.now() - days * DAY)
   const inRange = and(eq(run.projectId, projectId), gte(run.startedAt, since))

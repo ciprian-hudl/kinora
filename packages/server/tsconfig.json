@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "ESNext.Temporal"],
     "types": ["node"]
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts", "migrations/**/*.ts", "test/**/*.ts", "demo-traces/suite/**/*.ts", "tsdown.config.ts", "vitest.config.ts"]
