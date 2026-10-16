@@ -4,10 +4,17 @@ import { initTRPC, TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../db'
 import { member } from '../db/schemas/index'
-import { cloud, demo } from '../lib/env'
+import { cloud, demo, env } from '../lib/env'
 import { logger } from '../lib/logger'
 
-export const t = initTRPC.context<Context>().create()
+export const t = initTRPC.context<Context>().create({
+  // An unexpected error's message can carry internals (a failed query's full SQL): production
+  // clients get a generic one, the real one stays in the log and Sentry.
+  errorFormatter: ({ shape, error }) =>
+    env.NODE_ENV === 'production' && error.code === 'INTERNAL_SERVER_ERROR'
+      ? { ...shape, message: 'Internal server error' }
+      : shape,
+})
 
 const loggedProcedure = t.procedure.use(async (opts) => {
   // Public demo is browse-only: reject every mutation (one gate for all routers).
@@ -21,7 +28,7 @@ const loggedProcedure = t.procedure.use(async (opts) => {
     logger.info(line)
   }
   else {
-    logger.error({ error: result.error.message }, line)
+    logger.error({ error: result.error.message, cause: result.error.cause?.message }, line)
     // Only unexpected failures; expected TRPCErrors (auth, validation) would be noise.
     if (result.error.code === 'INTERNAL_SERVER_ERROR')
       Sentry.captureException(result.error.cause ?? result.error)
