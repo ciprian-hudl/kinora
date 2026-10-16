@@ -79,6 +79,7 @@ export const artifact = pgTable('artifact', {
 }, table => [
   index('artifact_runId_idx').on(table.runId),
   index('artifact_projectId_idx').on(table.projectId),
+  index('artifact_testId_idx').on(table.testId),
 ])
 
 export const testQuarantine = pgTable('test_quarantine', {
