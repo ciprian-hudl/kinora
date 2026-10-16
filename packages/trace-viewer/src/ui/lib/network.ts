@@ -117,6 +117,57 @@ export function resourcesInWindow(
     .map(toNetworkRow)
 }
 
+export function isTextMime(mime: string): boolean {
+  return mime.startsWith('text/') || mime.includes('json') || mime.includes('xml') || mime.includes('javascript') || mime.includes('form-urlencoded') || mime.includes('graphql')
+}
+
+// Where a network search matched: shown next to the row so a body hit is distinguishable from a URL hit.
+export type NetworkMatch = 'url' | 'headers' | 'request body' | 'response body'
+
+export const NETWORK_SEARCH_FIELDS: { field: NetworkMatch, label: string }[] = [
+  { field: 'url', label: 'URL' },
+  { field: 'headers', label: 'Headers' },
+  { field: 'request body', label: 'Request body' },
+  { field: 'response body', label: 'Response body' },
+]
+
+// Bodies are capped so one huge response can't stall every keystroke.
+export const SEARCH_BODY_LIMIT = 200_000
+
+function headersText(headers: { name: string, value: string }[] | undefined): string {
+  return (headers ?? []).map(h => `${h.name}: ${h.value}`).join('\n')
+}
+
+// Case-insensitive search over a request: URL, both header sets, the request body (inline, or the
+// stored file once loaded) and the loaded response body. `query` and loaded texts are lower-cased.
+export function networkMatches(row: NetworkRow, query: string, responseText?: string, requestText?: string): NetworkMatch[] {
+  if (!query)
+    return []
+  const r = row.resource
+  const out: NetworkMatch[] = []
+  if (row.url.toLowerCase().includes(query))
+    out.push('url')
+  if (`${headersText(r.request.headers)}\n${headersText(r.response?.headers)}`.toLowerCase().includes(query))
+    out.push('headers')
+  if ((requestText ?? (r.request.postData?.text ?? '').slice(0, SEARCH_BODY_LIMIT).toLowerCase()).includes(query))
+    out.push('request body')
+  if (responseText?.includes(query))
+    out.push('response body')
+  return out
+}
+
+// Bodies worth fetching for search: stored in the trace (not inline) and text-like.
+export function searchableResponseFile(r: ResourceEntry): string | undefined {
+  const content = r.response?.content
+  return content?._file && isTextMime(content.mimeType?.toLowerCase() ?? '') ? content._file : undefined
+}
+
+export function searchableRequestFile(r: ResourceEntry): string | undefined {
+  const postData = r.request.postData
+  const mime = (postData?.mimeType ?? r.request.headers?.find(h => h.name.toLowerCase() === 'content-type')?.value ?? '').toLowerCase()
+  return postData?._file && !postData.text && isTextMime(mime) ? postData._file : undefined
+}
+
 export function formatSize(bytes: number): string {
   if (!bytes || bytes < 0)
     return '-'
