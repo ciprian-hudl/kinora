@@ -285,3 +285,50 @@ test('opens the tab named by ?tab=', async ({ page, baseURL }) => {
   await page.goto(`/?trace=${encodeURIComponent(`${baseURL}/fixtures/video-trace.zip`)}&tab=attachments`)
   await expect(page.getByTestId('attachment').first()).toBeVisible()
 })
+
+test('remembers hidden action groups across reloads', async ({ page }) => {
+  const before = await page.getByTestId('action').count()
+  await page.getByRole('button', { name: 'Filter actions' }).click()
+  await page.getByRole('menuitemcheckbox', { name: /Network routes/ }).click()
+  await expect(page.getByText('4 hidden')).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByTestId('action').first()).toBeVisible()
+  await expect(page.getByText('4 hidden')).toBeVisible()
+  expect(await page.getByTestId('action').count()).toBe(before - 4)
+
+  await page.getByRole('button', { name: 'Filter actions' }).click()
+  await expect(page.getByRole('menuitemcheckbox', { name: /Network routes/ })).toHaveAttribute('aria-checked', 'false')
+})
+
+test('plays in real time over the screencast and pauses on a manual pick', async ({ page }) => {
+  await page.getByTestId('action-scrubber').fill('0')
+  await page.getByTestId('play').click()
+  await expect(page.getByTestId('play')).toHaveAttribute('title', 'Pause')
+  await expect(page.getByTestId('playback-frame')).toBeVisible()
+  const cursor = page.getByTestId('timeline-current-time')
+  const first = await cursor.textContent()
+  await expect(async () => {
+    expect(await cursor.textContent()).not.toBe(first)
+  }).toPass({ timeout: 5000 })
+
+  await page.getByTestId('action').first().click()
+  await expect(page.getByTestId('play')).toHaveAttribute('title', 'Play')
+  await expect(page.getByTestId('playback-frame')).toHaveCount(0)
+})
+
+test('marks requests a route handled', async ({ page }) => {
+  await page.getByRole('button', { name: /^Network/ }).click()
+  await page.getByRole('button', { name: 'All', exact: true }).click()
+  const routed = page.locator('[data-testid="net-row"][data-route="fulfilled"]')
+  await expect(routed.first()).toBeVisible()
+  await expect(routed.first()).toContainText('fulfilled')
+})
+
+test('downloads the open trace', async ({ page }) => {
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Download trace' }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe('demo.zip')
+})
