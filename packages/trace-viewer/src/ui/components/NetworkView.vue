@@ -49,6 +49,7 @@ const columns: ColumnDef<NetworkRow>[] = [
   { accessorKey: 'category', header: 'Type' },
   { accessorKey: 'size', header: 'Size' },
   { accessorKey: 'duration', header: 'Time' },
+  { accessorKey: 'route', header: 'Route' },
 ]
 
 const table = useVueTable({
@@ -221,9 +222,12 @@ const alignEnd = new Set(['size', 'duration', 'status'])
                 v-for="row in table.getRowModel().rows"
                 :key="row.original.id"
                 data-testid="net-row"
+                :data-route="row.original.route"
                 :class="cn(
                   'cursor-pointer border-b border-border/40 transition-colors',
-                  selectedId === row.original.id ? 'bg-signal/10' : 'hover:bg-muted/40',
+                  selectedId === row.original.id
+                    ? 'bg-signal/10'
+                    : row.original.route ? 'bg-info/10 hover:bg-info/15' : 'hover:bg-muted/40',
                 )"
                 @click="selectedId = row.original.id"
               >
@@ -245,6 +249,9 @@ const alignEnd = new Set(['size', 'duration', 'status'])
                 <td class="px-3 py-1 text-right font-mono tabular-nums text-muted-foreground">
                   {{ Math.round(row.original.duration) }}ms
                 </td>
+                <td class="px-3 py-1" :class="row.original.route === 'aborted' ? 'text-fail' : 'text-info'">
+                  {{ row.original.route ?? '' }}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -255,7 +262,7 @@ const alignEnd = new Set(['size', 'duration', 'status'])
       <template v-if="selected">
         <ResizableHandle with-handle />
         <ResizablePanel id="net-detail" :order="2" :default-size="netCols[1]" :min-size="20" :max-size="60">
-          <div class="h-full overflow-auto p-3 text-xs">
+          <div data-testid="net-detail" class="h-full overflow-auto p-3 text-xs">
             <div class="mb-3 flex items-start gap-2">
               <div class="min-w-0 flex-1">
                 <div class="mb-1 flex items-center gap-2">
@@ -305,6 +312,12 @@ const alignEnd = new Set(['size', 'duration', 'status'])
                 <span class="uppercase tracking-wide">Size</span>
                 <div class="font-mono text-foreground/90">
                   {{ formatSize(selected.size) }}
+                </div>
+              </div>
+              <div v-if="selected.route">
+                <span class="uppercase tracking-wide">Route</span>
+                <div class="font-mono text-info">
+                  {{ selected.route }}
                 </div>
               </div>
               <div>

@@ -5,6 +5,8 @@ export type ResourceCategory = 'Fetch' | 'HTML' | 'JS' | 'CSS' | 'Font' | 'Image
 
 export const RESOURCE_CATEGORIES: ResourceCategory[] = ['Fetch', 'HTML', 'JS', 'CSS', 'Font', 'Image']
 
+export type RouteOutcome = 'fulfilled' | 'continued' | 'aborted'
+
 export interface NetworkRow {
   id: string
   name: string
@@ -14,7 +16,18 @@ export interface NetworkRow {
   category: ResourceCategory
   size: number
   duration: number
+  route?: RouteOutcome
   resource: ResourceEntry
+}
+
+export function routeOutcome(r: ResourceEntry): RouteOutcome | undefined {
+  if (r._wasFulfilled)
+    return 'fulfilled'
+  if (r._wasAborted)
+    return 'aborted'
+  if (r._wasContinued)
+    return 'continued'
+  return undefined
 }
 
 export function resourceCategory(resource: ResourceEntry): ResourceCategory {
@@ -71,6 +84,7 @@ function toNetworkRow(r: ResourceEntry): NetworkRow {
     category: resourceCategory(r),
     size: responseSize(r),
     duration: r.time ?? 0,
+    route: routeOutcome(r),
     resource: r,
   }
 }

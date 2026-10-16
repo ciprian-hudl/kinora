@@ -119,6 +119,24 @@ test('remembers hidden action groups across reloads', async ({ page }) => {
   await expect(page.getByRole('menuitemcheckbox', { name: /Network routes/ })).toHaveAttribute('aria-checked', 'false')
 })
 
+test('marks requests a route handled', async ({ page }) => {
+  await page.getByRole('button', { name: /^Network/ }).click()
+  await page.getByRole('button', { name: 'All', exact: true }).click()
+  const routed = page.locator('[data-testid="net-row"][data-route="fulfilled"]')
+  await expect(routed.first()).toBeVisible()
+  await expect(routed.first()).toContainText('fulfilled')
+})
+
+test('shows how a route handled a request in the network detail', async ({ page }) => {
+  await page.getByRole('button', { name: /^Network/ }).click()
+  await page.getByRole('button', { name: 'All', exact: true }).click()
+  await page.locator('[data-testid="net-row"][data-route="fulfilled"]').first().click()
+
+  const detail = page.getByTestId('net-detail')
+  await expect(detail.getByText('Route', { exact: true })).toBeVisible()
+  await expect(detail.getByText('fulfilled', { exact: true })).toBeVisible()
+})
+
 test('timeline hover shows action details', async ({ page }) => {
   await page.locator('[data-testid="action-segment"][aria-label*=\'Fill "alex@example.com"\']').hover()
 
