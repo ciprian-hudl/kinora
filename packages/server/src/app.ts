@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { cors } from 'hono/cors'
+import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
 import { db } from './db'
 import { demoApp } from './demo/session'
@@ -15,6 +16,7 @@ import { blockAuthWritesInDemo, blockInDemo } from './lib/demo-guard'
 import { env } from './lib/env'
 import { logger } from './lib/logger'
 import { clientIp, rateLimit } from './lib/rate-limit'
+import { requestContext } from './lib/request-context'
 import { getTrustedOrigins } from './lib/utils'
 import { publicApi } from './public-api/index'
 import { appRouter } from './router/index'
@@ -22,6 +24,10 @@ import { slackOAuth } from './slack/oauth'
 import { createContext } from './trpc/context'
 
 const app = new Hono()
+
+// First in the chain: every log line of a request carries its id (X-Request-Id, reused when the caller sends one).
+app.use(requestId())
+app.use(requestContext)
 
 // Public artifacts (trace.zip etc): permissive CORS + range. Registered before
 // secureHeaders/global-cors so its CORP doesn't block the viewer's cross-origin
