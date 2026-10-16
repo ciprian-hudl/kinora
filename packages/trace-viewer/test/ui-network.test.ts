@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allResources, bodyUrl, formatSize, prettyJson, resourceCategory, resourcesForAction, resourcesInWindow, statusClass, toCurl, toFetch } from '../src/ui/lib/network'
+import { allResources, bodyUrl, formatSize, prettyJson, resourceCategory, resourcesForAction, resourcesInWindow, routeOutcome, statusClass, toCurl, toFetch } from '../src/ui/lib/network'
 
 type Res = Parameters<typeof resourceCategory>[0]
 
@@ -198,5 +198,19 @@ describe('resourcesInWindow', () => {
       { start: 100, end: 200 },
     )
     expect(rows.map(r => r.url)).toEqual(['https://x/at-start', 'https://x/inside', 'https://x/at-end'])
+  })
+})
+
+describe('routeOutcome', () => {
+  it('is undefined when no route handled the request', () => {
+    expect(routeOutcome(res())).toBeUndefined()
+    expect(allResources([res()])[0].route).toBeUndefined()
+  })
+
+  it('reports how a route settled the request', () => {
+    expect(routeOutcome({ ...res(), _wasFulfilled: true })).toBe('fulfilled')
+    expect(routeOutcome({ ...res(), _wasContinued: true })).toBe('continued')
+    expect(routeOutcome({ ...res(), _wasAborted: true })).toBe('aborted')
+    expect(allResources([{ ...res(), _wasFulfilled: true }])[0].route).toBe('fulfilled')
   })
 })
