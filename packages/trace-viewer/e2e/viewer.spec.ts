@@ -220,6 +220,10 @@ test('cycles playback speed and scrubs actions', async ({ page }) => {
   await expect(page.getByTestId('playback-speed')).toHaveText('1x')
   await page.getByTestId('playback-speed').click()
   await expect(page.getByTestId('playback-speed')).toHaveText('2x')
+  await page.getByTestId('playback-speed').click()
+  await expect(page.getByTestId('playback-speed')).toHaveText('0.25x')
+  await page.getByTestId('playback-speed').click()
+  await expect(page.getByTestId('playback-speed')).toHaveText('0.5x')
 
   await page.getByTestId('action-scrubber').fill('0')
   await expect(page.getByTestId('current-action')).toContainText('Before Hooks')
@@ -359,4 +363,91 @@ test('network search finds text in response bodies and headers', async ({ page }
   await page.getByRole('button', { name: 'Search in' }).click()
   await expect(page.getByRole('menuitemcheckbox', { name: 'Headers' })).toHaveAttribute('aria-checked', 'false')
   await expect(page.getByRole('menuitemcheckbox', { name: 'Response body' })).toHaveAttribute('aria-checked', 'true')
+})
+
+// Records every action title playback shows, so a test can check which actions it stepped through.
+async function recordPlayedActions(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="current-action"]')!
+    const seen: string[] = []
+    ;(window as unknown as { seenActions: string[] }).seenActions = seen
+    new MutationObserver(() => seen.push(el.textContent?.trim() ?? '')).observe(el, { childList: true, characterData: true, subtree: true })
+  })
+}
+
+async function slowestSpeed(page: Page): Promise<void> {
+  while ((await page.getByTestId('playback-speed').textContent())?.trim() !== '0.25x')
+    await page.getByTestId('playback-speed').click()
+}
+
+test('playback skips hidden action groups', async ({ page }) => {
+  await page.getByRole('button', { name: 'Filter actions' }).click()
+  await page.getByRole('menuitemcheckbox', { name: /Network routes/ }).click()
+  await page.keyboard.press('Escape')
+  await page.getByTestId('action-scrubber').fill('0')
+  await slowestSpeed(page)
+  await recordPlayedActions(page)
+
+  await page.getByTestId('play').click()
+  await expect(page.getByTestId('play')).toHaveAttribute('title', 'Play', { timeout: 10_000 })
+
+  const seen = await page.evaluate(() => (window as unknown as { seenActions: string[] }).seenActions)
+  expect(seen.length).toBeGreaterThan(3)
+  expect(seen.filter(title => /Route requests|Fulfill request/.test(title))).toEqual([])
+})
+
+test('playback stops at the end of a zoomed window', async ({ page }) => {
+  await page.getByTestId('action').filter({ hasText: 'Set content' }).dblclick()
+  await expect(page.getByTestId('reset-zoom')).toBeVisible()
+  await slowestSpeed(page)
+
+  await page.getByTestId('play').click()
+  await expect(page.getByTestId('play')).toHaveAttribute('title', 'Play', { timeout: 10_000 })
+  // The list only shows actions inside the window; the selection must still be one of them.
+  await expect(page.locator('[data-testid="action"][class*="bg-signal/10"]')).toHaveCount(1)
+  await expect(page.getByTestId('reset-zoom')).toBeVisible()
+})
+
+test('plays a trace without a screencast on its DOM snapshots', async ({ page }) => {
+  await page.goto('/?trace=fixtures/annotations-trace.zip')
+  await expect(page.getByTestId('action').first()).toBeVisible()
+  await page.getByTestId('action-scrubber').fill('0')
+  await recordPlayedActions(page)
+
+  await page.getByTestId('play').click()
+  await expect(page.getByTestId('play')).toHaveAttribute('title', 'Play', { timeout: 10_000 })
+  await expect(page.getByTestId('playback-frame')).toHaveCount(0)
+  expect((await page.evaluate(() => (window as unknown as { seenActions: string[] }).seenActions)).length).toBeGreaterThan(3)
+  await expect(page.locator('iframe').first()).toBeAttached()
+})
+
+test('network search finds a request body stored as a trace file', async ({ page }) => {
+  await page.goto('/?trace=fixtures/network-rich-trace.zip')
+  await expect(page.getByTestId('action').first()).toBeVisible()
+  await page.getByRole('button', { name: /^Network/ }).click()
+  await page.getByRole('button', { name: 'All', exact: true }).click()
+
+  await page.getByPlaceholder('Search URLs, headers, bodies').fill('"plan":"Pro"')
+  const row = page.getByTestId('net-row').filter({ hasText: 'checkout' })
+  await expect(row).toBeVisible()
+  await expect(row.getByTestId('net-match').filter({ hasText: 'request body' })).toBeVisible()
+})
+
+test('shows how a route handled a request in the network detail', async ({ page }) => {
+  await page.getByRole('button', { name: /^Network/ }).click()
+  await page.getByRole('button', { name: 'All', exact: true }).click()
+  await page.locator('[data-testid="net-row"][data-route="fulfilled"]').first().click()
+
+  const detail = page.getByTestId('net-detail')
+  await expect(detail.getByText('Route', { exact: true })).toBeVisible()
+  await expect(detail.getByText('fulfilled', { exact: true })).toBeVisible()
+})
+
+test('filmstrip tiles never overlap', async ({ page }) => {
+  const tiles = page.getByTestId('filmstrip-tile')
+  await expect(tiles.first()).toBeVisible()
+  const boxes = await tiles.evaluateAll(els => els.map(el => el.getBoundingClientRect()).map(r => ({ left: r.left, right: r.right })))
+  expect(boxes.length).toBeGreaterThan(1)
+  for (let i = 1; i < boxes.length; i++)
+    expect(boxes[i].left).toBeGreaterThanOrEqual(boxes[i - 1].right - 0.5)
 })
