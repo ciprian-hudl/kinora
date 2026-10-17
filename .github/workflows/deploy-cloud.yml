@@ -138,9 +138,10 @@ jobs:
           build-args: |
             VITE_KINORA_SERVER_URL=https://api.kinora.dev
             VITE_KINORA_CLOUD=true
-            VITE_KINORA_SENTRY_DSN=https://c68ee4001641f5156e9e902c25ea1734@o1155685.ingest.us.sentry.io/4511622830751744
-            SENTRY_ORG=joris-gallot
-            SENTRY_PROJECT=kinora-frontend
+            VITE_KINORA_SENTRY_DSN=${{ vars.WEB_SENTRY_DSN }}
+            SENTRY_URL=${{ vars.SENTRY_URL }}
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ vars.WEB_SENTRY_PROJECT }}
             VITE_UMAMI_WEBSITE_ID=3324f96d-2efa-44a6-af16-a829f3626864
           secrets: |
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}

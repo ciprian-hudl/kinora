@@ -24,6 +24,9 @@ ENV VITE_UMAMI_WEBSITE_ID=$VITE_UMAMI_WEBSITE_ID
 
 # Source-map upload (cloud only): org/project are non-secret; the auth token comes via a
 # BuildKit secret so it never lands in an image layer. Absent token = upload skipped.
+# Server of a self-hosted, Sentry-compatible backend; unset = sentry.io.
+ARG SENTRY_URL
+ENV SENTRY_URL=$SENTRY_URL
 ARG SENTRY_ORG
 ENV SENTRY_ORG=$SENTRY_ORG
 ARG SENTRY_PROJECT
