@@ -1,4 +1,4 @@
-import { createFeedbackTask } from '../lib/feedback-tracker'
+import { sendFeedback } from '../lib/feedback-inbox'
 import { version } from '../lib/version'
 
 export type FeedbackType = 'bug' | 'feature'
@@ -10,10 +10,6 @@ interface CreateFeedbackParams {
   userEmail: string
 }
 
-export async function createFeedbackIssue(params: CreateFeedbackParams) {
-  return createFeedbackTask({
-    title: params.title,
-    description: `${params.description}\n\nSubmitted by: ${params.userEmail}\nVersion: ${version}`,
-    labels: ['user-feedback', params.type],
-  })
+export async function submitFeedback(params: CreateFeedbackParams) {
+  return sendFeedback({ ...params, appVersion: version })
 }

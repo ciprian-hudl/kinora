@@ -51,10 +51,8 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
   SENTRY_DSN: z.string().optional(),
-  FEEDBACK_TRACKER_API_KEY: z.string().optional(),
-  FEEDBACK_TRACKER_PROJECT_ID: z.string().optional(),
-  FEEDBACK_TRACKER_WORKSPACE_ID: z.string().optional(),
-  FEEDBACK_TRACKER_API_URL: z.union([z.literal(''), z.url()]).optional(),
+  FEEDBACK_INBOX_URL: z.union([z.literal(''), z.url()]).optional(),
+  FEEDBACK_INBOX_KEY: z.string().optional(),
 }).refine(
   e => !e.KINORA_CLOUD || Boolean(e.POLAR_ACCESS_TOKEN && e.POLAR_WEBHOOK_SECRET && e.POLAR_PRODUCT_TEAM_ID && e.POLAR_PRODUCT_PRO_ID),
   { message: 'KINORA_CLOUD=true requires POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET, POLAR_PRODUCT_TEAM_ID and POLAR_PRODUCT_PRO_ID' },
@@ -177,26 +175,19 @@ function resolveSmtp(): SmtpConfig | null {
 
 export const smtp = resolveSmtp()
 
-export interface FeedbackTrackerConfig {
-  apiKey: string
-  projectId: string
-  workspaceId: string
-  apiUrl: string
+export interface FeedbackInboxConfig {
+  url: string
+  key: string
 }
 
-// User feedback -> private task tracker. Cloud-only: self-host instances must not post to our tracker.
-function resolveFeedbackTracker(): FeedbackTrackerConfig | null {
+// User feedback -> private feedback inbox. Cloud-only: self-host instances must not post to our inbox.
+function resolveFeedbackInbox(): FeedbackInboxConfig | null {
   if (!env.KINORA_CLOUD)
     return null
-  const {
-    FEEDBACK_TRACKER_API_KEY: apiKey,
-    FEEDBACK_TRACKER_PROJECT_ID: projectId,
-    FEEDBACK_TRACKER_WORKSPACE_ID: workspaceId,
-    FEEDBACK_TRACKER_API_URL: apiUrl,
-  } = env
-  if (!apiKey || !projectId || !workspaceId || !apiUrl)
+  const { FEEDBACK_INBOX_URL: url, FEEDBACK_INBOX_KEY: key } = env
+  if (!url || !key)
     return null
-  return { apiKey, projectId, workspaceId, apiUrl }
+  return { url, key }
 }
 
-export const feedbackTrackerConfig = resolveFeedbackTracker()
+export const feedbackInboxConfig = resolveFeedbackInbox()

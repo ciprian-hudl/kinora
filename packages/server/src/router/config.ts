@@ -1,5 +1,5 @@
 import { cloud, demo, githubOauthEnabled, googleOauthEnabled, slackApp } from '../lib/env'
-import { feedbackEnabled } from '../lib/feedback-tracker'
+import { feedbackEnabled } from '../lib/feedback-inbox'
 import { mailerEnabled } from '../lib/mailer'
 import { version } from '../lib/version'
 import { publicProcedure, router } from '../trpc/index'
@@ -16,7 +16,7 @@ export const configRouter = router({
     githubOauthEnabled,
     // Public read-only demo? front shows a banner + hides mutation UI.
     demo,
-    // Feedback tracker configured (cloud)? front shows the "Send feedback" entry.
+    // Feedback inbox configured (cloud)? front shows the "Send feedback" entry.
     feedbackEnabled,
     // Cloud deployment? front shows the platform-admin nav entry to admin-role users.
     adminEnabled: cloud !== null,

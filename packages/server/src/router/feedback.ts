@@ -1,7 +1,7 @@
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createFeedbackIssue } from '../feedback/service'
-import { feedbackEnabled } from '../lib/feedback-tracker'
+import { submitFeedback } from '../feedback/service'
+import { feedbackEnabled } from '../lib/feedback-inbox'
 import { authProcedure, router } from '../trpc/index'
 
 export const feedbackRouter = router({
@@ -15,7 +15,7 @@ export const feedbackRouter = router({
       if (!feedbackEnabled)
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Feedback is not enabled' })
 
-      const issue = await createFeedbackIssue({ ...input, userEmail: ctx.user.email })
-      return { issueId: issue.id }
+      const item = await submitFeedback({ ...input, userEmail: ctx.user.email })
+      return { issueId: String(item.id) }
     }),
 })

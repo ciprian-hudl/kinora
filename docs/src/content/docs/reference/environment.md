@@ -103,4 +103,4 @@ issue tracker, so these are ignored unless `KINORA_CLOUD=true`.
 
 | Variable | Notes |
 | --- | --- |
-| `FEEDBACK_TRACKER_API_KEY` / `FEEDBACK_TRACKER_PROJECT_ID` / `FEEDBACK_TRACKER_WORKSPACE_ID` / `FEEDBACK_TRACKER_API_URL` | Private task tracker credentials and endpoint. Leave empty for self-host. |
+| `FEEDBACK_INBOX_URL` / `FEEDBACK_INBOX_KEY` | Private feedback inbox endpoint and key. Leave empty for self-host. |
