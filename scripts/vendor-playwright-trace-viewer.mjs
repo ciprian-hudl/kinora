@@ -172,7 +172,10 @@ async function fetchText(url) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { headers: { 'User-Agent': 'kinora-vendor-playwright-trace-viewer' } })
+  const headers = { 'User-Agent': 'kinora-vendor-playwright-trace-viewer' }
+  if (process.env.GITHUB_TOKEN)
+    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`
+  const response = await fetch(url, { headers })
   if (!response.ok)
     throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`)
   return await response.json()

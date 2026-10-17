@@ -86,6 +86,8 @@ jobs:
       - name: Sync vendored Playwright trace viewer
         if: steps.version.outputs.update == 'true'
         run: pnpm vendor:playwright-trace
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       # Typecheck covers kinora's UI against the new engine; the build bundles the vendored
       # service worker, which is what breaks when upstream adds a file the sync did not fetch.
