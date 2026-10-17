@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { env } from '../lib/env'
+import { logger } from '../lib/logger'
 import * as schema from './schemas/index'
 
 export const db = drizzle({
@@ -16,4 +17,11 @@ export const db = drizzle({
     connectionTimeoutMillis: 10_000,
     statement_timeout: 30_000,
   },
+})
+
+// A Postgres restart drops idle pooled connections. Without a listener, node-postgres rethrows that as an
+// uncaught exception and the process dies; the pool replaces the connection on the next query anyway.
+// The error carries the whole pg client: log what identifies it, not that.
+db.$client.on('error', (err: Error & { code?: string }) => {
+  logger.warn({ code: err.code, error: err.message }, 'idle database connection lost')
 })
