@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/vue'
 import { createApp } from 'vue'
-import { scrubBreadcrumb, scrubEvent } from './ui/lib/sentry'
+import { envelopeUrl, scrubBreadcrumb, scrubEvent } from './ui/lib/sentry'
 import Workbench from './ui/Workbench.vue'
 import './style.css'
 
@@ -11,6 +11,7 @@ if (import.meta.env.PROD && import.meta.env.VITE_KINORA_SENTRY_DSN) {
   Sentry.init({
     app,
     dsn: import.meta.env.VITE_KINORA_SENTRY_DSN,
+    tunnel: envelopeUrl(import.meta.env.VITE_KINORA_SENTRY_DSN),
     environment: 'production',
     release: __KINORA_RELEASE__,
     tracesSampleRate: 0.1,

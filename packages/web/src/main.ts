@@ -3,6 +3,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import { initAnalytics } from './lib/analytics'
 import { env } from './lib/env'
+import { envelopeUrl } from './lib/sentry'
 import { watchForUpdates } from './lib/updates'
 import { router } from './router'
 import './style.css'
@@ -15,6 +16,7 @@ if (import.meta.env.PROD && import.meta.env.VITE_KINORA_CLOUD === 'true' && env.
   Sentry.init({
     app,
     dsn: env.sentryDsn,
+    tunnel: envelopeUrl(env.sentryDsn),
     environment: 'production',
     release: __KINORA_RELEASE__,
     integrations: [Sentry.browserTracingIntegration({ router })],
