@@ -38,7 +38,7 @@ const tooltip = componentToString(props.config, ChartTooltipContent, {
         :tick-line="false"
       />
       <ChartTooltip />
-      <ChartCrosshair :template="tooltip" :color="`var(--color-${seriesKey})`" />
+      <ChartCrosshair :template="tooltip" :x="x" :y="y" :color="`var(--color-${seriesKey})`" />
     </VisXYContainer>
   </ChartContainer>
 </template>

@@ -1,12 +1,19 @@
 import { expect, test } from '../fixtures'
 
 test.describe('AreaChart', () => {
-  test('renders the series and its x axis labels', async ({ mount }) => {
+  test('renders the series and its x axis labels without a crosshair configuration warning', async ({ mount, page }) => {
+    const crosshairWarnings: string[] = []
+    page.on('console', (message) => {
+      if (message.type() === 'warning' && message.text().includes('Unovis | Crosshair'))
+        crosshairWarnings.push(message.text())
+    })
+
     const component = await mount('AreaChart/Default')
     await expect(component.locator('svg path').first()).toBeAttached()
     // The axis picks which ticks fit; the first bucket is always labelled.
     await expect(component.getByText('Oct 1', { exact: true })).toBeVisible()
     expect(await component.getByText(/^Oct \d$/).count()).toBeGreaterThan(2)
+    expect(crosshairWarnings).toEqual([])
   })
 
   test('exposes the series color from its config', async ({ mount }) => {
