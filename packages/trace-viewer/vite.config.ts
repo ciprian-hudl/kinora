@@ -9,7 +9,8 @@ import { defineConfig } from 'vite'
 import pkg from '../../package.json' with { type: 'json' }
 
 // Release version = the root package.json, the one the Release workflow bumps.
-const release = `@kinora/trace-viewer@${pkg.version}`
+// No slash: sentry-cli rejects release names containing one, and the source map upload fails.
+const release = `kinora-trace-viewer@${pkg.version}`
 
 // Aliases mirror upstream Playwright so vendored engine files resolve unedited.
 const alias = {

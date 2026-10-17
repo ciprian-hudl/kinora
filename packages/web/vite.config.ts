@@ -9,7 +9,8 @@ import { z } from 'zod'
 import pkg from '../../package.json' with { type: 'json' }
 
 // Release version = the root package.json, the one the Release workflow bumps.
-const release = `@kinora/web@${pkg.version}`
+// No slash: sentry-cli rejects release names containing one, and the source map upload fails.
+const release = `kinora-web@${pkg.version}`
 // Unique per build (cloud deploys main without a version bump): an open tab compares it to
 // /version.json to notice a deploy (src/lib/updates.ts).
 const build = Date.now().toString(36)
