@@ -15,7 +15,8 @@ demoApp.get('/session', async (c) => {
   if (!owner)
     return c.body(null, 204)
 
-  const res = await auth.api.signInEmail({ body: { email: owner.user.email, password: DEMO_PASSWORD }, asResponse: true })
+  // The visitor's headers carry their IP: without them every visitor shares one sign-in rate-limit bucket (3 per 10 s).
+  const res = await auth.api.signInEmail({ body: { email: owner.user.email, password: DEMO_PASSWORD }, headers: c.req.raw.headers, asResponse: true })
   for (const cookie of res.headers.getSetCookie())
     c.header('set-cookie', cookie, { append: true })
   return c.body(null, 204)

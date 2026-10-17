@@ -63,4 +63,14 @@ describe('demo mode', () => {
     expect(res.status).toBe(204)
     expect(res.headers.get('set-cookie')).toBeTruthy()
   })
+
+  it('/api/demo/session works with a browser\'s headers, which carry the visitor IP for the sign-in rate limit', async () => {
+    await createUser()
+
+    const res = await app.request('/api/demo/session', {
+      headers: { 'origin': 'http://localhost:5173', 'cookie': 'unrelated=1', 'x-forwarded-for': '203.0.113.7' },
+    })
+    expect(res.status).toBe(204)
+    expect(res.headers.get('set-cookie')).toBeTruthy()
+  })
 })
