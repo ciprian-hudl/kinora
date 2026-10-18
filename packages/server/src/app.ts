@@ -48,13 +48,15 @@ app.use('/artifacts/*', serveStatic({
 app.use(secureHeaders())
 app.use('*', cors({ origin: getTrustedOrigins(), credentials: true }))
 
+// Public route: only statuses go out, the error (host, port, user) stays in the logs.
 app.get('/healthcheck', async (c) => {
   try {
     await db.execute(sql`SELECT 1`)
-    return c.json({ status: 'ok' })
+    return c.json({ status: 'ok', services: { db: { status: 'ok' } } })
   }
-  catch {
-    return c.json({ status: 'error', message: 'database unreachable' }, 503)
+  catch (err) {
+    logger.error({ err }, 'healthcheck: database unreachable')
+    return c.json({ status: 'error', services: { db: { status: 'error' } } }, 503)
   }
 })
 
