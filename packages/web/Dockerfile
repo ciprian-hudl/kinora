@@ -18,7 +18,7 @@ ENV VITE_KINORA_CLOUD=$VITE_KINORA_CLOUD
 ARG VITE_KINORA_SENTRY_DSN
 ENV VITE_KINORA_SENTRY_DSN=$VITE_KINORA_SENTRY_DSN
 
-# Umami analytics (this app's own site). Only the cloud deploy passes it; self-host omits it.
+# Website analytics id (this app's own site). Only the cloud deploy passes it; self-host omits it.
 ARG VITE_UMAMI_WEBSITE_ID
 ENV VITE_UMAMI_WEBSITE_ID=$VITE_UMAMI_WEBSITE_ID
 

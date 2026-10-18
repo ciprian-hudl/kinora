@@ -1,5 +1,5 @@
 // Loads only in cloud builds, self-host builds never send events.
-const UMAMI_SRC = 'https://analytics.jorisgallot.dev/j.js'
+const UMAMI_SRC = 'https://sonar.jorisgallot.dev/script.js'
 const websiteId = import.meta.env.VITE_UMAMI_WEBSITE_ID
 
 declare global {

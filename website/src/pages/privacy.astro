@@ -4,7 +4,7 @@ import SiteHeader from '../components/SiteHeader.astro'
 import Layout from '../layouts/Layout.astro'
 import { SITE } from '../lib/site'
 
-const updated = 'August 26, 2026'
+const updated = 'October 17, 2026'
 const contactEmail = 'hi@kinora.dev'
 ---
 
@@ -44,7 +44,7 @@ const contactEmail = 'hi@kinora.dev'
           <li><span class="text-foreground">API keys.</span> Stored hashed; used to authenticate uploads from your CI.</li>
           <li><span class="text-foreground">Workspace.</span> Workspace name, members, and pending invitation emails.</li>
           <li><span class="text-foreground">Billing.</span> Handled by our payment provider (Polar). We store only your plan, status, and a customer reference, never card details.</li>
-          <li><span class="text-foreground">Usage analytics.</span> Aggregate, cookie-less page and event analytics (Umami).</li>
+          <li><span class="text-foreground">Usage analytics.</span> Aggregate, cookie-less page and event analytics, self-hosted.</li>
           <li><span class="text-foreground">Diagnostics.</span> Error reports to help us fix bugs (Sentry), configured to exclude personal data by default.</li>
         </ul>
       </section>
@@ -82,8 +82,7 @@ const contactEmail = 'hi@kinora.dev'
           <li><span class="text-foreground">Polar</span>: billing and payments (merchant of record).</li>
           <li><span class="text-foreground">Resend</span>: transactional email delivery.</li>
           <li><span class="text-foreground">Sentry</span> (US): error monitoring (no personal data by default).</li>
-          <li><span class="text-foreground">Umami</span>: self-hosted, cookie-less analytics (EU).</li>
-          <li><span class="text-foreground">Google / GitHub</span>: only if you choose social sign-in.</li>
+                    <li><span class="text-foreground">Google / GitHub</span>: only if you choose social sign-in.</li>
         </ul>
         <p class="leading-relaxed text-muted-foreground">
           Your data is stored in the EU. The exception is Sentry, which ingests crash reports on US
@@ -94,7 +93,7 @@ const contactEmail = 'hi@kinora.dev'
       <section class="flex flex-col gap-3">
         <h2 class="text-xl font-semibold tracking-tight">Cookies</h2>
         <p class="leading-relaxed text-muted-foreground">
-          We use a single essential cookie to keep you signed in. Our analytics (Umami) is cookie-less
+          We use a single essential cookie to keep you signed in. Our analytics is cookie-less
           and does not track you across sites. We do not use advertising or third-party tracking cookies.
         </p>
       </section>
