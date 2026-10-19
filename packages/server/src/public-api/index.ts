@@ -142,7 +142,7 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
 
   // A grouped run is notified once, by the upload that completes it, with the tests of every shard.
   const complete = !shard || shard.status === 'complete'
-  const runTests = shard && complete ? await testsOfRun(result.runId) : input.tests
+  const runTests = shard ? await testsOfRun(result.runId) : input.tests
   if (!backfill && (shard ? shard.notify : true)) {
     // Fire-and-forget: alerts hit external webhook/Slack/SMTP and must not block or fail the ingest response.
     void notifyRun({
@@ -204,7 +204,8 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
   const grouped = shard && {
     status: shard.status,
     shardProgress: shard.shardProgress,
-    ...(complete && { counts: countsFromTests(runTests), flaky: flakyTestsOf(runTests) }),
+    counts: countsFromTests(runTests),
+    flaky: flakyTestsOf(runTests),
   }
   return c.json({
     projectId: result.projectId,

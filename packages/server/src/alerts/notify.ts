@@ -1,4 +1,4 @@
-import type { Counts, NormTest } from '@kinora/core'
+import type { Counts, NormTest, ShardProgress } from '@kinora/core'
 import type { AlertPayload, AlertPolicy } from './core'
 import { compareRuns } from '@kinora/core'
 import { and, eq, gt, isNull, or } from 'drizzle-orm'
@@ -23,6 +23,7 @@ export interface NotifyRunInput {
   branch?: string
   counts: Counts
   tests: NormTest[]
+  incomplete?: ShardProgress
 }
 
 function countsFor(tests: NormTest[]): Counts {
@@ -83,9 +84,10 @@ export async function notifyRun(input: NotifyRunInput): Promise<void> {
     newlyFailing: newlyFailing.map(d => d.title),
     newlyFlaky: newlyFlaky.map(d => d.title),
     codeOwners,
+    ...(input.incomplete && { incomplete: input.incomplete }),
   }
   const fires = (policy: AlertPolicy): boolean =>
-    shouldFire(policy, payload.counts, payload.newlyFailing.length, payload.newlyFlaky.length)
+    shouldFire(policy, payload.counts, payload.newlyFailing.length, payload.newlyFlaky.length, !!payload.incomplete)
 
   if (activeSlack && fires(activeSlack.policy)) {
     try {

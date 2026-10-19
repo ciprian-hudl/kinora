@@ -21,6 +21,13 @@ export function mergeShardAttempt(previous: NormTest[], next: NormTest[], attemp
   })
 }
 
+// The CI attempt a flaky test passed on, when it only passed on a re-run of its shard.
+export function rerunAttemptOf(annotations: NormTest['annotations']): number | undefined {
+  const a = annotations.find(x => x.type === RERUN_ANNOTATION)
+  const attempt = Number(a?.description?.match(/attempt (\d+)/)?.[1])
+  return Number.isInteger(attempt) ? attempt : undefined
+}
+
 export interface ShardGroup {
   groupKey: string
   attempt: number

@@ -1,7 +1,10 @@
 import type { RunRegression } from '../contracts/ingest'
-import type { Counts, NormTest } from '../contracts/kinora'
+import type { Counts, NormTest, ShardProgress } from '../contracts/kinora'
+import { rerunAttemptOf } from './shards'
 
 type ListedTest = RunRegression['newlyFlaky'][number]
+// A flaky test of the run; `rerunAttempt` when it only passed on a CI re-run of its shard.
+export type FlakyTest = ListedTest & { rerunAttempt?: number }
 
 // Post/update a single PR/MR comment from the CI job: on GitHub with the ambient GITHUB_TOKEN, on
 // GitLab with a GITLAB_TOKEN CI variable (the job token can only read merge request notes).
@@ -41,12 +44,18 @@ export interface PrCommentInput {
   regression?: RunRegression
   // The run's flaky tests (passed on a retry), named in the comment. The regression only knows the
   // newly flaky ones; the rest come from the uploader, which has the whole run.
-  flaky?: ListedTest[]
+  flaky?: FlakyTest[]
+  // A grouped (sharded) run: until every shard landed, the comment shows the shards landed so far
+  // and updates as the next ones land. `runId` keeps a slower shard from overwriting a newer state.
+  shards?: ShardProgress & { runId: string }
 }
 
 // The flaky tests of a run, as the comment lists them.
-export function flakyTestsOf(tests: Pick<NormTest, 'testKey' | 'title' | 'file' | 'status'>[]): ListedTest[] {
-  return tests.filter(t => t.status === 'flaky').map(({ testKey, title, file }) => ({ testKey, title, file }))
+export function flakyTestsOf(tests: (Pick<NormTest, 'testKey' | 'title' | 'file' | 'status'> & Partial<Pick<NormTest, 'annotations'>>)[]): FlakyTest[] {
+  return tests.filter(t => t.status === 'flaky').map(({ testKey, title, file, annotations }) => {
+    const rerunAttempt = rerunAttemptOf(annotations ?? [])
+    return { testKey, title, file, ...(rerunAttempt && { rerunAttempt }) }
+  })
 }
 
 const MAX_LISTED = 15 // cap the failing-test list so the comment stays under GitHub's size limit
@@ -134,6 +143,18 @@ function marker(projectSlug: string, label?: string): string {
   return `<!-- kinora:pr:${projectSlug}${label ? `:${label}` : ''} -->`
 }
 
+// Shards landed so far for a run, on the line right above the marker.
+function progressMarker(runId: string, landed: number): string {
+  return `<!-- kinora:shards:${runId}:${landed} -->`
+}
+
+// Shards land in any order and their uploads race: a shard whose view of the run is older than
+// the comment's (fewer shards landed, same run) must leave it alone. A new run always replaces it.
+function isStale(existingBody: string, shards: PrCommentInput['shards']): boolean {
+  const m = existingBody.trimEnd().split('\n').at(-2)?.match(/^<!-- kinora:shards:(.+):(\d+) -->$/)
+  return !!m && !!shards && m[1] === shards.runId && Number(m[2]) > shards.landed
+}
+
 // Untrusted test titles/paths go through an inline code span so GitHub won't autolink @mentions /
 // #refs, render markdown, or let a crafted title emit the HTML-comment marker.
 function inlineCode(s: string): string {
@@ -150,26 +171,34 @@ function testUrl(runUrl: string, testKey: string): string {
 
 // A titled list of tests, capped so the comment stays under GitHub's size limit. With the run's
 // URL, each test links to it.
-function pushTests(lines: string[], heading: string, tests: ListedTest[], runUrl?: string): void {
+function pushTests(lines: string[], heading: string, tests: ListedTest[], runUrl?: string, reruns?: Map<string, number>): void {
   lines.push('')
   lines.push(heading)
   for (const t of tests.slice(0, MAX_LISTED)) {
     const name = `${inlineCode(t.file)} › ${inlineCode(t.title)}`
-    lines.push(`- ${runUrl ? `[${name}](${testUrl(runUrl, t.testKey)})` : name}`)
+    const attempt = reruns?.get(t.testKey)
+    lines.push(`- ${runUrl ? `[${name}](${testUrl(runUrl, t.testKey)})` : name}${attempt ? ` · passed on re-run (attempt ${attempt})` : ''}`)
   }
   if (tests.length > MAX_LISTED)
     lines.push(`- …and ${tests.length - MAX_LISTED} more`)
 }
 
 export function buildPrCommentBody(input: PrCommentInput): string {
-  const { counts, regression } = input
+  const { counts, shards } = input
+  const partial = shards && shards.landed < shards.total ? shards : undefined
+  // A run missing shards is never compared: its baseline diff would count the missing tests.
+  const regression = partial ? undefined : input.regression
   const failed = counts.unexpected
-  const icon = failed > 0 ? '❌' : counts.flaky > 0 ? '⚠️' : '✅'
+  const icon = failed > 0 ? '❌' : partial ? '⏳' : counts.flaky > 0 ? '⚠️' : '✅'
   const lines: string[] = []
+  // Re-run marks apply to every list a flaky test shows up in, new flakes included.
+  const reruns = new Map((input.flaky ?? []).flatMap(t => t.rerunAttempt ? [[t.testKey, t.rerunAttempt] as const] : []))
 
-  lines.push(`${icon} **kinora** · ${input.projectName}`)
+  lines.push(`${icon} **kinora** · ${input.projectName}${partial ? ` · ${partial.landed} of ${partial.total} shards landed` : ''}`)
   lines.push('')
-  lines.push(`\`${counts.expected + counts.flaky}/${counts.total} passed\` · **${failed} failed** · ${counts.flaky} flaky · ${counts.skipped} skipped`)
+  lines.push(`\`${counts.expected + counts.flaky}/${counts.total} passed\` · **${failed} failed** · ${counts.flaky} flaky · ${counts.skipped} skipped${partial ? ' so far' : ''}`)
+  if (partial)
+    lines.push('', 'The other shards have not uploaded yet: this comment updates as they land.')
 
   const compared = regression && regression.base !== 'none' ? regression : undefined
   const vs = compared?.base === 'base-branch' ? 'base branch' : 'previous run'
@@ -183,16 +212,16 @@ export function buildPrCommentBody(input: PrCommentInput): string {
     if (compared.newlyFailing.length)
       pushTests(lines, `**${compared.newlyFailing.length} newly failing** vs ${vs}:`, compared.newlyFailing, input.runUrl)
     if (newlyFlaky.length)
-      pushTests(lines, `**${newlyFlaky.length} newly flaky** vs ${vs}:`, newlyFlaky, input.runUrl)
+      pushTests(lines, `**${newlyFlaky.length} newly flaky** vs ${vs}:`, newlyFlaky, input.runUrl, reruns)
     if (otherFlaky.length)
-      pushTests(lines, `**${otherFlaky.length} ${newlyFlaky.length ? 'more ' : ''}flaky**, already flaky on the ${vs}:`, otherFlaky, input.runUrl)
+      pushTests(lines, `**${otherFlaky.length} ${newlyFlaky.length ? 'more ' : ''}flaky**, already flaky on the ${vs}:`, otherFlaky, input.runUrl, reruns)
     if (compared.fixed > 0)
       lines.push(`\n✅ ${compared.fixed} fixed vs ${vs}.`)
     if (!compared.newlyFailing.length && !newlyFlaky.length && compared.fixed === 0)
       lines.push(`\nNo change vs ${vs}.`)
   }
   else if (otherFlaky.length) {
-    pushTests(lines, `**${otherFlaky.length} flaky**:`, otherFlaky, input.runUrl)
+    pushTests(lines, `**${otherFlaky.length} flaky**:`, otherFlaky, input.runUrl, reruns)
   }
 
   const links: string[] = []
@@ -206,6 +235,8 @@ export function buildPrCommentBody(input: PrCommentInput): string {
   }
 
   lines.push('')
+  if (shards)
+    lines.push(progressMarker(shards.runId, shards.landed))
   lines.push(marker(input.projectSlug, input.label))
   return lines.join('\n')
 }
@@ -231,13 +262,14 @@ export async function postPrComment(
 
   const body = buildPrCommentBody(input)
   const mark = marker(input.projectSlug, input.label)
+  const keep = (existing: string): boolean => isStale(existing, input.shards)
   return ctx.provider === 'gitlab'
-    ? upsertGitLabNote(ctx, body, mark, create, fetchImpl)
-    : upsertGitHubComment(ctx, body, mark, create, fetchImpl)
+    ? upsertGitLabNote(ctx, body, mark, create, keep, fetchImpl)
+    : upsertGitHubComment(ctx, body, mark, create, keep, fetchImpl)
 }
 
 // A fork PR's GITHUB_TOKEN is read-only, so writes 403 -> treated as skipped, not an error.
-async function upsertGitHubComment(ctx: GitHubPrContext, body: string, mark: string, create: boolean, fetchImpl: typeof globalThis.fetch): Promise<UpsertOutcome> {
+async function upsertGitHubComment(ctx: GitHubPrContext, body: string, mark: string, create: boolean, keep: (existing: string) => boolean, fetchImpl: typeof globalThis.fetch): Promise<UpsertOutcome> {
   const headers = {
     'authorization': `Bearer ${ctx.token}`,
     'accept': 'application/vnd.github+json',
@@ -264,7 +296,7 @@ async function upsertGitHubComment(ctx: GitHubPrContext, body: string, mark: str
       break
   }
 
-  if (!existing && !create)
+  if ((!existing && !create) || (existing?.body && keep(existing.body)))
     return 'skipped'
   const target = existing
     ? { url: `${base}/issues/comments/${existing.id}`, method: 'PATCH' as const, outcome: 'updated' as const }
@@ -281,7 +313,7 @@ async function upsertGitHubComment(ctx: GitHubPrContext, body: string, mark: str
 
 // GITLAB_TOKEN is set on purpose, so a rejected call is a misconfiguration worth surfacing (unlike
 // GitHub's read-only fork token): every failure throws.
-async function upsertGitLabNote(ctx: GitLabMrContext, body: string, mark: string, create: boolean, fetchImpl: typeof globalThis.fetch): Promise<UpsertOutcome> {
+async function upsertGitLabNote(ctx: GitLabMrContext, body: string, mark: string, create: boolean, keep: (existing: string) => boolean, fetchImpl: typeof globalThis.fetch): Promise<UpsertOutcome> {
   const headers = { 'private-token': ctx.token, 'content-type': 'application/json' }
   const base = `${ctx.apiUrl}/projects/${encodeURIComponent(ctx.projectId)}/merge_requests/${ctx.mrIid}`
 
@@ -303,7 +335,7 @@ async function upsertGitLabNote(ctx: GitLabMrContext, body: string, mark: string
       break
   }
 
-  if (!existing && !create)
+  if ((!existing && !create) || (existing?.body && keep(existing.body)))
     return 'skipped'
   const target = existing
     ? { url: `${base}/notes/${existing.id}`, method: 'PUT' as const, outcome: 'updated' as const }

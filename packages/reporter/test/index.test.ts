@@ -378,25 +378,42 @@ describe('reporter onEnd', () => {
       expect(sent.run).not.toHaveProperty('groupKey')
     })
 
-    it('leaves the PR comment to the shard that completes the run, with the counts of every shard', async () => {
+    it('updates the PR comment on every shard with the shards landed so far, then the whole run', async () => {
       onPullRequest()
       process.env.GITHUB_RUN_ID = '42'
-      const pending = stubServer({ status: 'open' })
+      const pending = stubServer({
+        status: 'open',
+        shardProgress: { landed: 1, total: 3 },
+        counts: { total: 1, expected: 1, unexpected: 0, flaky: 0, skipped: 0 },
+      })
       const first = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' }, prComment: true })
       first.onBegin(shardConfig, fakeSuite([fakeTest()]))
       await first.onEnd(fakeResult())
-      expect(pending.comments).toEqual([])
+      expect(pending.comments).toHaveLength(1)
+      expect(pending.comments[0]).toContain('⏳ **kinora** · web-app · 1 of 3 shards landed')
 
       const done = stubServer({
         status: 'complete',
+        shardProgress: { landed: 3, total: 3 },
         counts: { total: 3, expected: 2, unexpected: 0, flaky: 1, skipped: 0 },
-        flaky: [{ testKey: 'k', title: 'pays with a card', file: 'b.spec.ts' }],
+        flaky: [{ testKey: 'k', title: 'pays with a card', file: 'b.spec.ts', rerunAttempt: 2 }],
       })
       const last = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' }, prComment: true })
       last.onBegin(shardConfig, fakeSuite([fakeTest()]))
       await last.onEnd(fakeResult())
       expect(done.comments).toHaveLength(1)
-      expect(done.comments[0]).toContain('**1 flaky**:\n- `b.spec.ts` › `pays with a card`')
+      expect(done.comments[0]).toContain('`3/3 passed`')
+      expect(done.comments[0]).toContain('**1 flaky**:\n- `b.spec.ts` › `pays with a card` · passed on re-run (attempt 2)')
+    })
+
+    it('skips the PR comment of a grouped shard when the server predates grouping', async () => {
+      onPullRequest()
+      process.env.GITHUB_RUN_ID = '42'
+      const sent = stubServer({})
+      const reporter = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' }, prComment: true })
+      reporter.onBegin(shardConfig, fakeSuite([fakeTest()]))
+      await reporter.onEnd(fakeResult())
+      expect(sent.comments).toEqual([])
     })
 
     it('still skips the PR comment on an ungrouped shard, left to the merged report', async () => {

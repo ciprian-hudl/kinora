@@ -61,7 +61,13 @@ function shardPayload(current: number, tests: NormTest[], opts: { attempt?: numb
   }
 }
 
-interface Body { runId: string, status?: string, shardProgress?: { landed: number, total: number }, counts?: { total: number, flaky: number } }
+interface Body {
+  runId: string
+  status?: string
+  shardProgress?: { landed: number, total: number }
+  counts?: { total: number, flaky: number }
+  flaky?: { title: string, rerunAttempt?: number }[]
+}
 
 async function upload(key: string, payload: IngestRun): Promise<Body> {
   const res = await ingest(key, payload)
@@ -76,7 +82,8 @@ describe('grouped shard uploads', () => {
     const first = await upload(key, shardPayload(1, [normTest('a'), normTest('b', 'unexpected')]))
     expect(first.status).toBe('open')
     expect(first.shardProgress).toEqual({ landed: 1, total: 2 })
-    expect(first.counts).toBeUndefined()
+    // The shards landed so far, for the PR comment that updates on each shard.
+    expect(first.counts).toMatchObject({ total: 2, unexpected: 1 })
     expect(notify).not.toHaveBeenCalled()
 
     const second = await upload(key, shardPayload(2, [normTest('c')]))
@@ -115,6 +122,7 @@ describe('grouped shard uploads', () => {
     const rerun = await upload(key, shardPayload(1, [normTest('a'), normTest('b')], { attempt: 2 }))
     expect(rerun.status).toBe('complete')
     expect(rerun.counts).toMatchObject({ total: 3, flaky: 1 })
+    expect(rerun.flaky).toEqual([expect.objectContaining({ title: 'a', rerunAttempt: 2 })])
 
     const rows = await db.query.test.findMany()
     expect(rows).toHaveLength(3)
@@ -208,6 +216,7 @@ describe('closeStaleOpenRuns', () => {
     const [r] = await db.query.run.findMany()
     expect(r.status).toBe('incomplete')
     expect(notify).toHaveBeenCalledOnce()
+    expect(notify.mock.calls[0][0].incomplete).toEqual({ landed: 1, total: 2 })
   })
 
   it('completes a closed run when its missing shard lands late, without notifying again', async () => {

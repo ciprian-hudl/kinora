@@ -1,6 +1,7 @@
 import type { Counts } from '../contracts/kinora'
 import { describe, expect, it, vi } from 'vitest'
 import { buildPrCommentBody, flakyTestsOf, postPrComment, resolvePrContext } from './pr-comment'
+import { RERUN_ANNOTATION } from './shards'
 
 const prEnv = {
   GITHUB_TOKEN: 'tok',
@@ -119,6 +120,45 @@ describe('buildPrCommentBody', () => {
     expect(body).toContain('`‘@maintainer‘ next`')
   })
 
+  it('marks the flaky tests that only passed on a re-run of their shard', () => {
+    const flaky = flakyTestsOf([
+      { testKey: 'a', title: 'pays', file: 'cart.spec.ts', status: 'flaky', annotations: [{ type: RERUN_ANNOTATION, description: 'passed on re-run (attempt 2)' }] },
+      { testKey: 'b', title: 'ships', file: 'cart.spec.ts', status: 'flaky', annotations: [] },
+    ])
+    expect(flaky).toEqual([
+      { testKey: 'a', title: 'pays', file: 'cart.spec.ts', rerunAttempt: 2 },
+      { testKey: 'b', title: 'ships', file: 'cart.spec.ts' },
+    ])
+    const body = buildPrCommentBody({
+      projectSlug: 'web',
+      projectName: 'Web',
+      counts: { total: 10, expected: 8, unexpected: 0, flaky: 2, skipped: 0 },
+      // The re-run mark also applies to a new flake, listed from the regression.
+      regression: { base: 'base-branch', newlyFailing: [], newlyFlaky: [{ testKey: 'a', title: 'pays', file: 'cart.spec.ts' }], fixed: 0 },
+      flaky,
+    })
+    expect(body).toContain('- `cart.spec.ts` › `pays` · passed on re-run (attempt 2)\n')
+    expect(body).toContain('- `cart.spec.ts` › `ships`\n')
+  })
+
+  it('shows a sharded run missing shards as in progress, without comparing it', () => {
+    const body = buildPrCommentBody({
+      projectSlug: 'web',
+      projectName: 'Web',
+      counts: { total: 4, expected: 4, unexpected: 0, flaky: 0, skipped: 0 },
+      regression: { base: 'base-branch', newlyFailing: [], newlyFlaky: [], fixed: 3 },
+      shards: { runId: 'r1', landed: 2, total: 4 },
+    })
+    expect(body).toContain('⏳ **kinora** · Web · 2 of 4 shards landed')
+    expect(body).toContain('`4/4 passed` · **0 failed** · 0 flaky · 0 skipped so far')
+    expect(body).not.toContain('fixed')
+    expect(body.split('\n').slice(-2)).toEqual(['<!-- kinora:shards:r1:2 -->', '<!-- kinora:pr:web -->'])
+
+    const done = buildPrCommentBody({ projectSlug: 'web', projectName: 'Web', counts: green, shards: { runId: 'r1', landed: 4, total: 4 } })
+    expect(done).toContain('✅ **kinora** · Web\n')
+    expect(done).not.toContain('so far')
+  })
+
   it('lists the flaky tests of a run from its tests', () => {
     const tests = [
       { testKey: 'a', title: 'a', file: 'f.ts', status: 'flaky' as const },
@@ -195,6 +235,26 @@ describe('postPrComment', () => {
 
   it('skips on a per-shard run', async () => {
     expect(await postPrComment({ ...ctx, isShard: true }, input, 'always', vi.fn() as unknown as typeof globalThis.fetch)).toBe('skipped')
+  })
+
+  it('leaves a newer view of the same sharded run alone, and replaces an older one or another run', async () => {
+    const existing = (body: string) => vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 9, body, user: { type: 'Bot' } }] })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
+    const shardsAt = (runId: string, landed: number) => ({ ...input, shards: { runId, landed, total: 4 } })
+    const post = (fetch: ReturnType<typeof existing>, landed: number, runId = 'r1') =>
+      postPrComment(ctx, shardsAt(runId, landed), 'always', fetch as unknown as typeof globalThis.fetch)
+    const comment = (runId: string, landed: number) => buildPrCommentBody({ ...input, shards: { runId, landed, total: 4 } })
+
+    // A slow shard 2 after shard 3 completed the run.
+    const slow = existing(comment('r1', 4))
+    expect(await post(slow, 3)).toBe('skipped')
+    expect(slow).toHaveBeenCalledTimes(1)
+    expect(await post(existing(comment('r1', 2)), 3)).toBe('updated')
+    // A re-run of a shard after completion still refreshes the comment.
+    expect(await post(existing(comment('r1', 4)), 4)).toBe('updated')
+    // A new push: a new run replaces the comment of the previous one.
+    expect(await post(existing(comment('r0', 4)), 1, 'r2')).toBe('updated')
   })
 
   it('posts no new comment for a green run under the on-failure policy', async () => {

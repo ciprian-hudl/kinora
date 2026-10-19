@@ -201,8 +201,9 @@ export default class KinoraReporter implements Reporter {
     const label = this.prCommentLabel()
     const policy = typeof opt === 'object' ? opt.policy : undefined
     const grouped = !!payload.run.groupKey
-    // A grouped run is commented by the shard that completes it, with the counts of every shard.
-    if (grouped && res.status !== 'complete')
+    // Every shard of a grouped run updates the comment with the shards landed so far. A server
+    // that predates grouping sends no progress: each shard is then a partial run of its own.
+    if (grouped && !res.shardProgress)
       return
     try {
       // An ungrouped shard is a partial run: only the merged report (blob + merge-reports) comments.
@@ -226,6 +227,7 @@ export default class KinoraReporter implements Reporter {
         counts: res.counts ?? payload.run.counts,
         regression: res.regression,
         flaky: res.flaky ?? flakyTestsOf(payload.tests),
+        ...(res.shardProgress && { shards: { runId: res.runId, ...res.shardProgress } }),
       }, policy ?? 'always')
       if (outcome !== 'skipped')
         console.warn(`[kinora] PR comment ${outcome}`)

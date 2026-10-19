@@ -176,14 +176,15 @@ the sharded suite once per leg (one per browser, say), give each leg its own `pr
 `groupKey`, or their shards would fill the same slots.
 
 - **Until every shard landed**, the run shows as "2 of 4 shards" instead of a health, so a run
-  missing shards never reads as green. Alerts and the PR comment wait for the last shard, then
-  cover every shard's tests.
+  missing shards never reads as green. Alerts wait for the last shard, then cover every shard's
+  tests. The PR comment updates as each shard lands ("2 of 4 shards landed"), so a shard that
+  never uploads leaves it saying so.
 - **A shard that never uploads** (its job died) leaves the run incomplete: after two hours it is
   closed as "Incomplete · 3 of 4 shards", and alerts fire then. A late shard still completes it.
 - **Re-running a failed shard** (GitHub's "Re-run failed jobs", a GitLab job retry) fills that
   shard's slot again instead of adding a run. A test that failed on the first attempt and passes
-  on the re-run is kept as flaky, so the re-run does not hide it. Re-run results are not counted
-  again in your usage.
+  on the re-run is kept as flaky, so the re-run does not hide it, and the PR comment marks it
+  "passed on re-run". Re-run results are not counted again in your usage.
 
 ### Merging blob reports
 

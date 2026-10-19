@@ -4,6 +4,7 @@ import { notifyRun } from '../alerts/notify'
 import { db } from '../db'
 import { project, run } from '../db/schemas/index'
 import { logger } from '../lib/logger'
+import { shardState } from '../reports/queries'
 import { testsOfRun } from '../reports/regression'
 
 // How long a grouped run waits for its missing shards after the first one landed.
@@ -17,7 +18,7 @@ export async function closeStaleOpenRuns(now: Date): Promise<{ closed: number }>
   const closed = await db.update(run)
     .set({ status: 'incomplete', notifiedAt: now })
     .where(and(eq(run.status, 'open'), isNull(run.notifiedAt), lt(run.createdAt, new Date(now.getTime() - OPEN_RUN_TIMEOUT_MS))))
-    .returning({ id: run.id, projectId: run.projectId, startedAt: run.startedAt, git: run.git })
+    .returning({ id: run.id, projectId: run.projectId, startedAt: run.startedAt, git: run.git, groupKey: run.groupKey, status: run.status, shardsTotal: run.shardsTotal, shardsLanded: run.shardsLanded })
 
   for (const r of closed) {
     try {
@@ -33,6 +34,7 @@ export async function closeStaleOpenRuns(now: Date): Promise<{ closed: number }>
         branch: r.git?.branch,
         counts: countsFromTests(tests),
         tests,
+        incomplete: shardState(r).shardProgress,
       })
     }
     catch (error) {

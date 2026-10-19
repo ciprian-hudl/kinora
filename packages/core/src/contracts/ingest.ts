@@ -55,12 +55,12 @@ export const ingestRunResultSchema = z.object({
   // Durable dashboard run URL (built server-side from WEB_ORIGIN). Optional: older servers omit it.
   runUrl: z.string().optional(),
   regression: runRegressionSchema.optional(),
-  // Grouped (sharded) uploads only: the run's state after this upload, and once complete the counts
-  // and flaky tests of the whole run (every shard), for the PR comment.
+  // Grouped (sharded) uploads only: the run's state after this upload, with the counts and flaky
+  // tests of every shard landed so far, for the PR comment.
   status: runStatusSchema.optional(),
   shardProgress: shardProgressSchema.optional(),
   counts: countsSchema.optional(),
-  flaky: z.array(z.object({ testKey: z.string(), title: z.string(), file: z.string() })).optional(),
+  flaky: z.array(z.object({ testKey: z.string(), title: z.string(), file: z.string(), rerunAttempt: z.number().optional() })).optional(),
 })
 export type IngestRunResult = z.infer<typeof ingestRunResultSchema>
 

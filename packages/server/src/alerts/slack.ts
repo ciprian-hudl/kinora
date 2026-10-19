@@ -1,7 +1,7 @@
 import type { Fetcher } from '../lib/ssrf'
 import type { AlertPayload } from './core'
 import { safeFetch } from '../lib/ssrf'
-import { listTests } from './core'
+import { incompleteLine, listTests } from './core'
 
 export interface SlackPayload {
   text: string
@@ -11,9 +11,13 @@ export function buildSlackMessage(input: AlertPayload): SlackPayload {
   const { counts } = input
   const ok = counts.unexpected === 0
   const lines = [
-    `${ok ? '✅' : '🔴'} *${input.projectName}* run finished`,
+    input.incomplete
+      ? `${ok ? '⚠️' : '🔴'} *${input.projectName}* run incomplete`
+      : `${ok ? '✅' : '🔴'} *${input.projectName}* run finished`,
     `${counts.expected} passed · ${counts.unexpected} failed · ${counts.flaky} flaky · ${counts.skipped} skipped`,
   ]
+  if (input.incomplete)
+    lines.push(`*${incompleteLine(input.incomplete)}*`)
   if (input.newlyFailing.length)
     lines.push(`*Newly failing (${input.newlyFailing.length}):* ${listTests(input.newlyFailing, input.codeOwners)}`)
   if (input.newlyFlaky.length)

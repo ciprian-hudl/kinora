@@ -28,7 +28,7 @@ Each channel fires on one of three policies:
 | Policy | Fires when |
 | --- | --- |
 | `always` | Every run, pass or fail. |
-| `on-failure` | The run has any unexpected failure. |
+| `on-failure` | The run has any unexpected failure, or is a [sharded run](/guides/reporter/#sharded-runs) closed with shards missing. |
 | `on-regression` | The run has a test that is **newly failing or newly flaky** versus the previous run. |
 
 `on-regression` is the quiet default for a healthy suite: it stays silent while things are green
@@ -39,6 +39,10 @@ and only pings you when something actually breaks or starts flaking.
 - The project name and a link to the run in the dashboard.
 - The run's pass/fail counts.
 - The lists of newly failing and newly flaky tests (capped, with an "and N more" overflow).
+- For a sharded run closed with shards missing, how many landed ("3 of 4 shards"). Webhooks get
+  it as `incomplete: { landed, total }`.
+
+A sharded run alerts once, when its last shard lands, or when it is closed as incomplete.
 
 Regressions are computed by comparing the run against the previous run on the same branch, so an
 alert distinguishes a fresh break from a test that was already red.

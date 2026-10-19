@@ -1,4 +1,4 @@
-import type { Counts } from '@kinora/core'
+import type { Counts, ShardProgress } from '@kinora/core'
 import type { Fetcher } from '../lib/ssrf'
 import type { AlertPayload } from './core'
 import { safeFetch } from '../lib/ssrf'
@@ -11,6 +11,8 @@ export interface WebhookBody {
   newlyFailing: string[]
   newlyFlaky: string[]
   codeOwners?: Record<string, string[]>
+  // Set on a sharded run closed with shards missing.
+  incomplete?: ShardProgress
 }
 
 export async function postWebhook(
@@ -25,6 +27,7 @@ export async function postWebhook(
     newlyFailing: p.newlyFailing,
     newlyFlaky: p.newlyFlaky,
     codeOwners: p.codeOwners,
+    ...(p.incomplete && { incomplete: p.incomplete }),
   }
   const res = await fetchImpl(url, {
     method: 'POST',

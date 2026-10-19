@@ -1,14 +1,18 @@
 import type { AlertPayload } from './core'
-import { listTests } from './core'
+import { incompleteLine, listTests } from './core'
 
 export function buildAlertEmail(p: AlertPayload): { subject: string, text: string } {
   const { counts } = p
-  const subject = `${counts.unexpected > 0 ? '🔴' : '✅'} ${p.projectName}: ${counts.unexpected} failed, ${counts.flaky} flaky`
+  const subject = p.incomplete
+    ? `${counts.unexpected > 0 ? '🔴' : '⚠️'} ${p.projectName}: incomplete run, ${p.incomplete.landed} of ${p.incomplete.total} shards`
+    : `${counts.unexpected > 0 ? '🔴' : '✅'} ${p.projectName}: ${counts.unexpected} failed, ${counts.flaky} flaky`
   const lines = [
-    `${p.projectName} run finished.`,
+    `${p.projectName} run ${p.incomplete ? 'is incomplete' : 'finished'}.`,
     '',
     `${counts.expected} passed · ${counts.unexpected} failed · ${counts.flaky} flaky · ${counts.skipped} skipped`,
   ]
+  if (p.incomplete)
+    lines.push('', `${incompleteLine(p.incomplete)}.`)
   if (p.newlyFailing.length)
     lines.push('', `Newly failing (${p.newlyFailing.length}): ${listTests(p.newlyFailing, p.codeOwners)}`)
   if (p.newlyFlaky.length)
