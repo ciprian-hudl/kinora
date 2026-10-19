@@ -37,6 +37,8 @@ const envSchema = z.object({
   KINORA_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(0),
   KINORA_KEEP_LAST_RUNS: z.coerce.number().int().nonnegative().default(0),
   KINORA_ARTIFACT_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(0),
+  // How long a sharded run waits for its missing shards before it is closed as incomplete.
+  KINORA_SHARD_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(120),
   STORAGE_DIR: z.string().default('.data/artifacts'),
   S3_ENDPOINT: z.string().optional(),
   S3_REGION: z.string().optional(),

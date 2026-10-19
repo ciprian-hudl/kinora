@@ -180,7 +180,8 @@ the sharded suite once per leg (one per browser, say), give each leg its own `pr
   tests. The PR comment updates as each shard lands ("2 of 4 shards landed"), so a shard that
   never uploads leaves it saying so.
 - **A shard that never uploads** (its job died) leaves the run incomplete: after two hours it is
-  closed as "Incomplete · 3 of 4 shards", and alerts fire then. A late shard still completes it.
+  closed as "Incomplete · 3 of 4 shards", and alerts fire then (self-host: set the delay with
+  `KINORA_SHARD_TIMEOUT_MINUTES`). A late shard still completes it.
 - **Re-running a failed shard** (GitHub's "Re-run failed jobs", a GitLab job retry) fills that
   shard's slot again instead of adding a run. A test that failed on the first attempt and passes
   on the re-run is kept as flaky, so the re-run does not hide it, and the PR comment marks it

@@ -17,12 +17,14 @@ vi.resetModules()
 const { app } = await import('../src/app')
 const { db } = await import('../src/db')
 const { env } = await import('../src/lib/env')
-const { createApiKey, createUser, ingest, resetDb } = await import('./helpers')
+const { createApiKey, createUser, ingest, resetDb, runPayload } = await import('./helpers')
 
 beforeEach(resetDb)
 
-async function upload(runId: string, apiKey: string, bytes: number) {
+async function upload(runId: string, apiKey: string, bytes: number, testKey?: string) {
   const form = new FormData()
+  if (testKey)
+    form.set('testKey', testKey)
   form.set('file', new File([new Uint8Array(bytes)], 'trace.zip'))
   form.set('name', 'trace')
   return app.request(`/api/v1/runs/${runId}/artifacts`, {
@@ -67,6 +69,23 @@ describe('artifact storage cap', () => {
     expect((await upload(runId, apiKey, 5)).status).toBe(201)
 
     expect((await upload(runId, apiKey, 1)).status).toBe(402)
+    expect(await db.query.artifact.findMany()).toHaveLength(1)
+  })
+
+  it('frees the replaced traces of a re-run shard, so its new trace fits', async () => {
+    const apiKey = await createApiKey((await createUser()).id)
+    const shard = (attempt: number) => {
+      const payload = runPayload()
+      payload.run = { ...payload.run, groupKey: 'gh-1', attempt, shard: { current: 1, total: 2 } }
+      return payload
+    }
+    const { runId } = await (await ingest(apiKey, shard(1))).json() as { runId: string }
+    const [{ testKey }] = await db.query.test.findMany()
+    expect((await upload(runId, apiKey, 4, testKey)).status).toBe(201)
+
+    // The re-run drops the first attempt's trace with its test before uploading its own.
+    await ingest(apiKey, shard(2))
+    expect((await upload(runId, apiKey, 4, testKey)).status).toBe(201)
     expect(await db.query.artifact.findMany()).toHaveLength(1)
   })
 })

@@ -3,12 +3,13 @@ import { and, eq, isNull, lt } from 'drizzle-orm'
 import { notifyRun } from '../alerts/notify'
 import { db } from '../db'
 import { project, run } from '../db/schemas/index'
+import { env } from '../lib/env'
 import { logger } from '../lib/logger'
 import { shardState } from '../reports/queries'
 import { testsOfRun } from '../reports/regression'
 
 // How long a grouped run waits for its missing shards after the first one landed.
-export const OPEN_RUN_TIMEOUT_MS = 2 * 60 * 60 * 1000
+export const OPEN_RUN_TIMEOUT_MS = env.KINORA_SHARD_TIMEOUT_MINUTES * 60 * 1000
 export const SHARD_SWEEP_INTERVAL_MS = 10 * 60 * 1000
 
 // Close grouped runs still missing shards past the timeout as incomplete, and notify them once:
