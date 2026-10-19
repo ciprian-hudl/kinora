@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PwTestStatus, ScreenshotComparison } from '@kinora/core'
-import { formatDuration, formatPct, passRate, runHealth, splitScreenshotComparisons, storiesOf, STORY_ANNOTATION, stripAnsi } from '@kinora/core'
+import { formatDuration, formatPct, partialRunLabel, passRate, runHealth, splitScreenshotComparisons, storiesOf, STORY_ANNOTATION, stripAnsi } from '@kinora/core'
 import { Button } from '@kinora/ui/button'
 import { Separator } from '@kinora/ui/separator'
 import { Skeleton } from '@kinora/ui/skeleton'
@@ -17,6 +17,7 @@ import ErrorState from '@/components/app/ErrorState.vue'
 import ListPagination from '@/components/app/ListPagination.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
 import FilterCombobox from '@/components/FilterCombobox.vue'
+import RunHealthBadge from '@/components/viz/RunHealthBadge.vue'
 import ScreenshotDiff from '@/components/viz/ScreenshotDiff.vue'
 import StoryBadge from '@/components/viz/StoryBadge.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
@@ -47,8 +48,11 @@ const projectName = computed(
 )
 
 // A run's pass rate is colored by the run's health, not its value: a run with real failures reads red.
+// A run missing shards stays neutral, its counts cover part of the suite only.
 const HEALTH_TONE = { passing: 'pass', flaky: 'flaky', failing: 'fail', empty: 'default' } as const
-const passTone = computed(() => (report.value ? HEALTH_TONE[runHealth(report.value.counts)] : 'default'))
+const runState = computed(() => report.value && { counts: report.value.counts, status: report.value.meta.status, shardProgress: report.value.meta.shardProgress })
+const partial = computed(() => runState.value && partialRunLabel(runState.value))
+const passTone = computed(() => (!runState.value || partial.value ? 'default' : HEALTH_TONE[runHealth(runState.value.counts)]))
 
 // The run just before this one (older startedAt) in the same project, for "Compare with previous".
 const previousRunId = computed(() => {
@@ -202,9 +206,12 @@ const BADGE_CLASS = 'inline-flex items-center gap-1 rounded border border-border
       <div class="flex flex-col gap-6">
         <div class="flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
           <div>
-            <h1 class="text-xl font-semibold tracking-tight">
-              {{ formatDateTimeLong(report.startedAt) }}
-            </h1>
+            <div class="flex flex-wrap items-center gap-3">
+              <h1 class="text-xl font-semibold tracking-tight">
+                {{ formatDateTimeLong(report.startedAt) }}
+              </h1>
+              <RunHealthBadge v-if="runState && partial" :run="runState" />
+            </div>
             <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground">
               <span v-if="report.meta.git?.branch" class="flex items-center gap-1 whitespace-nowrap">
                 <GitBranch class="size-3" />{{ report.meta.git.branch }}

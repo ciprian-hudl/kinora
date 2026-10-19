@@ -76,8 +76,9 @@ run on the base branch to compute what regressed.
 - **Fork MRs on GitLab** run in the fork, where `GITLAB_TOKEN` isn't defined, so nothing is
   posted.
 - **A rejected `GITLAB_TOKEN`** (expired, wrong scope) logs a warning and never fails the upload.
-- **Sharded runs**: shard with `merge-reports` (blob report) so one merged run posts one comment.
-  Per-shard runs are skipped. See [Sharded runs](/guides/reporter/#sharded-runs).
+- **Sharded runs**: when shards upload on their own, the shard that completes the run posts one
+  comment covering every shard. With `merge-reports` (blob report), the merged run posts it. See
+  [Sharded runs](/guides/reporter/#sharded-runs).
 - **Matrix builds sharing a PR**: give each leg its own label so they keep separate comments -
   reporter `prComment: { label: 'node20' }`, CLI `--pr-label node20`.
 - **Green runs**: `policy: 'on-failure'` (reporter) / `--pr-policy on-failure` (CLI) posts no

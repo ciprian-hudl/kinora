@@ -94,4 +94,37 @@ describe('usage metering', () => {
     expect(meter).not.toHaveBeenCalled()
     expect(await pendingRuns()).toEqual([])
   })
+
+  describe('grouped shard runs', () => {
+    function shard(current: number, attempt = 1) {
+      const payload = runPayload()
+      payload.run = { ...payload.run, groupKey: 'gh-1', attempt, shard: { current, total: 2 } }
+      return payload
+    }
+
+    it('meters each shard as its own event, and a re-run not at all', async () => {
+      const user = await createUser()
+      const key = await createApiKey(user.id)
+      const { runId } = await (await ingest(key, shard(1))).json() as { runId: string }
+      await ingest(key, shard(2))
+      await ingest(key, shard(1, 2))
+
+      expect(meter.mock.calls).toEqual([[user.id, 1, `${runId}:1`], [user.id, 1, `${runId}:2`]])
+      expect(await pendingRuns()).toEqual([])
+    })
+
+    it('retries only the shard Polar missed', async () => {
+      const user = await createUser()
+      const key = await createApiKey(user.id)
+      const { runId } = await (await ingest(key, shard(1))).json() as { runId: string }
+      meter.mockRejectedValueOnce(new Error('polar down'))
+      await ingest(key, shard(2))
+      expect(await pendingRuns()).toEqual([runId])
+
+      meter.mockClear()
+      expect(await reportPendingUsage(LATER())).toEqual({ reported: 1, failed: 0 })
+      expect(meter).toHaveBeenCalledExactlyOnceWith(user.id, 1, `${runId}:2`)
+      expect(await pendingRuns()).toEqual([])
+    })
+  })
 })

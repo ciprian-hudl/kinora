@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { RunHealth, RunSummary } from '@kinora/core'
 import type { ColumnDef, SortingState } from '@tanstack/vue-table'
-import { formatDuration, formatPct, passRate, runHealth } from '@kinora/core'
-import { HealthBadge } from '@kinora/ui/health-badge'
+import { formatDuration, formatPct, partialRunLabel, passRate, runHealth } from '@kinora/core'
 import {
   Table,
   TableBody,
@@ -17,6 +16,7 @@ import { useRouteQuery } from '@vueuse/router'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import ListPagination from '@/components/app/ListPagination.vue'
+import RunHealthBadge from '@/components/viz/RunHealthBadge.vue'
 import { useUrlPage } from '@/composables/useUrlPage'
 import { formatDateTime } from '@/lib/format'
 
@@ -24,12 +24,12 @@ const props = defineProps<{ runs: RunSummary[], projectId: string }>()
 
 const router = useRouter()
 
-// Worst-first ordering when sorting health descending.
-const HEALTH_RANK: Record<RunHealth, number> = { failing: 3, flaky: 2, passing: 1, empty: 0 }
+// Worst-first ordering when sorting health descending; a run missing shards ranks with failures.
+const HEALTH_RANK: Record<RunHealth | 'partial', number> = { failing: 3, partial: 3, flaky: 2, passing: 1, empty: 0 }
 
 const columns: ColumnDef<RunSummary>[] = [
   { id: 'run', accessorFn: r => r.startedAt }, // ISO string sorts chronologically
-  { id: 'health', accessorFn: r => HEALTH_RANK[runHealth(r.counts)] },
+  { id: 'health', accessorFn: r => HEALTH_RANK[partialRunLabel(r) ? 'partial' : runHealth(r.counts)] },
   { id: 'pass', accessorFn: r => passRate(r.counts) },
   { id: 'fail', accessorFn: r => r.counts.unexpected },
   { id: 'flaky', accessorFn: r => r.counts.flaky },
@@ -132,7 +132,7 @@ function sortDir(id: string) {
           <TableCell class="font-mono text-xs">
             {{ formatDateTime(row.original.startedAt) }}
           </TableCell>
-          <TableCell><HealthBadge :health="runHealth(row.original.counts)" /></TableCell>
+          <TableCell><RunHealthBadge :run="row.original" /></TableCell>
           <TableCell class="text-right font-mono text-xs tabular-nums">
             {{ formatPct(passRate(row.original.counts)) }}
           </TableCell>

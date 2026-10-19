@@ -33,6 +33,15 @@ export const ciMetaSchema = z.object({
 })
 export type CiMeta = z.infer<typeof ciMetaSchema>
 
+// A run assembled from direct shard uploads is `open` until every shard landed, then `complete`;
+// one still missing shards after the server's timeout is closed as `incomplete`. Single uploads
+// are always `complete`.
+export const runStatusSchema = z.enum(['open', 'complete', 'incomplete'])
+export type RunStatus = z.infer<typeof runStatusSchema>
+
+export const shardProgressSchema = z.object({ landed: z.number(), total: z.number() })
+export type ShardProgress = z.infer<typeof shardProgressSchema>
+
 // One row per run, stored in the manifest. Kept small: powers the overview
 // grid and history charts without fetching full reports.
 export const runSummarySchema = z.object({
@@ -49,6 +58,8 @@ export const runSummarySchema = z.object({
   // Per-tag counts, precomputed at ingest so the overview can filter by tag
   // without fetching full reports. Keys are tag names (e.g. "@smoke").
   countsByTag: z.record(z.string(), countsSchema).default({}),
+  status: runStatusSchema.optional(),
+  shardProgress: shardProgressSchema.optional(),
 })
 export type RunSummary = z.infer<typeof runSummarySchema>
 
@@ -149,6 +160,8 @@ export const runReportSchema = z.object({
     git: gitMetaSchema.optional(),
     ci: ciMetaSchema.optional(),
     shards: z.number().optional(),
+    status: runStatusSchema.optional(),
+    shardProgress: shardProgressSchema.optional(),
   }),
   tests: z.array(normTestSchema),
 })

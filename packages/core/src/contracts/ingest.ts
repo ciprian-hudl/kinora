@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ciMetaSchema, countsSchema, gitMetaSchema, normTestSchema } from './kinora'
+import { ciMetaSchema, countsSchema, gitMetaSchema, normTestSchema, runStatusSchema, shardProgressSchema } from './kinora'
 
 // Upper bound on tests in one run upload. Far above any real Playwright run/shard; bounds the
 // bulk insert so a crafted body can't ask for millions of rows. Pairs with the JSON body limit.
@@ -20,7 +20,14 @@ export const ingestRunSchema = z.object({
     git: gitMetaSchema.optional(),
     ci: ciMetaSchema.optional(),
     shards: z.number().optional(),
-  }),
+    // Direct shard uploads: every upload carrying the same groupKey lands in one run, `shard.current`
+    // being its slot. A later `attempt` of a slot (CI re-run) replaces that slot's tests.
+    groupKey: z.string().min(1).max(200).optional(),
+    attempt: z.number().int().min(1).optional(),
+    shard: z.object({ current: z.number().int().min(1), total: z.number().int().min(1) })
+      .refine(s => s.current <= s.total, 'shard.current must not exceed shard.total')
+      .optional(),
+  }).refine(r => !r.groupKey || r.shard, { message: 'groupKey requires shard', path: ['shard'] }),
   tests: z.array(normTestSchema).max(MAX_TESTS_PER_RUN),
 })
 export type IngestRun = z.infer<typeof ingestRunSchema>
@@ -48,6 +55,12 @@ export const ingestRunResultSchema = z.object({
   // Durable dashboard run URL (built server-side from WEB_ORIGIN). Optional: older servers omit it.
   runUrl: z.string().optional(),
   regression: runRegressionSchema.optional(),
+  // Grouped (sharded) uploads only: the run's state after this upload, and once complete the counts
+  // and flaky tests of the whole run (every shard), for the PR comment.
+  status: runStatusSchema.optional(),
+  shardProgress: shardProgressSchema.optional(),
+  counts: countsSchema.optional(),
+  flaky: z.array(z.object({ testKey: z.string(), title: z.string(), file: z.string() })).optional(),
 })
 export type IngestRunResult = z.infer<typeof ingestRunResultSchema>
 

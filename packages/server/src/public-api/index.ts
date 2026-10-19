@@ -2,14 +2,14 @@ import type { Context } from 'hono'
 import { randomUUID } from 'node:crypto'
 import { Readable, Transform } from 'node:stream'
 import { zValidator } from '@hono/zod-validator'
-import { countsByTagFrom, ingestRunSchema } from '@kinora/core'
+import { countsByTagFrom, countsFromTests, flakyTestsOf, ingestRunSchema } from '@kinora/core'
 import busboy from 'busboy'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { notifyRun } from '../alerts/notify'
 import { getEntitlements, ingestCapError, quotaCrossing, quotaWarningText, storageCapError, usageEmailEnabled } from '../billing/entitlements'
-import { meterRun } from '../billing/metering'
+import { meterRun, meterShard } from '../billing/metering'
 import { polarClient } from '../billing/polar'
 import { currentPeriodResults, isHistory, projectCount, recordResults, storageBytes } from '../billing/usage'
 import { db } from '../db'
@@ -19,16 +19,14 @@ import { env } from '../lib/env'
 import { logger } from '../lib/logger'
 import { sendMail } from '../lib/mailer'
 import { isTransientStorageError, storage } from '../lib/storage'
-import { computeRegression } from '../reports/regression'
+import { computeRegression, testsOfRun } from '../reports/regression'
 import { registerReadRoutes } from './read'
+import { insertTests, isGrouped, landShard } from './shards'
 
 const BEARER_PREFIX = 'Bearer '
 const INGEST_MAX_JSON_MB = 25
 // Matches the /api/v1 bodyLimit; busboy truncates the file part past this so RAM/disk stay bounded.
 const MAX_ARTIFACT_BYTES = 100 * 1024 * 1024
-// Postgres caps a statement at 65,535 bind parameters; a test row binds 19, so one insert topped
-// out at 3,449 tests while a run may carry up to MAX_TESTS_PER_RUN.
-const TEST_INSERT_BATCH = 1000
 
 // Public ingest API (api-key authed) - the reporter / cli upload here. The token's
 // referenceId is the owning organization id.
@@ -100,6 +98,15 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
         columns: { id: true },
       }))?.id
     }
+    if (!projectId)
+      throw new Error('project upsert returned no id')
+
+    const { run: runInput } = input
+    if (isGrouped(runInput)) {
+      const shard = await landShard(tx, projectId, { ...input, run: runInput }, billable)
+      await recordResults(tx, orgId, history ? startedAt : new Date(), shard.results)
+      return { projectId, runId: shard.runId, tests: input.tests.length, results: shard.results, startedAt: shard.startedAt, shard }
+    }
 
     const runId = randomUUID()
     await tx.insert(run).values({
@@ -116,56 +123,42 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
       shards: input.run.shards,
       meterPending: billable,
     })
-
-    const rows = input.tests.map(item => ({
-      id: randomUUID(),
-      runId,
-      projectId,
-      testKey: item.testKey,
-      title: item.title,
-      titlePath: item.titlePath,
-      file: item.file,
-      line: item.line,
-      column: item.column,
-      projectName: item.projectName,
-      status: item.status,
-      ok: item.ok,
-      duration: Math.round(item.duration),
-      retries: item.retries,
-      tags: item.tags,
-      annotations: item.annotations,
-      errors: item.errors,
-      // `expired` is the retention's to set, not a client's.
-      attachments: item.attachments.map(({ expired: _expired, ...a }) => a),
-      a11y: item.a11y ?? null,
-    }))
-    for (let i = 0; i < rows.length; i += TEST_INSERT_BATCH)
-      await tx.insert(test).values(rows.slice(i, i + TEST_INSERT_BATCH))
-
+    await insertTests(tx, runId, projectId, input.tests)
     await recordResults(tx, orgId, history ? startedAt : new Date(), input.tests.length)
 
-    return { projectId, runId, tests: input.tests.length }
+    return { projectId, runId, tests: input.tests.length, results: input.tests.length, startedAt, shard: undefined }
   })
+  const { shard } = result
 
-  if (billable)
+  if (shard) {
+    if (billable && shard.results > 0)
+      await meterShard(result.runId, orgId, shard.slot, shard.results)
+    for (const key of shard.orphanedKeys)
+      await storage.delete(key).catch(error => logger.error({ error, key }, 'replaced shard artifact cleanup failed'))
+  }
+  else if (billable) {
     await meterRun(result.runId, orgId, result.tests)
+  }
 
-  if (!backfill) {
+  // A grouped run is notified once, by the upload that completes it, with the tests of every shard.
+  const complete = !shard || shard.status === 'complete'
+  const runTests = shard && complete ? await testsOfRun(result.runId) : input.tests
+  if (!backfill && (shard ? shard.notify : true)) {
     // Fire-and-forget: alerts hit external webhook/Slack/SMTP and must not block or fail the ingest response.
     void notifyRun({
       organizationId: orgId,
       projectId: result.projectId,
       runId: result.runId,
-      startedAt: new Date(input.run.startedAt),
+      startedAt: result.startedAt,
       branch: input.run.git?.branch,
-      counts: input.run.counts,
-      tests: input.tests,
+      counts: shard ? countsFromTests(runTests) : input.run.counts,
+      tests: runTests,
     }).catch(error => logger.error({ error, runId: result.runId }, 'alert notify failed'))
   }
 
   // Free-tier usage warning, fired on the ingest that crosses 80% / 100% of the monthly cap.
-  if (!backfill && !history && entitlements.tier === 'free' && result.tests > 0) {
-    const kind = quotaCrossing(usedResults, usedResults + result.tests, entitlements.includedResults)
+  if (!backfill && !history && entitlements.tier === 'free' && result.results > 0) {
+    const kind = quotaCrossing(usedResults, usedResults + result.results, entitlements.includedResults)
     if (kind && usageEmailEnabled(entitlements.tier, kind, org ?? {})) {
       try {
         const owner = await db.query.member.findFirst({
@@ -179,7 +172,7 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
           sendMail({
             to: u.email,
             subject: kind === 'reached' ? 'You\'ve hit your kinora free limit' : 'You\'re nearing your kinora free limit',
-            text: quotaWarningText(u.name, kind, usedResults + result.tests, entitlements.includedResults, `${env.WEB_ORIGIN}/settings/workspace`),
+            text: quotaWarningText(u.name, kind, usedResults + result.results, entitlements.includedResults, `${env.WEB_ORIGIN}/settings/workspace`),
           })
         }
       }
@@ -191,15 +184,16 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
 
   // Durable dashboard URL (client only knows the api origin). Regression is only computed when the
   // client asks (?regression=1, set by prComment users) so the hot path isn't taxed for everyone,
-  // and never fails the response for an already-committed run.
+  // and never fails the response for an already-committed run. A grouped run still waiting for
+  // shards has nothing to compare yet.
   const runUrl = `${env.WEB_ORIGIN}/projects/${input.project.slug}/runs/${result.runId}`
   let regression
-  if (!backfill && result.projectId && c.req.query('regression') === '1') {
+  if (!backfill && complete && c.req.query('regression') === '1') {
     try {
-      regression = await computeRegression(result.projectId, input.tests, {
+      regression = await computeRegression(result.projectId, runTests, {
         branch: input.run.git?.branch,
         baseBranch: input.run.git?.baseBranch,
-        startedAt: new Date(input.run.startedAt),
+        startedAt: result.startedAt,
       })
     }
     catch (error) {
@@ -207,7 +201,19 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
     }
   }
 
-  return c.json({ ...result, runUrl, ...(regression ? { regression } : {}) }, 201)
+  const grouped = shard && {
+    status: shard.status,
+    shardProgress: shard.shardProgress,
+    ...(complete && { counts: countsFromTests(runTests), flaky: flakyTestsOf(runTests) }),
+  }
+  return c.json({
+    projectId: result.projectId,
+    runId: result.runId,
+    tests: result.tests,
+    runUrl,
+    ...(regression ? { regression } : {}),
+    ...grouped,
+  }, 201)
 })
 
 interface StreamedArtifact {

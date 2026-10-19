@@ -23,6 +23,15 @@ export function runHealth(c: Counts): RunHealth {
   return 'passing'
 }
 
+// A grouped run still missing shards holds part of the suite only, so its counts must never read
+// as the run's health. Returns what to show instead (undefined for a complete run).
+export function partialRunLabel(r: Pick<RunSummary, 'status' | 'shardProgress'>): string | undefined {
+  if (!r.status || r.status === 'complete')
+    return undefined
+  const shards = r.shardProgress ? `${r.shardProgress.landed} of ${r.shardProgress.total} shards` : 'shards missing'
+  return r.status === 'incomplete' ? `Incomplete · ${shards}` : shards
+}
+
 export function sortedRuns(p: ProjectEntry): RunSummary[] {
   return [...p.runs].sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
 }

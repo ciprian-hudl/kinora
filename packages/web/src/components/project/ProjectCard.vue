@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ProjectEntry } from '@kinora/core'
-import { formatDuration, formatPct, HEALTH_WINDOW, latestRun, recentPassRate, runHealth, trend } from '@kinora/core'
+import { formatDuration, formatPct, HEALTH_WINDOW, latestRun, recentPassRate, trend } from '@kinora/core'
 import { Card } from '@kinora/ui/card'
 import { HealthBadge } from '@kinora/ui/health-badge'
 import { RunStrip } from '@kinora/ui/run-strip'
@@ -8,13 +8,13 @@ import { Sparkline } from '@kinora/ui/sparkline'
 import { ArrowRight } from '@lucide/vue'
 import { computed } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
+import RunHealthBadge from '@/components/viz/RunHealthBadge.vue'
 
 const props = defineProps<{ project: ProjectEntry }>()
 
 const router = useRouter()
 
 const latest = computed(() => latestRun(props.project))
-const health = computed(() => (latest.value ? runHealth(latest.value.counts) : 'empty'))
 const rate = computed(() => recentPassRate(props.project.runs, HEALTH_WINDOW))
 const series = computed(() => trend(props.project).map(t => t.passRate))
 
@@ -47,7 +47,8 @@ const rel = computed(() => {
           {{ project.description }}
         </p>
       </div>
-      <HealthBadge :health="health" />
+      <RunHealthBadge v-if="latest" :run="latest" />
+      <HealthBadge v-else health="empty" />
     </div>
 
     <!-- Pass rate + sparkline -->

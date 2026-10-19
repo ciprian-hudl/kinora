@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { RunSummary } from '@kinora/core'
-import { formatPct, passRate, runHealth } from '@kinora/core'
+import { formatPct, partialRunLabel, passRate, runHealth } from '@kinora/core'
 import { computed } from 'vue'
 import {
   Tooltip,
@@ -25,12 +25,15 @@ const bars = computed(() =>
     .slice(-props.limit)
     .map((r) => {
       const health = runHealth(r.counts)
+      const partial = partialRunLabel(r)
       return {
         run: r,
         health,
+        partial,
         pct: passRate(r.counts),
-        color:
-          health === 'passing'
+        color: partial
+          ? 'bg-muted-foreground/40'
+          : health === 'passing'
             ? 'bg-pass'
             : health === 'flaky'
               ? 'bg-flaky'
@@ -65,6 +68,9 @@ const bars = computed(() =>
           </div>
           <div class="tabular-nums text-background/70">
             {{ b.run.counts.unexpected }} fail / {{ b.run.counts.flaky }} flaky
+          </div>
+          <div v-if="b.partial" class="tabular-nums text-background/70">
+            {{ b.partial }}
           </div>
         </TooltipContent>
       </Tooltip>

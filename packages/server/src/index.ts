@@ -7,6 +7,7 @@ import { purgeExpiredRuns } from './billing/retention'
 import { db } from './db'
 import { demo, env, retentionPolicy } from './lib/env'
 import { logger } from './lib/logger'
+import { closeStaleOpenRuns, SHARD_SWEEP_INTERVAL_MS } from './public-api/shard-sweep'
 
 // Log stray rejections instead of letting one crash the whole server; uncaught exceptions leave the
 // process in an undefined state, so exit and let the orchestrator restart cleanly.
@@ -30,6 +31,14 @@ if (retentionPolicy) {
   sweep()
   setInterval(sweep, 24 * 60 * 60 * 1000).unref()
 }
+
+// Both modes: the update claims each run, so several replicas sweeping at once notify it once.
+function shardSweep(): void {
+  return void closeStaleOpenRuns(new Date())
+    .then(result => result.closed && logger.info(result, 'incomplete shard runs closed'))
+    .catch(error => logger.error({ error }, 'shard sweep failed'))
+}
+setInterval(shardSweep, SHARD_SWEEP_INTERVAL_MS).unref()
 
 let shuttingDown = false
 async function shutdown(signal: string): Promise<void> {

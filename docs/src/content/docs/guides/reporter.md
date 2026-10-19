@@ -52,6 +52,7 @@ server with `KINORA_URL` - see [Self-hosting](/self-hosting/).
 | `ci` | `{ provider?, runUrl?, runNumber? }` | auto on GitHub Actions / GitLab CI | CI metadata for the run. |
 | `prComment` | `boolean \| { label?, policy? }` | off | Post/update a summary comment on the GitHub PR or GitLab MR. See [PR comments](/guides/pr-comments/). |
 | `uploadAttachments` | `('trace' \| 'snapshot' \| 'video' \| 'screenshot')[]` | `['trace', 'snapshot']` | Which attachment kinds to upload. `'snapshot'` is the images behind [screenshot comparisons](#screenshot-comparisons). Add `'video'` / `'screenshot'` when you run without traces. |
+| `groupKey` | `string \| false` | env `KINORA_GROUP_KEY`, then the CI run | Groups the uploads of every shard of a CI run into one run. `false` uploads each shard as its own run. See [Sharded runs](#sharded-runs). |
 
 On GitHub Actions and GitLab CI, `git` and `ci` are filled from the standard `GITHUB_*` / `CI_*`
 env vars (including the repo URL, so shas link to their commit in the dashboard). On a GitLab merge
@@ -152,10 +153,43 @@ e2e:
 
 ## Sharded runs
 
-kinora does not merge shards: each upload is one run. Shard with Playwright's
+With `--shard`, each shard can upload on its own: kinora assembles the shards of one CI run into a
+single run, with every test and trace, and no merge job to set up.
+
+```yaml
+jobs:
+  e2e:
+    strategy:
+      matrix:
+        shard: [1/4, 2/4, 3/4, 4/4]
+    steps:
+      # ... checkout, install
+      - run: npx playwright test --shard=${{ matrix.shard }}
+        env:
+          KINORA_TOKEN: ${{ secrets.KINORA_TOKEN }}
+```
+
+Shards are grouped by the CI run (`GITHUB_RUN_ID` on GitHub Actions, `CI_PIPELINE_ID` on GitLab
+CI), and the shard count comes from Playwright, so there is nothing to configure. Elsewhere, set
+`KINORA_GROUP_KEY` to a value shared by the shards of a run and unique per run. If a matrix runs
+the sharded suite once per leg (one per browser, say), give each leg its own `prComment.label` or
+`groupKey`, or their shards would fill the same slots.
+
+- **Until every shard landed**, the run shows as "2 of 4 shards" instead of a health, so a run
+  missing shards never reads as green. Alerts and the PR comment wait for the last shard, then
+  cover every shard's tests.
+- **A shard that never uploads** (its job died) leaves the run incomplete: after two hours it is
+  closed as "Incomplete · 3 of 4 shards", and alerts fire then. A late shard still completes it.
+- **Re-running a failed shard** (GitHub's "Re-run failed jobs", a GitLab job retry) fills that
+  shard's slot again instead of adding a run. A test that failed on the first attempt and passes
+  on the re-run is kept as flaky, so the re-run does not hide it. Re-run results are not counted
+  again in your usage.
+
+### Merging blob reports
+
+You can also shard with Playwright's
 [blob reporter](https://playwright.dev/docs/test-sharding#merging-reports-from-multiple-shards)
-and upload once, from the job that merges the shards: you get one complete run per CI run, with
-every trace, and a single PR comment.
+and upload once, from the job that merges the shards. kinora then sees a single upload.
 
 The merge step needs its own config. `merge-reports --reporter=@kinora/reporter` would load the
 reporter without its options (no project), so set the reporter in a config passed with `-c`, with
@@ -200,10 +234,8 @@ jobs:
           KINORA_TOKEN: ${{ secrets.KINORA_TOKEN }}
 ```
 
-If each shard uploads on its own instead, every shard lands as a separate run holding its part of
-the tests. Each test's history and its flaky or broken diagnosis stay right, since a test runs in
-one shard, but run pass rates, run comparisons and run counts are per shard, and the PR comment is
-skipped on purpose so you don't get one per shard.
+A shard that dies before uploading its blob is simply missing from the merged report, and nothing
+in kinora says so: prefer direct uploads if that matters to you.
 
 ## Notes
 

@@ -47,7 +47,16 @@ export function runSummary(slug: string, r: RunRow): RunSummary {
     shards: r.shards ?? undefined,
     reportPath: `reports/${slug}/${r.id}.json`,
     countsByTag: r.countsByTag,
+    ...shardState(r),
   }
+}
+
+// Only grouped runs carry a state: a single upload is complete by construction.
+export function shardState(r: Pick<RunRow, 'groupKey' | 'status' | 'shardsTotal' | 'shardsLanded'>): Pick<RunSummary, 'status' | 'shardProgress'> {
+  if (!r.groupKey || !r.shardsTotal)
+    return {}
+  const landed = Object.keys(r.shardsLanded).filter(k => Number(k) <= r.shardsTotal!).length
+  return { status: r.status, shardProgress: { landed, total: r.shardsTotal } }
 }
 
 // Attachment names repeat within a test (two toHaveScreenshot assertions both attach "actual"),
@@ -87,7 +96,7 @@ export function runReport(slug: string, r: RunRow, tests: TestRow[], urlsByTest?
     startedAt: r.startedAt.toISOString(),
     duration: r.duration,
     counts: r.counts,
-    meta: { playwrightVersion: r.playwrightVersion ?? undefined, git: r.git ?? undefined, ci: r.ci ?? undefined, shards: r.shards ?? undefined },
+    meta: { playwrightVersion: r.playwrightVersion ?? undefined, git: r.git ?? undefined, ci: r.ci ?? undefined, shards: r.shards ?? r.shardsTotal ?? undefined, ...shardState(r) },
     tests: tests.map(t => toNormTest(t, urlsByTest?.get(t.id), codeowners)),
   }
 }

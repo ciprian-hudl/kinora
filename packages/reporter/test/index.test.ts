@@ -33,6 +33,8 @@ const GH_VARS = ['GITHUB_ACTIONS', 'GITHUB_SHA', 'GITHUB_REF_NAME', 'GITHUB_HEAD
 
 const GL_VARS = ['GITLAB_CI', 'CI_COMMIT_SHA', 'CI_COMMIT_REF_NAME', 'CI_PROJECT_URL', 'CI_PIPELINE_URL', 'CI_PIPELINE_IID', 'CI_MERGE_REQUEST_SOURCE_BRANCH_NAME', 'CI_MERGE_REQUEST_TARGET_BRANCH_NAME']
 
+const SHARD_VARS = ['KINORA_GROUP_KEY', 'KINORA_ATTEMPT', 'GITHUB_RUN_ATTEMPT', 'CI_PIPELINE_ID', 'CI_JOB_ID']
+
 function fakeSuite(tests: TestCase[]): Suite {
   return { allTests: () => tests } as unknown as Suite
 }
@@ -43,7 +45,7 @@ function fakeResult(): FullResult {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  for (const v of [...GH_VARS, ...GL_VARS]) delete process.env[v]
+  for (const v of [...GH_VARS, ...GL_VARS, ...SHARD_VARS]) delete process.env[v]
 })
 
 describe('reporter a11y', () => {
@@ -313,5 +315,97 @@ describe('reporter onEnd', () => {
 
     expect(comment).toContain('**1 flaky**:\n- `a.spec.ts` › `pays with a card`')
     expect(comment).not.toContain('shows the cart')
+  })
+
+  describe('sharded runs', () => {
+    const shardConfig = { version: '1.60.0', shard: { current: 2, total: 3 } } as FullConfig
+
+    function stubServer(runResponse: object) {
+      const sent: { run?: Record<string, unknown>, comments: string[] } = { comments: [] }
+      vi.stubGlobal('fetch', vi.fn(async (url: unknown, init?: RequestInit) => {
+        if (String(url).includes('/api/v1/runs')) {
+          sent.run = JSON.parse(init!.body as string).run
+          return new Response(JSON.stringify({ projectId: 'p', runId: 'r', tests: 1, ...runResponse }), { status: 201 })
+        }
+        if (init?.method === 'POST')
+          sent.comments.push(JSON.parse(init.body as string).body)
+        return new Response(JSON.stringify(init?.method === 'POST' ? {} : []), { status: init?.method === 'POST' ? 201 : 200 })
+      }))
+      return sent
+    }
+
+    function onPullRequest() {
+      process.env.GITHUB_TOKEN = 'ghtok'
+      process.env.GITHUB_EVENT_NAME = 'pull_request'
+      process.env.GITHUB_REPOSITORY = 'acme/app'
+      process.env.GITHUB_REF = 'refs/pull/9/merge'
+    }
+
+    it('groups a shard by the CI run, with its attempt and slot', async () => {
+      const sent = stubServer({ status: 'open' })
+      process.env.GITHUB_RUN_ID = '42'
+      process.env.GITHUB_RUN_ATTEMPT = '2'
+
+      const reporter = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' } })
+      reporter.onBegin(shardConfig, fakeSuite([fakeTest()]))
+      await reporter.onEnd(fakeResult())
+
+      expect(sent.run).toMatchObject({ groupKey: 'gh-42', attempt: 2, shard: { current: 2, total: 3 } })
+    })
+
+    it('takes an explicit group key and tells matrix legs apart by the PR comment label', async () => {
+      const sent = stubServer({ status: 'open' })
+      process.env.KINORA_GROUP_KEY = 'from-env'
+
+      const reporter = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' }, groupKey: 'nightly-7', prComment: { label: 'firefox' } })
+      reporter.onBegin(shardConfig, fakeSuite([fakeTest()]))
+      await reporter.onEnd(fakeResult())
+
+      expect(sent.run?.groupKey).toBe('nightly-7:firefox')
+    })
+
+    it('uploads a shard on its own without a CI run id, or when grouping is off', async () => {
+      const sent = stubServer({})
+      const reporter = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' } })
+      reporter.onBegin(shardConfig, fakeSuite([fakeTest()]))
+      await reporter.onEnd(fakeResult())
+      expect(sent.run).not.toHaveProperty('groupKey')
+
+      process.env.GITHUB_RUN_ID = '42'
+      const off = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' }, groupKey: false })
+      off.onBegin(shardConfig, fakeSuite([fakeTest()]))
+      await off.onEnd(fakeResult())
+      expect(sent.run).not.toHaveProperty('groupKey')
+    })
+
+    it('leaves the PR comment to the shard that completes the run, with the counts of every shard', async () => {
+      onPullRequest()
+      process.env.GITHUB_RUN_ID = '42'
+      const pending = stubServer({ status: 'open' })
+      const first = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' }, prComment: true })
+      first.onBegin(shardConfig, fakeSuite([fakeTest()]))
+      await first.onEnd(fakeResult())
+      expect(pending.comments).toEqual([])
+
+      const done = stubServer({
+        status: 'complete',
+        counts: { total: 3, expected: 2, unexpected: 0, flaky: 1, skipped: 0 },
+        flaky: [{ testKey: 'k', title: 'pays with a card', file: 'b.spec.ts' }],
+      })
+      const last = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' }, prComment: true })
+      last.onBegin(shardConfig, fakeSuite([fakeTest()]))
+      await last.onEnd(fakeResult())
+      expect(done.comments).toHaveLength(1)
+      expect(done.comments[0]).toContain('**1 flaky**:\n- `b.spec.ts` › `pays with a card`')
+    })
+
+    it('still skips the PR comment on an ungrouped shard, left to the merged report', async () => {
+      onPullRequest()
+      const sent = stubServer({})
+      const reporter = new KinoraReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'web-app' }, prComment: true })
+      reporter.onBegin(shardConfig, fakeSuite([fakeTest()]))
+      await reporter.onEnd(fakeResult())
+      expect(sent.comments).toEqual([])
+    })
   })
 })

@@ -4,7 +4,7 @@ import type { Buffer } from 'node:buffer'
 import { readFileSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import process from 'node:process'
-import { a11yFromScans, createIngestClient, DEFAULT_KINORA_URL, DEFAULT_UPLOAD_ATTACHMENTS, detectCiEnv, effectiveAttachments, flakyTestsOf, IngestError, isUploadableAttachment, makeTestKey, parseAxeScan, postPrComment, resolvePrContext } from '@kinora/core'
+import { a11yFromScans, createIngestClient, DEFAULT_KINORA_URL, DEFAULT_UPLOAD_ATTACHMENTS, detectCiEnv, effectiveAttachments, flakyTestsOf, IngestError, isUploadableAttachment, makeTestKey, parseAxeScan, postPrComment, resolvePrContext, resolveShardGroup } from '@kinora/core'
 
 export interface KinoraReporterOptions {
   /** kinora server base URL. Defaults to env KINORA_URL, then the hosted cloud. Set for self-host. */
@@ -28,6 +28,12 @@ export interface KinoraReporterOptions {
    * Playwright already embeds them in the trace.zip).
    */
   uploadAttachments?: AttachmentKind[]
+  /**
+   * Sharded runs (`--shard`): the uploads of every shard of one CI run are assembled into a single
+   * kinora run. Shards are grouped by this key, defaulting to env KINORA_GROUP_KEY, then the CI run
+   * (GITHUB_RUN_ID / CI_PIPELINE_ID). `false` uploads each shard as its own run.
+   */
+  groupKey?: string | false
 }
 
 // Rebuild the json-report identity (file path + title path + project) from the
@@ -132,6 +138,10 @@ export default class KinoraReporter implements Reporter {
 
     const tests = (this.suite?.allTests() ?? []).map(toNormTest)
     const detected = detectCiEnv(process.env)
+    const shard = this.config?.shard
+    const group = shard && this.options.groupKey !== false
+      ? resolveShardGroup(process.env, { groupKey: this.options.groupKey, leg: this.prCommentLabel() })
+      : undefined
     const payload: IngestRun = {
       project: { slug: this.options.project.slug, name: this.options.project.name ?? this.options.project.slug },
       run: {
@@ -141,6 +151,7 @@ export default class KinoraReporter implements Reporter {
         playwrightVersion: this.config?.version,
         git: this.options.git ?? detected.git,
         ci: this.options.ci ?? detected.ci,
+        ...(shard && group && { ...group, shard: { current: shard.current, total: shard.total } }),
       },
       tests,
     }
@@ -165,7 +176,7 @@ export default class KinoraReporter implements Reporter {
         }
       }
       // eslint-disable-next-line no-console -- a reporter's job is to report
-      console.log(`[kinora] uploaded ${res.tests} tests + ${artifacts} artifacts (run ${res.runId})`)
+      console.log(`[kinora] uploaded ${res.tests} tests + ${artifacts} artifacts (run ${res.runId}${res.shardProgress ? `, ${res.shardProgress.landed} of ${res.shardProgress.total} shards` : ''})`)
 
       await this.maybePostPrComment(payload, res)
     }
@@ -177,16 +188,25 @@ export default class KinoraReporter implements Reporter {
     }
   }
 
+  private prCommentLabel(): string | undefined {
+    const opt = this.options.prComment
+    return typeof opt === 'object' ? opt.label : undefined
+  }
+
   // Best-effort PR/MR comment from the CI job. Never throws (mirrors "upload never fails the run").
   private async maybePostPrComment(payload: IngestRun, res: IngestRunResult): Promise<void> {
     if (!this.options.prComment)
       return
     const opt = this.options.prComment
-    const label = typeof opt === 'object' ? opt.label : undefined
+    const label = this.prCommentLabel()
     const policy = typeof opt === 'object' ? opt.policy : undefined
+    const grouped = !!payload.run.groupKey
+    // A grouped run is commented by the shard that completes it, with the counts of every shard.
+    if (grouped && res.status !== 'complete')
+      return
     try {
-      // config.shard set => a per-shard run; only the merged/single run should comment.
-      const env = this.config?.shard ? { ...process.env, __KINORA_IS_SHARD: '1' } : process.env
+      // An ungrouped shard is a partial run: only the merged report (blob + merge-reports) comments.
+      const env = this.config?.shard && !grouped ? { ...process.env, __KINORA_IS_SHARD: '1' } : process.env
       const ctx = resolvePrContext(env, (p) => {
         try {
           return readFileSync(p, 'utf8')
@@ -203,9 +223,9 @@ export default class KinoraReporter implements Reporter {
         label,
         runUrl: res.runUrl,
         ciRunUrl: payload.run.ci?.runUrl,
-        counts: payload.run.counts,
+        counts: res.counts ?? payload.run.counts,
         regression: res.regression,
-        flaky: flakyTestsOf(payload.tests),
+        flaky: res.flaky ?? flakyTestsOf(payload.tests),
       }, policy ?? 'always')
       if (outcome !== 'skipped')
         console.warn(`[kinora] PR comment ${outcome}`)

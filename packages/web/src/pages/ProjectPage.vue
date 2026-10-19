@@ -4,7 +4,6 @@ import {
   HEALTH_WINDOW,
   latestRun,
   recentPassRate,
-  runHealth,
   sortedRuns,
   trend,
 } from '@kinora/core'
@@ -19,6 +18,7 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import ErrorState from '@/components/app/ErrorState.vue'
 import RunHistoryTable from '@/components/project/RunHistoryTable.vue'
+import RunHealthBadge from '@/components/viz/RunHealthBadge.vue'
 import { useManifest } from '@/composables/queries'
 import { useNewFeature } from '@/composables/useNewFeature'
 import { useOrg } from '@/composables/useOrg'
@@ -37,7 +37,6 @@ const runs = computed(() => (project.value ? sortedRuns(project.value) : []))
 const latest = computed(() => (project.value ? latestRun(project.value) : undefined))
 const rate = computed(() => recentPassRate(runs.value, HEALTH_WINDOW))
 const series = computed(() => (project.value ? trend(project.value).map(t => t.passRate) : []))
-const health = computed(() => (latest.value ? runHealth(latest.value.counts) : 'empty'))
 </script>
 
 <template>
@@ -71,7 +70,8 @@ const health = computed(() => (latest.value ? runHealth(latest.value.counts) : '
                 {{ project.description }}
               </p>
             </div>
-            <HealthBadge :health="health" />
+            <RunHealthBadge v-if="latest" :run="latest" />
+            <HealthBadge v-else health="empty" />
           </div>
           <div class="flex items-center justify-between gap-4">
             <div class="flex items-center gap-4">

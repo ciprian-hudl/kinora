@@ -1,10 +1,21 @@
-import type { Counts, NormTest, RunReport } from '@kinora/core'
-import { relations } from 'drizzle-orm'
-import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from 'drizzle-orm/pg-core'
+import type { Counts, NormTest, RunReport, RunStatus } from '@kinora/core'
+import { relations, sql } from 'drizzle-orm'
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex } from 'drizzle-orm/pg-core'
 import { organization, user } from './auth-schemas'
 
 type GitMeta = NonNullable<RunReport['meta']['git']>
 type CiMeta = NonNullable<RunReport['meta']['ci']>
+
+// A filled shard slot of a grouped run. `results` and `metered` belong to the slot's first landing:
+// a re-run replaces the tests but is neither counted nor billed again.
+export interface ShardSlot {
+  attempt: number
+  landedAt: string
+  startedAt: string
+  duration: number
+  results: number
+  metered: boolean
+}
 
 export const project = pgTable('project', {
   id: text('id').primaryKey(),
@@ -36,8 +47,20 @@ export const run = pgTable('run', {
   // Billable usage not yet acknowledged by Polar. Set in the ingest transaction and cleared once the
   // usage event is accepted, so a failed or interrupted report is retried by report-pending-usage.
   meterPending: boolean('meter_pending').notNull().default(false),
+  // Direct shard uploads sharing a group key are assembled into this one run (null: single upload).
+  groupKey: text('group_key'),
+  shardsTotal: integer('shards_total'),
+  // Shard index (1-based, as a string) -> the slot's latest landing.
+  shardsLanded: jsonb('shards_landed').$type<Record<string, ShardSlot>>().notNull().default({}),
+  status: text('status').$type<RunStatus>().notNull().default('complete'),
+  // Alerts fired for this run; a grouped run notifies once, on completion or when closed incomplete.
+  notifiedAt: timestamp('notified_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-}, table => [index('run_projectId_idx').on(table.projectId)])
+}, table => [
+  index('run_projectId_idx').on(table.projectId),
+  uniqueIndex('run_project_groupkey_uniq').on(table.projectId, table.groupKey).where(sql`group_key is not null`),
+  index('run_open_idx').on(table.createdAt).where(sql`status = 'open'`),
+])
 
 export const test = pgTable('test', {
   id: text('id').primaryKey(),
@@ -59,6 +82,8 @@ export const test = pgTable('test', {
   errors: jsonb('errors').$type<NormTest['errors']>().notNull(),
   attachments: jsonb('attachments').$type<NormTest['attachments']>().notNull(),
   a11y: jsonb('a11y').$type<NormTest['a11y']>(),
+  // Slot of a grouped run this test came from; a re-run of the shard replaces these rows.
+  shardIndex: integer('shard_index'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, table => [
   index('test_runId_idx').on(table.runId),
