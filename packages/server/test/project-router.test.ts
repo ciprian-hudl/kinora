@@ -79,8 +79,6 @@ describe('project router', () => {
     expect(await db.query.artifact.findMany()).toHaveLength(0)
   })
 
-  // A test-scoped attachment is removed through test -> artifact, which needs artifact.test_id indexed:
-  // otherwise every deleted test row scans the artifact table and large projects hit statement_timeout.
   it('delete cascades through test-scoped attachments', async () => {
     const u = await createUser()
     const key = await createApiKey(u.id)
