@@ -104,6 +104,21 @@ test('action group filters hide noisy actions', async ({ page }) => {
   expect(await page.getByTestId('action').count()).toBe(before - 4)
 })
 
+test('remembers hidden action groups across reloads', async ({ page }) => {
+  const before = await page.getByTestId('action').count()
+  await page.getByRole('button', { name: 'Filter actions' }).click()
+  await page.getByRole('menuitemcheckbox', { name: /Network routes/ }).click()
+  await expect(page.getByText('4 hidden')).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByTestId('action').first()).toBeVisible()
+  await expect(page.getByText('4 hidden')).toBeVisible()
+  expect(await page.getByTestId('action').count()).toBe(before - 4)
+
+  await page.getByRole('button', { name: 'Filter actions' }).click()
+  await expect(page.getByRole('menuitemcheckbox', { name: /Network routes/ })).toHaveAttribute('aria-checked', 'false')
+})
+
 test('timeline hover shows action details', async ({ page }) => {
   await page.locator('[data-testid="action-segment"][aria-label*=\'Fill "alex@example.com"\']').hover()
 
