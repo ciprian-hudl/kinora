@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { RunHealth } from '@kinora/core'
+import type { RunHealth, RunSummary } from '@kinora/core'
 import type { PaletteCommand, RecentKind } from '@/composables/useCommandPalette'
-import { pwStatusMeta, runHealth, sortedRuns } from '@kinora/core'
+import { partialRunLabel, pwStatusMeta, runHealth, sortedRuns } from '@kinora/core'
 import { CommandGroup, CommandInput, CommandItem, CommandList, useCommand } from '@kinora/ui/command'
 import { colorMode } from '@kinora/ui/theme'
 import { Blocks, BookOpen, Building2, CircleAlert, FlaskConical, FolderClosed, Gauge, GitCompareArrows, History, LayoutGrid, ListVideo, Monitor, Moon, Play, Settings, SlidersHorizontal, Sun } from '@lucide/vue'
@@ -24,6 +24,11 @@ type TestHit = Awaited<ReturnType<typeof trpc.dashboard.searchTests.query>>[numb
 const MAX_RUNS = 5
 const MIN_TEST_QUERY = 2
 const HEALTH_DOT: Record<RunHealth, string> = { passing: 'bg-pass', flaky: 'bg-flaky', failing: 'bg-fail', empty: 'bg-muted-foreground' }
+
+// A run missing shards has no health yet: a neutral dot, never a green one.
+function runDot(run: RunSummary | undefined): string {
+  return !run ? HEALTH_DOT.empty : partialRunLabel(run) ? 'bg-muted-foreground' : HEALTH_DOT[runHealth(run.counts)]
+}
 const RECENT_ICON = { project: FolderClosed, run: Play, test: FlaskConical } satisfies Record<RecentKind, unknown>
 const THEMES = [
   { value: 'light', label: 'Light', icon: Sun },
@@ -93,7 +98,7 @@ const projectListCommands = computed<PaletteCommand[]>(() => projects.value.map(
     group: 'Projects',
     label: project.name,
     keywords: project.id,
-    dot: HEALTH_DOT[latest ? runHealth(latest.counts) : 'empty'],
+    dot: runDot(latest),
     hint: latest && formatDateTime(latest.startedAt),
     to: { name: 'project', params: { projectId: project.id } },
     recent: 'project',
@@ -127,7 +132,7 @@ const runCommands = computed<PaletteCommand[]>(() => {
         keywords: runKeywords(run),
         detail: number ? `#${number}` : undefined,
         hint: `${project.name} · ${formatDateTime(run.startedAt)}`,
-        dot: HEALTH_DOT[runHealth(run.counts)],
+        dot: runDot(run),
         to: { name: 'run', params: { projectId: project.id, runId: run.runId } },
         recent: 'run',
       }
