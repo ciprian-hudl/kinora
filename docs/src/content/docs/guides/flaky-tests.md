@@ -23,7 +23,9 @@ A test is flaky when, over its last 20 runs, it:
    and its pull request building the same commit. kinora needs the commit of each run: the
    [reporter](/guides/reporter/) and the [CLI](/guides/cli/) read it from the CI environment.
 2. **Needed a retry to pass.** This is Playwright's own `flaky` status (and Vitest's, with
-   `retry` set): the test failed, then passed on a retry within the same run.
+   `retry` set): the test failed, then passed on a retry within the same run. A test that failed,
+   then passed when you re-ran its shard in CI counts too: kinora keeps it as flaky, and marks it
+   "passed on re-run" in the PR comment (see [Sharded runs](/guides/reporter/#sharded-runs)).
 3. **Keeps flipping between pass and fail**, at least 3 times. Vitest runs without retries by
    default, so a flaky test there never gets a `flaky` status: it passes one run and fails the
    next. One bad run between two good ones is not enough, since that is often a regression the

@@ -64,5 +64,6 @@ all flags, and `kinora import <dir>` to bulk-import a backlog of historical repo
 
 ## Next steps
 
+- [Sharded runs](/guides/reporter/#sharded-runs): one run per CI run when you shard your suite.
 - [Self-hosting](/self-hosting/): run the whole stack yourself.
 - [Live demo](https://demo.kinora.dev): explore the dashboard with seeded data.

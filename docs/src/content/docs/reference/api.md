@@ -68,6 +68,45 @@ Response `201`:
 
 Errors: `400` invalid body, including more than 50,000 tests in one run · `401` invalid API key · `402` plan limit reached (cloud free tier) · `413` body over 25 MB.
 
+#### Sharded runs
+
+To upload each shard of a CI run on its own, add three optional fields to `run`. Uploads sharing a
+`groupKey` land in one run, and `shard.current` is the slot the upload fills:
+
+```json
+{
+  "run": {
+    "groupKey": "gh-1234567890",
+    "attempt": 1,
+    "shard": { "current": 2, "total": 4 },
+    "…": "…"
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `groupKey` | Identifies the CI run, never one attempt of it (the GitHub run id, the GitLab pipeline id). Requires `shard`. Up to 200 characters. |
+| `attempt` | The CI attempt that produced the upload, `1` by default. A higher attempt for a slot already filled replaces that slot's tests, and a test that failed on the earlier attempt and passes now is stored as flaky. The same attempt again (a retried request) replaces them as is, and a lower one is ignored. |
+| `shard` | `{ current, total }`, 1-based, from Playwright's `--shard`. The first upload sets `total`. |
+
+The response then also carries the run as it stands:
+
+```json
+{ "…": "…", "status": "open", "shardProgress": { "landed": 2, "total": 4 }, "counts": { "…": "…" }, "flaky": [{ "testKey": "…", "title": "…", "file": "…" }] }
+```
+
+`status` is `open` until every shard landed, then `complete`. A run still `open` after
+`KINORA_SHARD_TIMEOUT_MINUTES` (default 120, self-host) is closed as `incomplete`, and a late shard
+still completes it. `counts` and `flaky` cover every shard landed so far; `flaky` also carries
+`rerunAttempt` for a test that only passed on a re-run. Alerts fire once, on completion or when the
+run is closed `incomplete`. A re-run of a slot that already landed adds no results to your usage
+and is never turned away by the free plan's result limit. `regression` is only computed once the
+run is complete. Without `groupKey`, an upload is a run of its own, as before.
+
+The read routes below return `status` and `shardProgress` for a run assembled this way: on the run
+summaries, and under `meta` in a full report.
+
 ### POST /api/v1/runs/:runId/artifacts
 
 Upload a `trace.zip` (or other binary) for a run, as `multipart/form-data`. Send the file part
