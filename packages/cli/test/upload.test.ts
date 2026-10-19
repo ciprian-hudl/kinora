@@ -20,6 +20,42 @@ const RAW = {
   ],
 }
 
+function capture(response: object) {
+  const sent: { run?: Record<string, unknown> } = {}
+  const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    sent.run = JSON.parse(init!.body as string).run
+    return new Response(JSON.stringify({ projectId: 'p1', runId: 'r1', tests: 2, ...response }), { status: 201 })
+  }) as typeof globalThis.fetch
+  return { sent, fetch }
+}
+
+describe('uploadReport, sharded reports', () => {
+  const sharded = { ...RAW, config: { version: '1.60.0', shard: { current: 2, total: 3 } } }
+  const opts = { project: { slug: 'web-app' }, url: 'https://api.example.com', token: 't' }
+
+  it('groups a sharded report by the CI run, with the shard from the report', async () => {
+    const { sent, fetch } = capture({ status: 'open', shardProgress: { landed: 2, total: 3 }, counts: { total: 5, expected: 4, unexpected: 1, flaky: 0, skipped: 0 } })
+    const res = await uploadReport(sharded, { ...opts, fetch, group: { groupKey: 'gh-42', attempt: 2 } })
+
+    expect(sent.run).toMatchObject({ groupKey: 'gh-42', attempt: 2, shard: { current: 2, total: 3 } })
+    // The PR comment shows the server's view of every shard landed so far.
+    expect(res.counts.total).toBe(5)
+    expect(res.grouped).toBe(true)
+  })
+
+  it('uploads an unsharded report, or one without a group, as a run of its own', async () => {
+    const plain = capture({})
+    await uploadReport(RAW, { ...opts, fetch: plain.fetch, group: { groupKey: 'gh-42', attempt: 1 } })
+    expect(plain.sent.run).not.toHaveProperty('groupKey')
+
+    const ungrouped = capture({})
+    const res = await uploadReport(sharded, { ...opts, fetch: ungrouped.fetch })
+    expect(ungrouped.sent.run).not.toHaveProperty('groupKey')
+    expect(res.grouped).toBe(false)
+    expect(res.counts.total).toBe(2)
+  })
+})
+
 describe('uploadReport', () => {
   it('posts the normalized run to /api/v1/runs with the bearer token', async () => {
     let captured: { url: string, init: RequestInit } | undefined

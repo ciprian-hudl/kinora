@@ -1,6 +1,8 @@
 import type { IngestRun, IngestRunResult, UploadArtifactResult } from '../contracts/ingest'
 import type { CiMeta, GitMeta } from '../contracts/kinora'
+import type { ShardGroup } from './shards'
 import { ingestRunResultSchema, uploadArtifactResultSchema } from '../contracts/ingest'
+import { pwConfigSchema } from '../contracts/playwright'
 import { isSnapshotImage } from './attachments'
 import { ingestPlaywrightReport } from './normalize'
 
@@ -12,6 +14,8 @@ export interface BuildIngestRunOptions {
   git?: GitMeta
   ci?: CiMeta
   shards?: number
+  // Group a sharded report (its `config.shard`) into the run of its CI run. Ignored when unsharded.
+  group?: ShardGroup
 }
 
 // Map a raw Playwright JSON report into the ingest wire payload. Shared by the
@@ -23,6 +27,7 @@ export function buildIngestRun(raw: unknown, opts: BuildIngestRunOptions): Inges
     git: opts.git,
     ci: opts.ci,
   })
+  const shard = opts.group ? pwConfigSchema.safeParse((raw as { config?: unknown } | null)?.config).data?.shard : undefined
   return {
     project: opts.project,
     run: {
@@ -33,6 +38,7 @@ export function buildIngestRun(raw: unknown, opts: BuildIngestRunOptions): Inges
       git: opts.git,
       ci: opts.ci,
       shards: opts.shards,
+      ...(shard && opts.group && { ...opts.group, shard }),
     },
     tests: report.tests,
   }

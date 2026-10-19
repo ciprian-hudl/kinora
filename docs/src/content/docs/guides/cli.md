@@ -61,6 +61,9 @@ npx @kinora/cli import ./reports --project web-app --token <project-token> --con
 --upload-attachments <kinds>
                       comma-separated: trace, snapshot (both default), video, screenshot.
                       snapshot = images of a failed screenshot assertion (comparison view)
+--group-key <key>     sharded report: the run its shards are assembled into
+                      (default: env KINORA_GROUP_KEY, then GITHUB_RUN_ID / CI_PIPELINE_ID)
+--no-group            upload a sharded report as a run of its own
 --concurrency <n>     parallel uploads for bulk import (default: 6)
 -h, --help
 ```
@@ -92,3 +95,20 @@ e2e:
 ```
 
 For posting a summary on the pull request, see [PR comments](/guides/pr-comments/).
+
+## Sharded runs
+
+Upload each shard's report from its own job: the JSON report records which shard produced it
+(`--shard`), and kinora assembles the shards of one CI run into a single run, exactly like the
+reporter. Grouping, partial and incomplete runs, and re-runs work as described in
+[Sharded runs](/guides/reporter/#sharded-runs).
+
+```yaml
+- run: PLAYWRIGHT_JSON_OUTPUT_NAME=results.json npx playwright test --shard=${{ matrix.shard }} --reporter=json
+- run: npx @kinora/cli upload results.json --project web-app
+  if: always()
+  env:
+    KINORA_TOKEN: ${{ secrets.KINORA_TOKEN }}
+```
+
+`kinora import` never groups: each imported report stays a run of its own.

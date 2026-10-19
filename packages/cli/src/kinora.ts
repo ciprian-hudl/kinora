@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import process from 'node:process'
 import { parseArgs } from 'node:util'
-import { DEFAULT_KINORA_URL, detectCiEnv, IngestError, postPrComment, resolvePrContext } from '@kinora/core'
+import { DEFAULT_KINORA_URL, detectCiEnv, IngestError, postPrComment, resolvePrContext, resolveShardGroup } from '@kinora/core'
 import { parseAttachmentKinds } from './args'
 import { importReports } from './import'
 import { uploadReport } from './upload'
@@ -35,6 +35,9 @@ Options:
                         or the GitLab MR (needs a GITLAB_TOKEN variable with the api scope)
   --pr-label <label>    Distinguish matrix legs that share one PR
   --pr-policy <policy>  always (default) | on-failure (no new comment on green runs)
+  --group-key <key>     Sharded report (--shard): the run its shards are assembled into
+                        (default: env KINORA_GROUP_KEY, then GITHUB_RUN_ID / CI_PIPELINE_ID)
+  --no-group            Upload a sharded report as a run of its own
   --concurrency <n>     Parallel uploads for bulk import (default 6)
   --upload-attachments <kinds>
                         Comma-separated: trace, snapshot (both default), video, screenshot.
@@ -78,6 +81,8 @@ async function main(): Promise<void> {
       'pr-policy': { type: 'string' },
       'concurrency': { type: 'string' },
       'upload-attachments': { type: 'string' },
+      'group-key': { type: 'string' },
+      'no-group': { type: 'boolean' },
       'help': { type: 'boolean', short: 'h' },
     },
   })
@@ -141,12 +146,16 @@ async function main(): Promise<void> {
     ci,
     regression: !!values['pr-comment'],
     uploadAttachments: attachmentKinds(values['upload-attachments']),
+    group: values['no-group'] ? undefined : resolveShardGroup(process.env, { groupKey: values['group-key'], leg: values['pr-label'] }),
   })
 
-  console.log(`uploaded ${res.tests} tests to ${values.project} (run ${res.runId})`)
+  const shards = res.shardProgress ? `, ${res.shardProgress.landed} of ${res.shardProgress.total} shards` : ''
+  console.log(`uploaded ${res.tests} tests to ${values.project} (run ${res.runId}${shards})`)
 
   // Best-effort PR/MR comment (GitHub: the job's GITHUB_TOKEN; GitLab: GITLAB_TOKEN). Never fails the upload.
-  if (values['pr-comment']) {
+  // A grouped shard updates the comment with the shards landed so far; a server that predates
+  // grouping sends no progress, and that shard is then a partial run that must not comment.
+  if (values['pr-comment'] && !(res.grouped && !res.shardProgress)) {
     try {
       const ctx = resolvePrContext(process.env, (p) => {
         try {
@@ -167,6 +176,7 @@ async function main(): Promise<void> {
           counts: res.counts,
           regression: res.regression,
           flaky: res.flaky,
+          ...(res.shardProgress && { shards: { runId: res.runId, ...res.shardProgress } }),
         }, policy)
         if (outcome !== 'skipped')
           console.log(`PR comment ${outcome}`)

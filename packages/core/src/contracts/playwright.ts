@@ -94,6 +94,8 @@ export const pwStatsSchema = z.looseObject({
 export const pwConfigSchema = z.looseObject({
   version: z.string().optional(),
   rootDir: z.string().optional(),
+  // `--shard`: which shard produced the report. A malformed value is dropped, not fatal.
+  shard: z.object({ current: z.number().int().min(1), total: z.number().int().min(1) }).nullable().optional().catch(undefined),
   metadata: z.looseObject({}).optional(),
 })
 

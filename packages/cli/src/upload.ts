@@ -1,9 +1,10 @@
-import type { AttachmentKind, CiMeta, Counts, GitMeta, IngestRunResult } from '@kinora/core'
+import type { AttachmentKind, CiMeta, Counts, GitMeta, IngestRunResult, ShardGroup } from '@kinora/core'
 import { readFile } from 'node:fs/promises'
 import { buildIngestRun, createIngestClient, DEFAULT_UPLOAD_ATTACHMENTS, flakyTestsOf, isUploadableAttachment } from '@kinora/core'
 
-// `flaky`: the run's flaky tests, which the PR comment names.
-export type UploadResult = IngestRunResult & { counts: Counts, flaky: ReturnType<typeof flakyTestsOf> }
+// `counts` / `flaky`: the run's, which the PR comment shows. For a grouped shard, the server's view
+// of every shard landed so far; `grouped` says the upload carried a group key.
+export type UploadResult = IngestRunResult & { counts: Counts, flaky: ReturnType<typeof flakyTestsOf>, grouped: boolean }
 
 export interface UploadOptions {
   project: { slug: string, name?: string }
@@ -16,6 +17,8 @@ export interface UploadOptions {
   regression?: boolean
   // Attachment kinds to upload; defaults to traces only.
   uploadAttachments?: AttachmentKind[]
+  // A sharded report lands in the run of this CI run (see resolveShardGroup).
+  group?: ShardGroup
 }
 
 // Parse a Playwright json report and upload it to a kinora server. Shares the
@@ -25,6 +28,7 @@ export async function uploadReport(raw: unknown, opts: UploadOptions): Promise<U
     project: { slug: opts.project.slug, name: opts.project.name ?? opts.project.slug },
     git: opts.git,
     ci: opts.ci,
+    group: opts.group,
   })
   const client = createIngestClient({ baseUrl: opts.url, token: opts.token, fetch: opts.fetch, regression: opts.regression })
   const res = await client.uploadRun(payload)
@@ -44,5 +48,10 @@ export async function uploadReport(raw: unknown, opts: UploadOptions): Promise<U
     }
   }
 
-  return { ...res, counts: payload.run.counts, flaky: flakyTestsOf(payload.tests) }
+  return {
+    ...res,
+    counts: res.counts ?? payload.run.counts,
+    flaky: res.flaky ?? flakyTestsOf(payload.tests),
+    grouped: !!payload.run.groupKey,
+  }
 }
