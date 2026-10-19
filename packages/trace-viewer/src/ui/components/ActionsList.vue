@@ -3,6 +3,7 @@ import type { ActionEntry } from '@isomorphic/trace/entries'
 import { cn } from '@kinora/ui'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@kinora/ui/dropdown-menu'
 import { Check, ChevronRight, Filter, X } from '@lucide/vue'
+import { useStorage } from '@vueuse/core'
 import { computed, ref } from 'vue'
 import { actionDuration, actionStatus, actionTitle } from '../lib/action'
 import { formatMs } from '../lib/format'
@@ -23,7 +24,7 @@ const groupLabels: Record<ActionGroup, string> = {
   configuration: 'Configuration',
 }
 
-const visibleGroups = ref<Set<ActionGroup>>(new Set(ACTION_GROUPS))
+const hiddenGroups = useStorage<ActionGroup[]>('kinora-tv-hidden-action-groups', [])
 
 const filtering = computed(() => filter.value.trim().length > 0)
 
@@ -33,16 +34,12 @@ function groupFor(action: ActionEntry): ActionGroup | undefined {
 
 function actionPassesGroup(action: ActionEntry): boolean {
   const group = groupFor(action)
-  return !group || visibleGroups.value.has(group)
+  return !group || !hiddenGroups.value.includes(group)
 }
 
 function setGroup(group: ActionGroup, checked: boolean): void {
-  const next = new Set(visibleGroups.value)
-  if (checked)
-    next.add(group)
-  else
-    next.delete(group)
-  visibleGroups.value = next
+  const rest = hiddenGroups.value.filter(g => g !== group)
+  hiddenGroups.value = checked ? rest : [...rest, group]
 }
 
 const hiddenByGroupCount = computed(() => store.items.value.filter(item => !actionPassesGroup(item.action)).length)
@@ -51,7 +48,7 @@ const groupRows = computed(() => ACTION_GROUPS.map(group => ({
   group,
   label: groupLabels[group],
   count: store.model.value?.actionCounters.get(group) ?? 0,
-  checked: visibleGroups.value.has(group),
+  checked: !hiddenGroups.value.includes(group),
 })))
 
 const rows = computed(() => {
