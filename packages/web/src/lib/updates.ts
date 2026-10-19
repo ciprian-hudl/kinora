@@ -72,7 +72,11 @@ export function watchForUpdates(router: Router, currentBuild: string) {
     }
   })
   // Same failure outside the router (a lazy component, a preloaded CSS file).
-  window.addEventListener('vite:preloadError', markStale)
+  // preventDefault: we already handle it below, don't let it surface as an unhandled rejection to Sentry.
+  window.addEventListener('vite:preloadError', (event) => {
+    event.preventDefault()
+    markStale()
+  })
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible')
