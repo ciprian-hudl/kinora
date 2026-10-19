@@ -26,32 +26,32 @@ const year = new Date().getFullYear();
           <span
             class="text-[11px] uppercase tracking-wider text-muted-foreground"
           >Product</span
-          >
+          >{' '}
           <a
             href="/#features"
             class="text-muted-foreground transition-colors hover:text-foreground"
           >Features</a
-          >
+          >{' '}
           <a
             href="/#trace"
             class="text-muted-foreground transition-colors hover:text-foreground"
           >Trace viewer</a
-          >
+          >{' '}
           <a
             href="/#desktop"
             class="text-muted-foreground transition-colors hover:text-foreground"
           >Desktop</a
-          >
+          >{' '}
           <a
             href="/#mcp"
             class="text-muted-foreground transition-colors hover:text-foreground"
           >Agents</a
-          >
+          >{' '}
           <a
             href="/#pricing"
             class="text-muted-foreground transition-colors hover:text-foreground"
           >Pricing</a
-          >
+          >{' '}
           <a
             href="/#setup"
             class="text-muted-foreground transition-colors hover:text-foreground"
@@ -62,7 +62,7 @@ const year = new Date().getFullYear();
           <span
             class="text-[11px] uppercase tracking-wider text-muted-foreground"
           >Project</span
-          >
+          >{' '}
           <a
             href={SITE.repo}
             target="_blank"
@@ -71,34 +71,34 @@ const year = new Date().getFullYear();
           >
             <GithubIcon class="size-3.5" />
             GitHub
-          </a>
+          </a>{' '}
           <a
             href={SITE.docs}
             data-umami-event="docs-footer"
             class="text-muted-foreground transition-colors hover:text-foreground"
           >Docs</a
-          >
+          >{' '}
           <a
             href="/blog"
             data-umami-event="blog-footer"
             class="text-muted-foreground transition-colors hover:text-foreground"
           >Blog</a
-          >
+          >{' '}
           <a
             href="/rss.xml"
             class="text-muted-foreground transition-colors hover:text-foreground"
           >RSS</a
-          >
+          >{' '}
           <a
             href="/privacy"
             class="text-muted-foreground transition-colors hover:text-foreground"
           >Privacy</a
-          >
+          >{' '}
           <a
             href="/terms"
             class="text-muted-foreground transition-colors hover:text-foreground"
           >Terms</a
-          >
+          >{' '}
           <a
             href="/contact"
             class="text-muted-foreground transition-colors hover:text-foreground"
@@ -109,15 +109,18 @@ const year = new Date().getFullYear();
           <span
             class="text-[11px] uppercase tracking-wider text-muted-foreground"
           >Use cases</span
-          >
+          >{' '}
           {
             SOLUTIONS.map(s => (
-              <a
-                href={`/${s.slug}`}
-                class="text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {s.eyebrow}
-              </a>
+              <>
+                <a
+                  href={`/${s.slug}`}
+                  class="text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {s.eyebrow}
+                </a>
+                {' '}
+              </>
             ))
           }
         </div>
@@ -125,15 +128,18 @@ const year = new Date().getFullYear();
           <span
             class="text-[11px] uppercase tracking-wider text-muted-foreground"
           >Compare</span
-          >
+          >{' '}
           {
             COMPARISONS.map(c => (
-              <a
-                href={`/vs/${c.slug}`}
-                class="text-muted-foreground transition-colors hover:text-foreground"
-              >
-                vs {c.themShort}
-              </a>
+              <>
+                <a
+                  href={`/vs/${c.slug}`}
+                  class="text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  vs {c.themShort}
+                </a>
+                {' '}
+              </>
             ))
           }
           <a

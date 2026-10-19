@@ -111,7 +111,7 @@ export const SOLUTIONS: Solution[] = [
     h1: 'A flaky test dashboard for Playwright',
     title: 'Playwright flaky test dashboard - rank every flake | kinora',
     description:
-      'See which Playwright tests pass and fail without a code change, ranked by how often they flip, with the full history and the trace one click away. Stop hitting retry.',
+      'A flaky test dashboard for Playwright: see which tests pass and fail without a code change, ranked by how often they flip, with full history and the trace one click away.',
     tldr:
       'kinora is a flaky test dashboard for Playwright: it watches every run and surfaces the tests that pass and fail without code changes, so you can find, rank, and fix them instead of hitting retry.',
     intro:
@@ -177,7 +177,7 @@ export const SOLUTIONS: Solution[] = [
     h1: 'The Playwright trace viewer, online',
     title: 'Playwright trace viewer online - open trace.zip in the browser',
     description:
-      'Open a Playwright trace in your browser: the real trace viewer, with timeline, DOM snapshots, network and console. No trace.zip download, no playwright show-trace.',
+      'The Playwright trace viewer, online: open trace.zip in your browser with the timeline, DOM snapshots, network, and console. No download, no playwright show-trace.',
     tldr:
       'Drop a trace.zip and it opens right here, in your browser. No install, no account, and the file never leaves your machine.',
     intro:
@@ -408,7 +408,7 @@ export const SOLUTIONS: Solution[] = [
     h1: 'A self-hosted Playwright dashboard',
     title: 'Self-hosted Playwright test dashboard | kinora',
     description:
-      'Run kinora on your own infrastructure with one docker compose: dashboard, embedded trace viewer, and Postgres. Free, no seat limits, and traces never leave your disk.',
+      'A free, self-hosted Playwright dashboard: one docker compose for Postgres, the dashboard, and an embedded trace viewer. No seat limits, traces never leave your disk.',
     tldr:
       'kinora self-hosts with one docker compose: Postgres, the dashboard, and the embedded trace viewer on a single origin. Free forever, every feature unlocked, and your traces stay on your own storage.',
     intro:
