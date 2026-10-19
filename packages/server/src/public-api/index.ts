@@ -21,7 +21,7 @@ import { sendMail } from '../lib/mailer'
 import { isTransientStorageError, storage } from '../lib/storage'
 import { computeRegression, testsOfRun } from '../reports/regression'
 import { registerReadRoutes } from './read'
-import { insertTests, isGrouped, landShard } from './shards'
+import { insertTests, isGrouped, landShard, refillsLandedSlot } from './shards'
 
 const BEARER_PREFIX = 'Bearer '
 const INGEST_MAX_JSON_MB = 25
@@ -71,7 +71,8 @@ publicApi.post('/runs', ingestJsonLimit, zValidator('json', ingestRunSchema), as
   // Result cap is read only for free (the only metered tier); project count only when capped + new.
   const usedResults = entitlements.tier === 'free' ? await currentPeriodResults(orgId) : 0
   const projects = isNewProject && Number.isFinite(entitlements.maxProjects) ? await projectCount(orgId) : 0
-  const cap = ingestCapError(entitlements, usedResults, isNewProject, projects)
+  const refill = !!existing && isGrouped(input.run) && await refillsLandedSlot(existing.id, input.run)
+  const cap = refill ? null : ingestCapError(entitlements, usedResults, isNewProject, projects)
   if (cap)
     return c.json(cap, 402)
 

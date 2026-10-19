@@ -1,9 +1,9 @@
 import type { IngestRun, NormTest, RunStatus, ShardProgress } from '@kinora/core'
-import type { db } from '../db'
 import type { ShardSlot } from '../db/schemas/index'
 import { randomUUID } from 'node:crypto'
 import { countsByTagFrom, countsFromTests, mergeShardAttempt } from '@kinora/core'
 import { and, eq, inArray, sql } from 'drizzle-orm'
+import { db } from '../db'
 import { artifact, run, test } from '../db/schemas/index'
 import { toNormTest } from '../reports/queries'
 
@@ -59,6 +59,14 @@ type GroupedRun = IngestRun['run'] & { groupKey: string, shard: { current: numbe
 
 export function isGrouped(r: IngestRun['run']): r is GroupedRun {
   return !!r.groupKey && !!r.shard
+}
+
+// A later upload of a slot that already landed (a CI re-run, a replayed request) adds no results,
+// so the result cap must not turn it away. A slot never un-lands, so checking outside the
+// transaction is safe.
+export async function refillsLandedSlot(projectId: string, r: GroupedRun): Promise<boolean> {
+  const [row] = await db.select({ landed: run.shardsLanded }).from(run).where(and(eq(run.projectId, projectId), eq(run.groupKey, r.groupKey)))
+  return !!row && String(r.shard.current) in row.landed
 }
 
 function progress(landed: Record<string, ShardSlot>, total: number): ShardProgress {
