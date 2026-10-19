@@ -3,7 +3,7 @@ import type { Reporter, TestModule, Vitest } from 'vitest/node'
 import type { IncludeTests } from './convert'
 import { readFile } from 'node:fs/promises'
 import process from 'node:process'
-import { createIngestClient, DEFAULT_KINORA_URL, DEFAULT_UPLOAD_ATTACHMENTS, detectCiEnv, IngestError, isUploadableAttachment } from '@kinora/core'
+import { createIngestClient, DEFAULT_KINORA_URL, DEFAULT_UPLOAD_ATTACHMENTS, detectCiEnv, IngestError, isUploadableAttachment, resolveShardGroup } from '@kinora/core'
 import { toNormTests } from './convert'
 
 export interface KinoraVitestReporterOptions {
@@ -23,6 +23,13 @@ export interface KinoraVitestReporterOptions {
    * plan's monthly result quota with large unit suites.
    */
   include?: IncludeTests
+  /**
+   * Sharded runs (`--shard`): the uploads of every shard of a CI run are assembled into a single
+   * kinora run. Shards are grouped by this key, defaulting to env KINORA_GROUP_KEY, then the CI run
+   * (GITHUB_RUN_ID / CI_PIPELINE_ID). Set it when a matrix runs the sharded suite once per leg, to
+   * tell the legs apart. `false` uploads each shard as its own run.
+   */
+  groupKey?: string | false
 }
 
 function countsOf(tests: NormTest[]): Counts {
@@ -34,11 +41,14 @@ function countsOf(tests: NormTest[]): Counts {
 
 export default class KinoraVitestReporter implements Reporter {
   private startedAt = new Date()
+  private shard: { current: number, total: number } | undefined
 
   constructor(private readonly options: KinoraVitestReporterOptions) {}
 
   onInit(vitest: Vitest): void {
     this.startedAt = new Date()
+    const shard = vitest.config.shard
+    this.shard = shard ? { current: shard.index, total: shard.count } : undefined
     // Test locations (file:line in the dashboard) are only collected when asked for. Turn them on
     // for every project, before any test is collected.
     vitest.config.includeTaskLocation = true
@@ -59,11 +69,18 @@ export default class KinoraVitestReporter implements Reporter {
     }
 
     const { tests, skippedNodeTests } = toNormTests(modules, this.options.include)
+    const group = this.shard && this.options.groupKey !== false
+      ? resolveShardGroup(process.env, { groupKey: this.options.groupKey })
+      : undefined
     if (!tests.length) {
-      console.warn(skippedNodeTests
-        ? `[kinora] nothing uploaded: no browser tests in this run (${skippedNodeTests} Node tests left out). Set include: 'all' to upload Node tests too.`
-        : '[kinora] nothing uploaded: no tests ran')
-      return
+      // A shard that ran no test still fills its slot, or the run would wait for it and close as incomplete.
+      if (!group) {
+        console.warn(skippedNodeTests
+          ? `[kinora] nothing uploaded: no browser tests in this run (${skippedNodeTests} Node tests left out). Set include: 'all' to upload Node tests too.`
+          : '[kinora] nothing uploaded: no tests ran')
+        return
+      }
+      console.warn('[kinora] no tests to upload in this shard: filling its slot so the run can complete')
     }
     const detected = detectCiEnv(process.env)
     const payload: IngestRun = {
@@ -74,6 +91,7 @@ export default class KinoraVitestReporter implements Reporter {
         counts: countsOf(tests),
         git: this.options.git ?? detected.git,
         ci: this.options.ci ?? detected.ci,
+        ...(this.shard && group && { ...group, shard: this.shard }),
       },
       tests,
     }
@@ -98,7 +116,7 @@ export default class KinoraVitestReporter implements Reporter {
         }
       }
       // eslint-disable-next-line no-console -- a reporter's job is to report
-      console.log(`[kinora] uploaded ${res.tests} tests + ${artifacts} artifacts (run ${res.runId})`)
+      console.log(`[kinora] uploaded ${res.tests} tests + ${artifacts} artifacts (run ${res.runId}${res.shardProgress ? `, ${res.shardProgress.landed} of ${res.shardProgress.total} shards` : ''})`)
     }
     catch (err) {
       if (err instanceof IngestError && err.status === 402)

@@ -52,6 +52,7 @@ server with `KINORA_URL`.
 | `uploadAttachments` | `('trace' \| 'snapshot' \| 'video' \| 'screenshot')[]` | `['trace', 'snapshot']` | Which attachment kinds to upload. Add `'screenshot'` for Vitest's failure screenshots. |
 | `git` | `{ sha?, branch?, baseBranch?, repoUrl? }` | auto on GitHub Actions / GitLab CI | Git metadata. |
 | `ci` | `{ provider?, runUrl?, runNumber? }` | auto on GitHub Actions / GitLab CI | CI metadata for the run. |
+| `groupKey` | `string \| false` | env `KINORA_GROUP_KEY`, then the CI run | Groups the uploads of every shard of a CI run into one run. `false` uploads each shard as its own run. See [Sharded runs](#sharded-runs). |
 
 ## Node tests
 
@@ -59,7 +60,33 @@ Only the tests of Vitest projects running in a browser (browser mode, Storybook)
 default. Node unit tests are usually thousands of fast, deterministic tests with no trace: they add
 little to kinora and would eat your plan's monthly result quota in a single run.
 
-To upload them too, set `include: 'all'`. A run with no browser test uploads nothing and says so.
+To upload them too, set `include: 'all'`. A run with no browser test uploads nothing and says so
+(a shard of a [sharded run](#sharded-runs) still uploads, empty).
+
+## Sharded runs
+
+With `vitest --shard=1/4`, each shard uploads on its own, and kinora assembles the shards of one CI
+run into a single run: shards are grouped by the CI run (`GITHUB_RUN_ID` on GitHub Actions,
+`CI_PIPELINE_ID` on GitLab CI), and the shard count comes from Vitest, so there is nothing to
+configure.
+
+```yaml
+- run: npx vitest run --shard=${{ matrix.shard }}
+  env:
+    KINORA_TOKEN: ${{ secrets.KINORA_TOKEN }}
+```
+
+Elsewhere, set `KINORA_GROUP_KEY` (or the `groupKey` option) to a value shared by the shards of a run
+and unique per run. If a matrix runs the sharded suite once per leg (one per browser, say), give each
+leg its own `groupKey`, or their shards would fill the same slots.
+
+Vitest splits files across shards whatever their project, so a shard can hold only Node tests. It
+then uploads no test, but still fills its slot, so the run can complete.
+
+The run shows as "2 of 4 shards" until the last shard landed, is closed as incomplete if one never
+uploads, and a re-run of a failed shard fills its slot again, keeping a test that failed then passed
+as flaky. All of it works as for Playwright: see [Sharded runs](/guides/reporter/#sharded-runs).
+The Vitest reporter posts no PR comment, so there is none to update.
 
 ## Traces
 

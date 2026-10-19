@@ -22,6 +22,7 @@ const VITEST = join(ROOT, 'node_modules/vitest/vitest.mjs')
 const OUTPUTS = ['.vitest', 'src/__screenshots__', 'src/__traces__', '.vitest-attachments']
 
 const runs = []
+const shardRuns = []
 const artifacts = []
 let server
 
@@ -41,7 +42,7 @@ before(async () => {
       res.setHeader('content-type', 'application/json')
       if (req.url === '/api/v1/runs') {
         const payload = JSON.parse(body.toString('utf8'))
-        runs.push(payload)
+        ;(payload.run.groupKey ? shardRuns : runs).push(payload)
         res.statusCode = 201
         res.end(JSON.stringify({ projectId: 'p', runId: 'run-1', tests: payload.tests.length }))
         return
@@ -60,6 +61,8 @@ before(async () => {
   // with another color so toMatchScreenshot fails with reference, actual and diff images.
   await vitest(['--project=browser', '--update'], { KINORA_TOKEN: '', SWATCH: 'rgb(79, 70, 229)' })
   await vitest([], { KINORA_URL: url, KINORA_TOKEN: 'contract', SWATCH: 'rgb(16, 185, 129)' })
+  // One shard of a sharded run, on the Node project only: no browser test to upload.
+  await vitest(['--project=unit', '--shard=1/2'], { KINORA_URL: url, KINORA_TOKEN: 'contract', GITHUB_RUN_ID: '4242', GITHUB_RUN_ATTEMPT: '2' })
 }, { timeout: 240_000 })
 
 after(async () => {
@@ -68,6 +71,18 @@ after(async () => {
 })
 
 const byTitle = title => runs[0]?.tests.find(t => t.title === title)
+
+// The reporter reads the shard from Vitest's resolved config (`--shard=1/2`), and a shard without a
+// browser test still uploads, empty, so the run can complete.
+test('groups a sharded run by its CI run, and fills the slot of a shard with no browser test', () => {
+  assert.equal(shardRuns.length, 1)
+  const { run: shardRun, tests } = shardRuns[0]
+  assert.deepEqual(tests, [])
+  assert.deepEqual(
+    { groupKey: shardRun.groupKey, attempt: shardRun.attempt, shard: shardRun.shard },
+    { groupKey: 'gh-4242', attempt: 2, shard: { current: 1, total: 2 } },
+  )
+})
 
 test('uploads one run with the browser and Storybook tests, without the Node test', () => {
   assert.equal(runs.length, 1)

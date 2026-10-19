@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import KinoraVitestReporter from '../src/index'
 import { fakeModule, fakeTest } from './fakes'
 
@@ -27,9 +27,17 @@ function reporter(options: Partial<ConstructorParameters<typeof KinoraVitestRepo
   return new KinoraVitestReporter({ url: 'https://api.example.com', token: 't', project: { slug: 'ui' }, ...options })
 }
 
+const CI_VARS = ['KINORA_GROUP_KEY', 'KINORA_ATTEMPT', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'CI_PIPELINE_ID', 'CI_JOB_ID']
+
+// A CI runner sets these itself: start every test without them.
+beforeEach(() => {
+  for (const v of CI_VARS) delete process.env[v]
+})
+
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  for (const v of CI_VARS) delete process.env[v]
 })
 
 describe('onInit', () => {
@@ -111,5 +119,69 @@ describe('onTestRunEnd', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await expect(reporter().onTestRunEnd([fakeModule([fakeTest()])])).resolves.toBeUndefined()
     expect(warn.mock.calls.flat().join(' ')).toContain('Plan limit reached')
+  })
+})
+
+describe('sharded runs', () => {
+  function shardedReporter(options: Partial<ConstructorParameters<typeof KinoraVitestReporter>[0]> = {}, shard = { index: 2, count: 3 }) {
+    const r = reporter(options)
+    r.onInit({ config: { shard }, projects: [] } as unknown as Vitest)
+    return r
+  }
+
+  it('groups a shard by the CI run, with its attempt and slot', async () => {
+    const calls = stubServer()
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    process.env.GITHUB_RUN_ID = '42'
+    process.env.GITHUB_RUN_ATTEMPT = '2'
+    await shardedReporter().onTestRunEnd([fakeModule([fakeTest()])])
+
+    expect(JSON.parse(calls[0].body as string).run).toMatchObject({ groupKey: 'gh-42', attempt: 2, shard: { current: 2, total: 3 } })
+  })
+
+  it('takes an explicit group key from the option', async () => {
+    const calls = stubServer()
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    process.env.GITHUB_RUN_ID = '42'
+    await shardedReporter({ groupKey: 'nightly-7:firefox' }).onTestRunEnd([fakeModule([fakeTest()])])
+
+    expect(JSON.parse(calls[0].body as string).run.groupKey).toBe('nightly-7:firefox')
+  })
+
+  it('uploads a shard on its own without a CI run id, when grouping is off, or without --shard', async () => {
+    const calls = stubServer()
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    await shardedReporter().onTestRunEnd([fakeModule([fakeTest()])])
+
+    process.env.GITHUB_RUN_ID = '42'
+    await shardedReporter({ groupKey: false }).onTestRunEnd([fakeModule([fakeTest()])])
+    await reporter().onTestRunEnd([fakeModule([fakeTest()])])
+
+    expect(calls).toHaveLength(3)
+    for (const call of calls)
+      expect(JSON.parse(call.body as string).run).not.toHaveProperty('groupKey')
+  })
+
+  it('still fills the slot of a shard that ran no browser test, or the run would never complete', async () => {
+    const calls = stubServer()
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    process.env.GITHUB_RUN_ID = '42'
+    await shardedReporter().onTestRunEnd([fakeModule([fakeTest({ browser: false, project: 'unit' })])])
+
+    expect(calls).toHaveLength(1)
+    const { run, tests } = JSON.parse(calls[0].body as string)
+    expect(tests).toEqual([])
+    expect(run).toMatchObject({ groupKey: 'gh-42', shard: { current: 2, total: 3 }, counts: { total: 0 } })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('filling its slot'))
+  })
+
+  it('shows the shards landed so far', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ projectId: 'p', runId: 'run-1', tests: 1, status: 'open', shardProgress: { landed: 2, total: 3 } }), { status: 201 })))
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    process.env.GITHUB_RUN_ID = '42'
+    await shardedReporter().onTestRunEnd([fakeModule([fakeTest()])])
+
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('2 of 3 shards'))
   })
 })

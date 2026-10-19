@@ -154,7 +154,8 @@ e2e:
 ## Sharded runs
 
 With `--shard`, each shard can upload on its own: kinora assembles the shards of one CI run into a
-single run, with every test and trace, and no merge job to set up.
+single run, with every test and trace, and no merge job to set up. The [CLI](/guides/cli/#sharded-runs)
+and the [Vitest reporter](/guides/vitest/#sharded-runs) do the same.
 
 ```yaml
 jobs:

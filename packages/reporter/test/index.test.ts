@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { makeTestKey } from '@kinora/core'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import KinoraReporter from '../src/index'
 
 // Minimal fakes of the Playwright reporter objects the reporter reads.
@@ -318,6 +318,11 @@ describe('reporter onEnd', () => {
   })
 
   describe('sharded runs', () => {
+    // A CI runner sets these itself: start every test without them.
+    beforeEach(() => {
+      for (const v of [...GH_VARS, ...GL_VARS, ...SHARD_VARS]) delete process.env[v]
+    })
+
     const shardConfig = { version: '1.60.0', shard: { current: 2, total: 3 } } as FullConfig
 
     function stubServer(runResponse: object) {
