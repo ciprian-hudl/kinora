@@ -339,7 +339,7 @@ export const SOLUTIONS: Solution[] = [
       },
       {
         q: 'Does it work with sharded or matrix jobs?',
-        a: 'Yes. Merge shards with Playwright\'s merge-reports so the run uploads once as a single report. For matrix legs that share one pull request, give each leg its own PR comment label so they keep separate comments.',
+        a: 'Yes. Each shard uploads on its own and kinora assembles them into one run per CI run. The run reads "2 of 4 shards" until the last one lands, so a shard that never uploads cannot pass for a green run, and re-running a failed shard fills its slot again. Playwright\'s blob report with merge-reports still works if you prefer a single upload. For matrix legs that share one pull request, give each leg its own PR comment label so they keep separate comments.',
       },
     ],
     docs: [
@@ -393,7 +393,7 @@ export const SOLUTIONS: Solution[] = [
       },
       {
         q: 'Does it work with parallel or matrix jobs?',
-        a: 'Yes. Merge shards with Playwright\'s merge-reports so the run uploads once as a single report. For matrix legs that share one merge request, give each leg its own PR comment label so they keep separate comments.',
+        a: 'Yes. Each shard uploads on its own and kinora assembles them into one run per pipeline. The run reads "2 of 4 shards" until the last one lands, so a shard that never uploads cannot pass for a green run, and retrying a failed job fills its slot again. Playwright\'s blob report with merge-reports still works if you prefer a single upload. For matrix legs that share one merge request, give each leg its own PR comment label so they keep separate comments.',
       },
     ],
     docs: [
