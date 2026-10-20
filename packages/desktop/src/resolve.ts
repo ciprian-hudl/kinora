@@ -14,8 +14,9 @@ export interface Resolved {
 // linked monorepo root won't join cleanly. Find the file under the repo, then the
 // playwright config above it, so open-in-editor and re-run both work from one link.
 export function resolveTest(repoRoot: string, file: string): Resolved | null {
-  const direct = path.join(repoRoot, file)
-  const absFile = fs.existsSync(direct) ? direct : findBySuffix(repoRoot, file)
+  const direct = path.resolve(repoRoot, file)
+  const withinRoot = direct === repoRoot || direct.startsWith(repoRoot + path.sep)
+  const absFile = withinRoot && fs.existsSync(direct) ? direct : findBySuffix(repoRoot, file)
   if (!absFile)
     return null
   const configDir = findConfigDir(path.dirname(absFile), repoRoot) ?? repoRoot
