@@ -43,4 +43,16 @@ describe('resolveTest', () => {
   it('returns null when the file is not found', () => {
     expect(resolveTest(root, 'missing.spec.ts')).toBeNull()
   })
+
+  it('does not escape repoRoot via a path-traversing file field', () => {
+    const secret = path.join(root, '..', 'kinora-resolve-secret.txt')
+    writeFileSync(secret, 'outside the repo')
+    try {
+      const traversal = path.relative(path.join(root, 'pkg'), secret)
+      expect(resolveTest(path.join(root, 'pkg'), traversal)).toBeNull()
+    }
+    finally {
+      rmSync(secret, { force: true })
+    }
+  })
 })
