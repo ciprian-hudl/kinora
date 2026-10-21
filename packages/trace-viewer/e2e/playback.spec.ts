@@ -21,8 +21,9 @@ async function slowestSpeed(page: Page): Promise<void> {
 }
 
 test('plays in real time over the screencast and pauses on a manual pick', async ({ page }) => {
+  await page.goto('/?trace=fixtures/video-trace.zip')
+  await expect(page.getByTestId('action').first()).toBeVisible()
   await page.getByTestId('action-scrubber').fill('0')
-  await slowestSpeed(page)
   await page.getByTestId('play').click()
   await expect(page.getByTestId('play')).toHaveAttribute('title', 'Pause')
   await expect(page.getByTestId('playback-frame')).toBeVisible()

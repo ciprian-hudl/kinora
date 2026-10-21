@@ -238,6 +238,9 @@ test('opens the current snapshot in a new tab', async ({ page }) => {
 })
 
 test('play advances the selected action', async ({ page }) => {
+  await page.goto('/?trace=fixtures/video-trace.zip')
+  await expect(page.getByTestId('action').first()).toBeVisible()
+  await page.getByTestId('action-scrubber').fill('0')
   const current = page.getByTestId('current-action')
   const before = await current.textContent()
   await page.getByTestId('play').click()
