@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { actionInWindow, inWindow, normalizeRange, xToTime } from '../src/ui/lib/timeline'
+import { actionInWindow, filmstripTiles, inWindow, normalizeRange, xToTime } from '../src/ui/lib/timeline'
 
 describe('normalizeRange', () => {
   it('orders the endpoints', () => {
@@ -49,5 +49,25 @@ describe('actionInWindow', () => {
   it('treats a missing endTime as an instant at startTime', () => {
     expect(actionInWindow({ startTime: 15 }, range)).toBe(true)
     expect(actionInWindow({ startTime: 25 }, range)).toBe(false)
+  })
+})
+
+const frames = [{ timestamp: 100, id: 'a' }, { timestamp: 110, id: 'b' }, { timestamp: 120, id: 'c' }, { timestamp: 900, id: 'd' }]
+
+describe('filmstripTiles', () => {
+  it('is empty without frames, tiles or a time span', () => {
+    expect(filmstripTiles([], 0, 1000, 10)).toEqual([])
+    expect(filmstripTiles(frames, 0, 1000, 0)).toEqual([])
+    expect(filmstripTiles(frames, 500, 500, 10)).toEqual([])
+  })
+
+  it('spreads tiles evenly and shows the frame current at each tile centre', () => {
+    const tiles = filmstripTiles(frames, 0, 1000, 10)
+    expect(tiles.map(t => t.time)).toEqual([150, 250, 350, 450, 550, 650, 750, 850, 950])
+    expect(tiles.map(t => t.frame.id)).toEqual(['c', 'c', 'c', 'c', 'c', 'c', 'c', 'c', 'd'])
+  })
+
+  it('leaves out tiles before the first frame', () => {
+    expect(filmstripTiles(frames, 0, 1000, 20)[0].time).toBe(125)
   })
 })

@@ -25,3 +25,24 @@ export function actionInWindow(action: { startTime?: number, endTime?: number },
   const end = action.endTime ?? start
   return end >= range.start && start <= range.end
 }
+
+export interface FilmstripTile<T> {
+  frame: T
+  time: number
+}
+
+export function filmstripTiles<T extends { timestamp: number }>(frames: readonly T[], min: number, max: number, count: number): FilmstripTile<T>[] {
+  if (!frames.length || count <= 0 || max <= min)
+    return []
+  const span = max - min
+  const out: FilmstripTile<T>[] = []
+  let i = 0
+  for (let tile = 0; tile < count; tile++) {
+    const time = min + ((tile + 0.5) / count) * span
+    while (i + 1 < frames.length && frames[i + 1].timestamp <= time)
+      i++
+    if (frames[i].timestamp <= time)
+      out.push({ frame: frames[i], time })
+  }
+  return out
+}
