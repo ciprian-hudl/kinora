@@ -253,6 +253,10 @@ test('cycles playback speed and scrubs actions', async ({ page }) => {
   await expect(page.getByTestId('playback-speed')).toHaveText('1x')
   await page.getByTestId('playback-speed').click()
   await expect(page.getByTestId('playback-speed')).toHaveText('2x')
+  await page.getByTestId('playback-speed').click()
+  await expect(page.getByTestId('playback-speed')).toHaveText('0.25x')
+  await page.getByTestId('playback-speed').click()
+  await expect(page.getByTestId('playback-speed')).toHaveText('0.5x')
 
   await page.getByTestId('action-scrubber').fill('0')
   await expect(page.getByTestId('current-action')).toContainText('Before Hooks')
