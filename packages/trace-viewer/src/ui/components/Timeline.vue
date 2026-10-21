@@ -51,7 +51,7 @@ const errorMarkers = computed(() => {
 const cursor = computed(() => {
   const action = store.selectedAction.value
   const { min, max, span } = bounds.value
-  const time = action?.startTime ?? min
+  const time = store.playhead.value ?? action?.startTime ?? min
   if (time < min || time > max)
     return undefined
   return {
