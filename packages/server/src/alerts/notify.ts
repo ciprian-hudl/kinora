@@ -1,6 +1,6 @@
 import type { Counts, NormTest, ShardProgress } from '@kinora/core'
 import type { AlertPayload, AlertPolicy } from './core'
-import { compareRuns } from '@kinora/core'
+import { compareRuns, countsFromTests } from '@kinora/core'
 import { and, eq, gt, isNull, or } from 'drizzle-orm'
 import { getEntitlements } from '../billing/entitlements'
 import { db } from '../db'
@@ -24,15 +24,6 @@ export interface NotifyRunInput {
   counts: Counts
   tests: NormTest[]
   incomplete?: ShardProgress
-}
-
-function countsFor(tests: NormTest[]): Counts {
-  const counts: Counts = { total: 0, expected: 0, unexpected: 0, flaky: 0, skipped: 0 }
-  for (const t of tests) {
-    counts.total++
-    counts[t.status]++
-  }
-  return counts
 }
 
 export async function notifyRun(input: NotifyRunInput): Promise<void> {
@@ -80,7 +71,7 @@ export async function notifyRun(input: NotifyRunInput): Promise<void> {
   const payload: AlertPayload = {
     projectName: projectRow?.name ?? 'project',
     runUrl: `${env.WEB_ORIGIN}/projects/${slug}/runs/${input.runId}`,
-    counts: countsFor(activeTests),
+    counts: countsFromTests(activeTests),
     newlyFailing: newlyFailing.map(d => d.title),
     newlyFlaky: newlyFlaky.map(d => d.title),
     codeOwners,
