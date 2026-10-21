@@ -8,6 +8,7 @@ import { ArrowLeft, ArrowRight } from '@lucide/vue'
 import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import ErrorState from '@/components/app/ErrorState.vue'
+import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
 import { useCompareRuns, useManifest } from '@/composables/queries'
 import { formatDateTime } from '@/lib/format'
@@ -73,8 +74,16 @@ function shortId(id: string): string {
 
     <ErrorState v-if="error" :error="error" @retry="retry()" />
     <template v-else-if="isLoading || !cmp">
-      <Skeleton class="h-24 rounded-xl" />
-      <Skeleton class="h-80 rounded-xl" />
+      <div class="flex flex-col gap-6">
+        <div>
+          <h1 class="text-2xl font-semibold tracking-tight">
+            Run comparison
+          </h1>
+          <Skeleton class="mt-1 h-4 w-80" />
+        </div>
+        <StatStripSkeleton :count="4" />
+      </div>
+      <Skeleton class="h-64 rounded-xl" />
     </template>
 
     <template v-else>

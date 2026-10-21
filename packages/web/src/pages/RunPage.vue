@@ -16,6 +16,7 @@ import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
 import ListPagination from '@/components/app/ListPagination.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
+import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import FilterCombobox from '@/components/FilterCombobox.vue'
 import RunHealthBadge from '@/components/viz/RunHealthBadge.vue'
 import ScreenshotDiff from '@/components/viz/ScreenshotDiff.vue'
@@ -197,8 +198,23 @@ const BADGE_CLASS = 'inline-flex items-center gap-1 rounded border border-border
 
     <ErrorState v-if="error" :error="error" @retry="retry()" />
     <template v-else-if="isLoading || !report">
-      <Skeleton class="h-28 rounded-xl" />
-      <Skeleton class="h-96 rounded-xl" />
+      <div class="flex flex-col gap-6" aria-hidden="true">
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex flex-col gap-1">
+            <Skeleton class="my-1 h-5 w-56" />
+            <Skeleton class="h-4 w-48" />
+          </div>
+          <Skeleton class="h-8 w-48" />
+        </div>
+        <StatStripSkeleton :count="6" />
+      </div>
+      <div class="flex items-center justify-between gap-3" aria-hidden="true">
+        <Skeleton class="h-9 w-[28rem] max-w-full" />
+        <Skeleton class="h-9 w-72" />
+      </div>
+      <div class="flex flex-col gap-2" aria-hidden="true">
+        <Skeleton v-for="i in 6" :key="i" class="h-[86px] rounded-lg" />
+      </div>
     </template>
 
     <template v-else>

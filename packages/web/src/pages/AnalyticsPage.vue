@@ -14,6 +14,7 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
+import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import FilterCombobox from '@/components/FilterCombobox.vue'
 import { useProjectAnalytics } from '@/composables/queries'
 import { useNewFeature } from '@/composables/useNewFeature'
@@ -126,8 +127,8 @@ function bucketLabel(t: number): string {
 
     <ErrorState v-if="error" :error="error" @retry="retry()" />
     <template v-else-if="isLoading && !state">
-      <Skeleton class="h-24 rounded-xl" />
-      <Skeleton class="h-80 rounded-xl" />
+      <StatStripSkeleton :count="5" />
+      <Skeleton class="h-[372px] rounded-xl" />
     </template>
 
     <template v-else-if="state">

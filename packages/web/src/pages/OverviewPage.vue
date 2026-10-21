@@ -15,6 +15,7 @@ import { StatBlock } from '@kinora/ui/stat-block'
 import { useRouteQuery } from '@vueuse/router'
 import { computed } from 'vue'
 import ErrorState from '@/components/app/ErrorState.vue'
+import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import FilterCombobox from '@/components/FilterCombobox.vue'
 import OverviewEmpty from '@/components/project/OverviewEmpty.vue'
 import ProjectCard from '@/components/project/ProjectCard.vue'
@@ -110,8 +111,9 @@ const stats = computed(() => {
         </div>
       </div>
 
+      <StatStripSkeleton v-if="isLoading && !error" :count="5" />
       <div
-        v-if="!isLoading && !error && projects.length"
+        v-else-if="!error && projects.length"
         class="flex flex-wrap items-center gap-x-10 gap-y-4 rounded-lg border border-border/70 bg-card/80 px-6 py-5"
       >
         <StatBlock label="Projects" :value="stats.projects" />
@@ -134,7 +136,7 @@ const stats = computed(() => {
 
     <!-- Loading -->
     <div v-else-if="isLoading" class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-      <Skeleton v-for="i in 6" :key="i" class="h-64 rounded-xl" />
+      <Skeleton v-for="i in 6" :key="i" class="h-54 rounded-xl" />
     </div>
 
     <!-- Brand-new account: no projects reporting at all -->

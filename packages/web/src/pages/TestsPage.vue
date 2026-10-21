@@ -16,6 +16,7 @@ import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
 import ListPagination from '@/components/app/ListPagination.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
+import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import FailureCausesCard from '@/components/project/FailureCausesCard.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
 import TestHealthBadge from '@/components/viz/TestHealthBadge.vue'
@@ -151,8 +152,25 @@ const EMPTY = {
 
     <ErrorState v-if="error" :error="error" @retry="retry()" />
     <template v-else-if="isLoading">
-      <Skeleton class="h-24 rounded-xl" />
-      <Skeleton class="h-96 rounded-xl" />
+      <div class="flex flex-col gap-6">
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0 flex-1">
+            <h1 class="text-2xl font-semibold tracking-tight">
+              Tests
+            </h1>
+            <Skeleton class="mt-1.5 mb-0.5 h-4 w-full max-w-xl" />
+          </div>
+          <CopyLinkButton class="shrink-0" />
+        </div>
+        <StatStripSkeleton :count="6" />
+      </div>
+      <div class="flex items-center justify-between gap-3" aria-hidden="true">
+        <Skeleton class="h-8 w-[28rem] max-w-full" />
+        <Skeleton class="h-9 w-72" />
+      </div>
+      <div class="flex flex-col gap-2" aria-hidden="true">
+        <Skeleton v-for="i in 6" :key="i" class="h-[66px] rounded-lg" />
+      </div>
     </template>
 
     <template v-else>

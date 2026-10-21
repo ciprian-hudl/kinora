@@ -17,6 +17,7 @@ import { ArrowLeft, Blocks, ChartArea, History, Settings } from '@lucide/vue'
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import ErrorState from '@/components/app/ErrorState.vue'
+import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import RunHistoryTable from '@/components/project/RunHistoryTable.vue'
 import RunHealthBadge from '@/components/viz/RunHealthBadge.vue'
 import { useManifest } from '@/composables/queries'
@@ -50,8 +51,21 @@ const series = computed(() => (project.value ? trend(project.value).map(t => t.p
 
     <ErrorState v-if="error" :error="error" @retry="retry()" />
     <template v-else-if="isLoading">
-      <Skeleton class="h-28 rounded-xl" />
-      <Skeleton class="h-96 rounded-xl" />
+      <div class="flex flex-col gap-6" aria-hidden="true">
+        <div class="flex flex-col gap-3">
+          <div class="flex items-start justify-between gap-4">
+            <Skeleton class="my-1 h-6 w-48" />
+            <Skeleton class="h-5 w-20 rounded-full" />
+          </div>
+          <div class="flex h-4 items-center gap-4">
+            <Skeleton class="h-3 w-28" />
+            <Skeleton class="h-3 w-24" />
+            <Skeleton class="h-3 w-20" />
+          </div>
+        </div>
+        <StatStripSkeleton :count="3" />
+      </div>
+      <Skeleton class="h-[422px] rounded-xl" />
     </template>
     <div v-else-if="!project" class="text-sm text-muted-foreground">
       Project not found.

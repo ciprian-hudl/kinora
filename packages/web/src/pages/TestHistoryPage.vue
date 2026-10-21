@@ -12,6 +12,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import A11yViolations from '@/components/a11y/A11yViolations.vue'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
+import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import IncidentScreenshots from '@/components/viz/IncidentScreenshots.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
 import StoryBadge from '@/components/viz/StoryBadge.vue'
@@ -113,8 +114,20 @@ function toggleQuarantine() {
 
     <ErrorState v-if="error" :error="error" @retry="retry()" />
     <template v-else-if="isLoading">
-      <Skeleton class="h-28 rounded-xl" />
-      <Skeleton class="h-64 rounded-xl" />
+      <div class="flex flex-col gap-6" aria-hidden="true">
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex flex-col">
+            <Skeleton class="my-1 h-5 w-64" />
+            <Skeleton class="mt-1 h-3.5 w-48" />
+          </div>
+          <Skeleton class="h-8 w-56" />
+        </div>
+        <StatStripSkeleton :count="4" caption />
+      </div>
+      <Skeleton class="h-[101px] rounded-xl" />
+      <div class="flex flex-col gap-2" aria-hidden="true">
+        <Skeleton v-for="i in 3" :key="i" class="h-24 rounded-lg" />
+      </div>
     </template>
     <div v-else-if="!history" class="text-sm text-muted-foreground">
       Test not found in history.

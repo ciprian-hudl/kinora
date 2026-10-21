@@ -15,6 +15,7 @@ import A11yHotspots from '@/components/a11y/A11yHotspots.vue'
 import CopyLinkButton from '@/components/app/CopyLinkButton.vue'
 import ErrorState from '@/components/app/ErrorState.vue'
 import SearchInput from '@/components/app/SearchInput.vue'
+import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import StatusTimeline from '@/components/viz/StatusTimeline.vue'
 import TestHealthBadge from '@/components/viz/TestHealthBadge.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
@@ -125,8 +126,25 @@ const rows = computed<ComponentHealth[]>(() => {
 
     <ErrorState v-if="error" :error="error" @retry="retry()" />
     <template v-else-if="isLoading">
-      <Skeleton class="h-24 rounded-xl" />
-      <Skeleton class="h-96 rounded-xl" />
+      <div class="flex flex-col gap-6">
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0 flex-1">
+            <h1 class="text-2xl font-semibold tracking-tight">
+              Components
+            </h1>
+            <Skeleton class="mt-1.5 mb-0.5 h-4 w-full max-w-xl" />
+          </div>
+          <CopyLinkButton class="shrink-0" />
+        </div>
+        <StatStripSkeleton :count="5" />
+      </div>
+      <div class="flex items-center justify-between gap-3" aria-hidden="true">
+        <Skeleton class="h-8 w-[28rem] max-w-full" />
+        <Skeleton class="h-9 w-72" />
+      </div>
+      <div class="flex flex-col gap-4" aria-hidden="true">
+        <Skeleton v-for="i in 3" :key="i" class="h-48 rounded-lg" />
+      </div>
     </template>
 
     <template v-else>
