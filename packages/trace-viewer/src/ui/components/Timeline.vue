@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { cn } from '@kinora/ui'
 import { ChevronLeft, ChevronRight, Pause, Play, ZoomOut } from '@lucide/vue'
+import { useElementSize } from '@vueuse/core'
 import { computed, ref } from 'vue'
 import { actionDuration, actionStatus, actionTitle } from '../lib/action'
 import { formatMs } from '../lib/format'
-import { xToTime } from '../lib/timeline'
+import { filmstripTiles, xToTime } from '../lib/timeline'
 import { useTraceStore } from '../store'
 
 const store = useTraceStore()
@@ -63,20 +64,23 @@ const frames = computed(() => {
   const m = store.model.value
   if (!m)
     return []
-  const { min, max, span } = bounds.value
-  const out: { url: string, left: number, timestamp: number }[] = []
-  for (const page of m.pages) {
-    for (const f of page.screencastFrames) {
-      if (f.timestamp < min || f.timestamp > max)
-        continue
-      out.push({
-        url: m.createRelativeUrl(`file/${f.file}`),
-        left: ((f.timestamp - min) / span) * 100,
-        timestamp: f.timestamp,
-      })
-    }
-  }
-  return out.sort((a, b) => a.timestamp - b.timestamp)
+  return m.pages
+    .flatMap(page => page.screencastFrames)
+    .map(f => ({ url: m.createRelativeUrl(`file/${f.file}`), timestamp: f.timestamp }))
+    .sort((a, b) => a.timestamp - b.timestamp)
+})
+
+const FILMSTRIP_TILE_WIDTH = 58
+const filmstrip = ref<HTMLElement | null>(null)
+const { width: filmstripWidth } = useElementSize(filmstrip)
+const tiles = computed(() => {
+  const { min, max } = bounds.value
+  const count = Math.max(1, Math.floor(filmstripWidth.value / FILMSTRIP_TILE_WIDTH))
+  return filmstripTiles(frames.value, min, max, count).map(tile => ({
+    ...tile,
+    left: (((tile.time - min) / (max - min)) * 100) - (50 / count),
+    width: 100 / count,
+  }))
 })
 
 // Drag-to-zoom: brush a window on the action track to filter every tab.
@@ -267,15 +271,21 @@ function seekToTime(t: number): void {
 
     <!-- filmstrip -->
     <div v-if="frames.length" class="relative h-12 shrink-0 border-b border-border bg-muted/10">
-      <div class="absolute inset-x-2 inset-y-1.5">
-        <img
-          v-for="(f, i) in frames"
-          :key="i"
-          :src="f.url"
-          class="absolute top-0 h-full w-16 cursor-pointer rounded-sm border border-border object-cover object-top transition-transform hover:z-10 hover:scale-110"
-          :style="{ left: `${f.left}%` }"
-          @click="seekToTime(f.timestamp)"
+      <div ref="filmstrip" class="absolute inset-x-2 inset-y-1.5">
+        <div
+          v-for="tile in tiles"
+          :key="tile.time"
+          data-testid="filmstrip-tile"
+          class="absolute top-0 h-full px-px"
+          :style="{ left: `${tile.left}%`, width: `${tile.width}%` }"
         >
+          <img
+            :src="tile.frame.url"
+            alt=""
+            class="size-full cursor-pointer rounded-sm border border-border object-cover object-top transition-transform hover:z-10 hover:scale-110"
+            @click="seekToTime(tile.time)"
+          >
+        </div>
       </div>
     </div>
 
