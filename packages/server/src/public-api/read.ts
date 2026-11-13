@@ -17,6 +17,14 @@ const windowQuery = z.object({
   status: insightStatusSchema.default('any'),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 })
+// The bad parameters in one sentence: agents read the error message, not a Zod dump.
+function validQuery<T extends z.ZodType>(schema: T) {
+  return zValidator('query', schema, (result, c) => {
+    if (!result.success)
+      return c.json({ error: result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') }, 400)
+  })
+}
+
 // Globs on the project id, e.g. `hudl/hudl-*` or `!hudl/hudl-*`; none reads every project.
 const insightsQuery = windowQuery.extend({ projects: z.string().max(1000).default('') })
 
@@ -87,21 +95,21 @@ export function registerReadRoutes(api: ReadApi): void {
     return c.json({ histories })
   })
 
-  api.get('/insights/tests', zValidator('query', insightsQuery.extend({ sort: z.enum(['count', 'flakeRate']).default('count') })), async (c) => {
+  api.get('/insights/tests', validQuery(insightsQuery.extend({ sort: z.enum(['count', 'flakeRate']).default('count') })), async (c) => {
     const { projects, since, branch, status, limit, sort } = c.req.valid('query')
     const matches = projectMatcher(projects)
     const scope = { projects: (await listProjects(c.get('orgId'))).filter(p => matches(p.slug)), since, branch, status }
     return c.json({ since: since.toISOString(), tests: await loadTestInsights(scope, sort, limit) })
   })
 
-  api.get('/insights/errors', zValidator('query', insightsQuery), async (c) => {
+  api.get('/insights/errors', validQuery(insightsQuery), async (c) => {
     const { projects, since, branch, status, limit } = c.req.valid('query')
     const matches = projectMatcher(projects)
     const scope = { projects: (await listProjects(c.get('orgId'))).filter(p => matches(p.slug)), since, branch, status }
     return c.json({ since: since.toISOString(), ...(await loadCommonErrors(scope, limit)) })
   })
 
-  api.get('/projects/:slug/occurrences', zValidator('query', windowQuery.extend({ testKey: z.string().min(1) })), async (c) => {
+  api.get('/projects/:slug/occurrences', validQuery(windowQuery.extend({ testKey: z.string().min(1) })), async (c) => {
     const p = await findProject(c.get('orgId'), c.req.param('slug'))
     if (!p)
       return c.json({ error: 'Project not found' }, 404)

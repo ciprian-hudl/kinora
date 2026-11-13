@@ -94,6 +94,7 @@ describe('insights: tests', () => {
     const a = await createUser('a@test.dev')
     const res = await app.request('/api/v1/insights/tests?since=yesterday', { headers: { Authorization: `Bearer ${await createApiKey(a.id)}` } })
     expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'since: since must be a span like 24h, 2d, 1w or an ISO date' })
   })
 })
 
