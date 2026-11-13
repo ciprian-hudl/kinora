@@ -52,3 +52,18 @@ test('a test that passed and failed on one commit is flaky, one failing since a 
   await expect(page).not.toHaveURL(/test=/)
   await expect(page.getByText('pays with a saved card')).toBeVisible()
 })
+
+test('a failing test links the other tests that fail with the same error', async ({ page }) => {
+  await login(page)
+  const slug = `cluster-${Date.now()}`
+  const token = await createApiToken(page)
+  const FILE = 'tests/checkout.spec.ts'
+  await postRun(page, token, runOf(slug, new Date(), [testOf(FILE, 'pays with a saved card', 'unexpected'), testOf(FILE, 'shows the order total', 'unexpected')]))
+
+  await page.goto(`/projects/${slug}/tests`)
+  await page.getByRole('link').filter({ hasText: 'pays with a saved card' }).click()
+  await expect(page.getByText('Same error as 1 other test')).toBeVisible()
+  await page.getByRole('link', { name: /shows the order total/ }).click()
+  await expect(page.getByText('Same error as 1 other test')).toBeVisible()
+  await expect(page.getByRole('link', { name: /pays with a saved card/ })).toBeVisible()
+})

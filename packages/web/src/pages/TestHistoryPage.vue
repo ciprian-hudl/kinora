@@ -18,7 +18,7 @@ import StatusTimeline from '@/components/viz/StatusTimeline.vue'
 import StoryBadge from '@/components/viz/StoryBadge.vue'
 import TestHealthBadge from '@/components/viz/TestHealthBadge.vue'
 import TestStatusBadge from '@/components/viz/TestStatusBadge.vue'
-import { useDemo, useTestHistory } from '@/composables/queries'
+import { useDemo, useTestClusters, useTestHistory } from '@/composables/queries'
 import { useQuarantine } from '@/composables/useQuarantine'
 import { formatDateTimeLong } from '@/lib/format'
 import { testLabel } from '@/lib/test-display'
@@ -37,9 +37,11 @@ const testKey = computed(() => {
 })
 
 const { state, isLoading, error, execute: reloadHistory } = useTestHistory(props.projectId, testKey)
-// Quarantines fail with the same outage as the history, so a retry reloads both.
+const { state: shared, execute: reloadClusters } = useTestClusters(props.projectId, testKey)
+// Quarantines and clusters fail with the same outage as the history, so a retry reloads them all.
 function retry() {
   void reloadHistory()
+  void reloadClusters()
   void reloadQuarantines()
 }
 
@@ -68,11 +70,11 @@ const healthText = computed(() => {
 
 // Clusters this test shares with at least one other test: "the same error hits N others".
 const relatedClusters = computed(() =>
-  (state.value?.clusters ?? [])
+  (shared.value?.clusters ?? [])
     .filter(c => c.tests > 1)
     .sort((a, b) => b.tests - a.tests),
 )
-const labels = computed(() => new Map(Object.entries(state.value?.titles ?? {}).map(([key, t]) => [key, testLabel(t)])))
+const labels = computed(() => new Map(Object.entries(shared.value?.titles ?? {}).map(([key, t]) => [key, testLabel(t)])))
 
 // Failures and flakes, most recent first.
 const incidents = computed(() =>

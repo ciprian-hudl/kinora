@@ -64,11 +64,22 @@ export function useProjectHistory(projectId: string) {
   )
 }
 
-// The test history page: one test with every point (the project history trims them) and the
-// failure clusters it shares. Refetches when the test changes.
+// The test history page: one test with every point (the project history trims them).
+// Refetches when the test changes.
 export function useTestHistory(projectId: string, testKey: MaybeRefOrGetter<string>) {
   const query = useAsyncState(
     async () => (toValue(testKey) ? trpc.dashboard.testHistory.query({ projectId, testKey: toValue(testKey) }) : null),
+    null,
+    QUERY_OPTIONS,
+  )
+  watch(() => toValue(testKey), () => void query.execute())
+  return query
+}
+
+// The failure clusters the test shares, fetched beside the history so the slower read never holds it up.
+export function useTestClusters(projectId: string, testKey: MaybeRefOrGetter<string>) {
+  const query = useAsyncState(
+    async () => (toValue(testKey) ? trpc.dashboard.testClusters.query({ projectId, testKey: toValue(testKey) }) : null),
     null,
     QUERY_OPTIONS,
   )

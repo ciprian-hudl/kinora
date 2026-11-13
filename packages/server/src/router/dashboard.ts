@@ -1,6 +1,6 @@
 import type { DashboardOverview, Manifest, OverviewProject, ProjectEntry, ProjectHistory, ProjectListing, ProjectRunsPage, RunComparison, RunIncident, RunReport, RunSummary } from '@kinora/core'
 import type { ProjectAnalytics } from '../reports/analytics'
-import type { TestHistoryPage } from '../reports/queries'
+import type { TestClusters, TestHistoryPage } from '../reports/queries'
 import { randomUUID } from 'node:crypto'
 import { compareRuns, SCHEMA_VERSION } from '@kinora/core'
 import { TRPCError } from '@trpc/server'
@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { db } from '../db'
 import { project, run, test, testQuarantine } from '../db/schemas/index'
 import { ANALYTICS_RANGES, isTimeZone, loadProjectAnalytics } from '../reports/analytics'
-import { findProject, incidentState, loadOverview, loadPreviousRunId, loadProjectHistory, loadProjectListings, loadProjectSummary, loadRun, loadRunPage, loadRunReport, loadRunSummaries, loadTestAttachments, loadTestHistoryPage, MAX_DASHBOARD_RUNS, searchRuns, searchTests, toNormTest } from '../reports/queries'
+import { findProject, incidentState, loadOverview, loadPreviousRunId, loadProjectHistory, loadProjectListings, loadProjectSummary, loadRun, loadRunPage, loadRunReport, loadRunSummaries, loadTestAttachments, loadTestClusters, loadTestHistoryPage, MAX_DASHBOARD_RUNS, searchRuns, searchTests, toNormTest } from '../reports/queries'
 import { orgProcedure, router } from '../trpc/index'
 
 export { MAX_DASHBOARD_RUNS }
@@ -118,6 +118,13 @@ export const dashboardRouter = router({
     .query(async ({ ctx, input }): Promise<TestHistoryPage> => {
       const p = await ownedProject(ctx.organizationId, input.projectId)
       return loadTestHistoryPage(p, input.testKey)
+    }),
+
+  testClusters: orgProcedure
+    .input(z.object({ projectId: z.string().min(1), testKey: z.string().min(1) }))
+    .query(async ({ ctx, input }): Promise<TestClusters> => {
+      const p = await ownedProject(ctx.organizationId, input.projectId)
+      return loadTestClusters(p, input.testKey)
     }),
 
   analytics: orgProcedure

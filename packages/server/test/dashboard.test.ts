@@ -743,7 +743,7 @@ describe('dashboard reads', () => {
     expect((await (await caller(a)).dashboard.testHistory({ projectId: 'web-app', testKey: 'nope' })).history).toBeNull()
   })
 
-  it('testHistory returns the clusters the test shares, with the titles of the other tests', async () => {
+  it('testClusters returns the clusters the test shares, with the titles of the other tests', async () => {
     const a = await createUser('a@test.dev')
     const payload = runPayload('web-app', '@smoke', 'unexpected')
     const [base] = payload.tests
@@ -755,11 +755,11 @@ describe('dashboard reads', () => {
     payload.run.counts = { total: 3, expected: 0, unexpected: 3, flaky: 0, skipped: 0 }
     await ingest(await createApiKey(a.id), payload)
 
-    const page = await (await caller(a)).dashboard.testHistory({ projectId: 'web-app', testKey: payload.tests[0].testKey })
-    expect(page.project.id).toBe('web-app')
+    const page = await (await caller(a)).dashboard.testClusters({ projectId: 'web-app', testKey: payload.tests[0].testKey })
     expect(page.clusters).toHaveLength(1)
     expect(page.clusters[0].testKeys.sort()).toEqual([payload.tests[0].testKey, payload.tests[1].testKey].sort())
     expect(page.titles[payload.tests[1].testKey]).toEqual({ title: 'pays', titlePath: [base.file, 'pays'] })
+    expect(await (await caller(a)).dashboard.testClusters({ projectId: 'web-app', testKey: 'nope' })).toEqual({ clusters: [], titles: {} })
   })
 
   it('componentHistory only reads the tests that mount stories', async () => {

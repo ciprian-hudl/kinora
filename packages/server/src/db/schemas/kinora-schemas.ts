@@ -95,6 +95,7 @@ export const test = pgTable('test', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, table => [
   index('test_runId_idx').on(table.runId),
+  index('test_failing_run_idx').on(table.runId).where(sql`status in ('unexpected', 'flaky')`),
   index('test_project_key_idx').on(table.projectId, table.testKey),
 ])
 

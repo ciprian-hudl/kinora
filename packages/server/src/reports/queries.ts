@@ -404,20 +404,31 @@ function pointReports(slug: string, runs: RunRow[], rows: PointRow[], codeowners
 }
 
 // Failure clusters read the failing occurrences only, with their first error.
-async function windowClusters(slug: string, runs: RunRow[]) {
-  const ids = runs.map(r => r.id)
-  const rows = await db.execute<{ runId: string, testKey: string, file: string, status: NormTest['status'], error: NormError }>(sql`
+interface FailureRow { runId: string, testKey: string, file: string, status: NormTest['status'], error: NormError }
+
+async function windowFailures(runs: RunRow[]): Promise<FailureRow[]> {
+  if (!runs.length)
+    return []
+  const rows = await db.execute<FailureRow & Record<string, unknown>>(sql`
     select t.run_id as "runId", t.test_key as "testKey", t.file, t.status, t.errors->0 as error
     from test t
-    where t.run_id in (${sql.join(ids.map(id => sql`${id}`), sql`, `)})
+    where t.run_id in (${sql.join(runs.map(r => sql`${r.id}`), sql`, `)})
       and t.status in ('unexpected', 'flaky') and jsonb_array_length(t.errors) > 0`)
+  return rows.rows
+}
+
+function clustersOf(slug: string, runs: RunRow[], rows: FailureRow[]) {
   const byRun = new Map<string, NormTest[]>()
-  for (const r of rows.rows) {
+  for (const r of rows) {
     const tests = byRun.get(r.runId) ?? []
     tests.push({ testKey: r.testKey, file: r.file, status: r.status, errors: [r.error] } as NormTest)
     byRun.set(r.runId, tests)
   }
   return buildFailureClusters(runs.filter(r => byRun.has(r.id)).map(r => ({ ...runReport(slug, r, []), tests: byRun.get(r.id)! })))
+}
+
+async function windowClusters(slug: string, runs: RunRow[]) {
+  return clustersOf(slug, runs, await windowFailures(runs))
 }
 
 function projectEntry(p: ProjectRow, runs: RunRow[]): ProjectEntry {
@@ -509,31 +520,46 @@ export async function loadTestHistory(p: ProjectRow, testKey: string): Promise<T
 export interface TestHistoryPage {
   project: ProjectEntry
   history: TestHistory | null
+}
+
+// What the test history page shows first: the test with every point, plus the project's runs.
+export async function loadTestHistoryPage(p: ProjectRow, testKey: string): Promise<TestHistoryPage> {
+  const window = await windowRuns(p.id)
+  const history = (await testHistoryOver(p, countedRuns(window), testKey)) ?? null
+  return { project: projectEntry(p, window), history }
+}
+
+export interface TestClusters {
   // The failure clusters this test is part of, and the titles of the tests they share.
   clusters: FailureCluster[]
   titles: Record<string, Pick<TestHistory, 'title' | 'titlePath'>>
 }
 
-// What the test history page shows: the test with every point, plus what it needs of the project
-// (its runs, the clusters this test is in), without the history of every other test.
-export async function loadTestHistoryPage(p: ProjectRow, testKey: string): Promise<TestHistoryPage> {
-  const window = await windowRuns(p.id)
-  const runs = countedRuns(window)
-  const history = (await testHistoryOver(p, runs, testKey)) ?? null
-  const clusters = history && (history.failed || history.flaky)
-    ? (await windowClusters(p.slug, runs)).filter(c => c.testKeys.includes(testKey))
-    : []
-  const keys = [...new Set(clusters.flatMap(c => c.testKeys))]
-  const titleRows = keys.length
+// Loaded after the history: building the clusters reads every failure in the window.
+export async function loadTestClusters(p: ProjectRow, testKey: string): Promise<TestClusters> {
+  const runs = countedRuns(await windowRuns(p.id))
+  const failures = await windowFailures(runs)
+  if (!failures.some(f => f.testKey === testKey))
+    return { clusters: [], titles: {} }
+  const clusters = clustersOf(p.slug, runs, failures).filter(c => c.testKeys.includes(testKey))
+  const keys = new Set(clusters.flatMap(c => c.testKeys))
+  // Each title from the test's newest failure in the window, one row per test.
+  const order = new Map(runs.map((r, i) => [r.id, i]))
+  const newest = new Map<string, string>()
+  for (const f of failures) {
+    const seen = newest.get(f.testKey)
+    if (keys.has(f.testKey) && (!seen || order.get(f.runId)! < order.get(seen)!))
+      newest.set(f.testKey, f.runId)
+  }
+  const pairs = [...newest]
+  const titleRows = pairs.length
     ? await db.execute<{ testKey: string, title: string, titlePath: string[] }>(sql`
-        select distinct on (t.test_key) t.test_key as "testKey", t.title, t.title_path as "titlePath"
+        select t.test_key as "testKey", t.title, t.title_path as "titlePath"
         from test t
-        where t.project_id = ${p.id} and t.test_key in (${sql.join(keys.map(k => sql`${k}`), sql`, `)})
-        order by t.test_key, t.created_at desc`)
+        join unnest(array[${sql.join(pairs.map(([, runId]) => sql`${runId}`), sql`, `)}]::text[], array[${sql.join(pairs.map(([key]) => sql`${key}`), sql`, `)}]::text[]) as k(run_id, test_key)
+          on t.run_id = k.run_id and t.test_key = k.test_key`)
     : { rows: [] }
   return {
-    project: projectEntry(p, window),
-    history,
     clusters,
     titles: Object.fromEntries(titleRows.rows.map(r => [r.testKey, { title: r.title, titlePath: r.titlePath }])),
   }
