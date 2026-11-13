@@ -27,6 +27,7 @@ const headerCols = [
   { id: 'fail', label: 'Failed', right: true },
   { id: 'flaky', label: 'Flaky', right: true },
   { id: 'duration', label: 'Duration', right: true },
+  { id: 'branch', label: 'Branch', right: false },
   { id: 'sha', label: 'SHA', right: true },
 ] as const
 </script>
@@ -68,6 +69,9 @@ const headerCols = [
           </TableCell>
           <TableCell class="text-right font-mono text-xs tabular-nums text-muted-foreground">
             {{ formatDuration(run.duration) }}
+          </TableCell>
+          <TableCell class="max-w-56 truncate font-mono text-xs text-muted-foreground" :title="run.git?.branch">
+            {{ run.git?.branch ?? '-' }}
           </TableCell>
           <TableCell class="text-right font-mono text-xs text-muted-foreground">
             {{ run.git?.sha ? run.git.sha.slice(0, 7) : '-' }}

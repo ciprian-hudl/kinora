@@ -31,3 +31,14 @@ test('pages the run table newest first and keeps the cursor in the URL', async (
   await expect(rows).toHaveCount(26)
   await expect(rows.nth(1).getByRole('cell').first()).toHaveText(newest)
 })
+
+test('shows each run\'s branch next to its sha', async ({ page }) => {
+  const slug = `branch-${Date.now()}`
+  const token = await createApiToken(page)
+  await postRun(page, token, runOf(slug, new Date(), [testOf('a.spec.ts', 'works', 'expected')], { branch: 'feature/thor-run', sha: 'abcdef1234567' }))
+
+  await page.goto(`/projects/${slug}`)
+  const row = page.getByRole('row').nth(1)
+  await expect(row.getByRole('cell', { name: 'feature/thor-run' })).toBeVisible()
+  await expect(row.getByRole('cell', { name: 'abcdef1' })).toBeVisible()
+})
