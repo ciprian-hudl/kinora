@@ -1,7 +1,7 @@
-import type { CiMeta, GitMeta, InsightStatus, NormError, NormTest, RootCause, RootCauses, TestInsight, TestOccurrence, TestOccurrences } from '@kinora/core'
+import type { CiMeta, CommonErrors, ErrorCluster, GitMeta, InsightStatus, NormError, NormTest, TestInsight, TestOccurrence, TestOccurrences } from '@kinora/core'
 import type { SQL } from 'drizzle-orm'
 import type { ProjectRow } from './queries'
-import { fingerprintError } from '@kinora/core'
+import { errorCategory, fingerprintError, stripAnsi } from '@kinora/core'
 import { sql } from 'drizzle-orm'
 import { db } from '../db'
 import { storage } from '../lib/storage'
@@ -19,8 +19,9 @@ export interface InsightScope {
 
 export type InsightSort = 'count' | 'flakeRate'
 
-const MAX_CAUSE_ROWS = 50_000
-const CAUSE_EXAMPLES = 3
+const MAX_ERROR_ROWS = 50_000
+const ERROR_EXAMPLES = 3
+const TALLY_SIZE = 5
 // A test needs this many runs in the window before its flake rate ranks it.
 const MIN_RATE_RUNS = 3
 
@@ -40,7 +41,7 @@ function onBranch(branch?: string): SQL {
 
 // The counted runs in scope: incidents are the environment failing, not the tests.
 function windowRuns(scope: InsightScope): SQL {
-  return sql`select r.id, r.project_id, r.started_at, r.git, r.ci from run r
+  return sql`select r.id, r.project_id, r.started_at, r.git, r.ci, r.base_urls from run r
     where r.project_id in (${list(scope.projects.map(p => p.id))}) and r.started_at >= ${scope.since} and r.incident is null ${onBranch(scope.branch)}`
 }
 
@@ -76,7 +77,8 @@ function occurrence(r: OccurrenceRow, traces: Map<string, string>): TestOccurren
     ...(r.git?.sha && { sha: r.git.sha }),
     ...(r.ci?.runUrl && { ciRunUrl: r.ci.runUrl }),
     retries: r.retries,
-    ...(r.error && { error: { message: r.error.message, ...(r.error.stack && { stack: r.error.stack }) } }),
+    // Playwright colours its messages for the terminal; an agent reads them as text.
+    ...(r.error && { error: { message: stripAnsi(r.error.message), ...(r.error.stack && { stack: stripAnsi(r.error.stack) }) } }),
     traceUrl: traces.get(r.id) ?? null,
   }
 }
@@ -148,20 +150,54 @@ export async function loadTestInsights(scope: InsightScope, sort: InsightSort, l
     .slice(0, limit)
 }
 
-// The window's failures grouped by their normalized error, most frequent first, with the runs
-// that were environment incidents counted apart.
-export async function loadRootCauses(scope: InsightScope, limit: number): Promise<Omit<RootCauses, 'since'>> {
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = sorted.length >> 1
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+class Tally {
+  private counts = new Map<string, number>()
+  add(value: string | null | undefined) {
+    if (value)
+      this.counts.set(value, (this.counts.get(value) ?? 0) + 1)
+  }
+
+  top() {
+    return [...this.counts].sort((a, b) => b[1] - a[1]).slice(0, TALLY_SIZE).map(([value, count]) => ({ value, count }))
+  }
+}
+
+interface ErrorRow {
+  id: string
+  projectId: string
+  testKey: string
+  title: string
+  file: string
+  browser: string
+  shard: number | null
+  runId: string
+  startedAt: Date
+  git: GitMeta | null
+  baseUrls: string[] | null
+  error: NormError
+}
+
+// The window's failures grouped by their normalized error, most frequent first, each with the
+// signals that narrow down its cause. Runs that were environment incidents are counted apart.
+export async function loadCommonErrors(scope: InsightScope, limit: number): Promise<Omit<CommonErrors, 'since'>> {
   if (!scope.projects.length)
-    return { causes: [], incidents: [] }
+    return { errors: [], incidents: [] }
   const ids = list(scope.projects.map(p => p.id))
   const [failures, incidents] = await Promise.all([
-    db.execute<{ id: string, projectId: string, testKey: string, title: string, runId: string, startedAt: Date, error: NormError }>(sql`
+    db.execute<ErrorRow & Record<string, unknown>>(sql`
       with w as (${windowRuns(scope)})
-      select t.id, t.project_id as "projectId", t.test_key as "testKey", t.title, w.id as "runId", w.started_at as "startedAt", t.errors->0 as error
+      select t.id, t.project_id as "projectId", t.test_key as "testKey", t.title, t.file, t.project_name as browser, t.shard_index as shard,
+        w.id as "runId", w.started_at as "startedAt", w.git, w.base_urls as "baseUrls", t.errors->0 as error
       from w join test t on t.run_id = w.id
       where t.status in (${list(statuses(scope.status))}) and jsonb_array_length(t.errors) > 0
       order by w.started_at desc
-      limit ${MAX_CAUSE_ROWS + 1}`),
+      limit ${MAX_ERROR_ROWS + 1}`),
     db.execute<{ projectId: string, runs: number, reason: string }>(sql`
       select r.project_id as "projectId", count(*)::int as runs, (array_agg(r.incident->>'reason' order by r.started_at desc))[1] as reason
       from run r
@@ -170,42 +206,114 @@ export async function loadRootCauses(scope: InsightScope, limit: number): Promis
       order by 2 desc`),
   ])
   const slugOf = new Map(scope.projects.map(p => [p.id, p.slug]))
-  const rows = failures.rows.slice(0, MAX_CAUSE_ROWS)
+  const rows = failures.rows.slice(0, MAX_ERROR_ROWS)
+  const failuresInRun = new Map<string, number>()
+  for (const r of rows)
+    failuresInRun.set(r.runId, (failuresInRun.get(r.runId) ?? 0) + 1)
 
-  interface Acc extends Omit<RootCause, 'tests' | 'projects' | 'examples'> {
+  interface Acc {
+    fingerprint: string
+    title: string
+    sample: string
+    occurrences: number
     tests: Set<string>
     projects: Set<string>
-    examples: typeof rows
+    perRun: Map<string, number>
+    first: ErrorRow
+    lastSeen: Date
+    branches: Tally
+    browsers: Tally
+    shards: Tally
+    baseUrls: Tally
+    locations: Map<string, { file: string, line?: number, count: number, inTestFile: boolean }>
+    examples: ErrorRow[]
   }
   const byFingerprint = new Map<string, Acc>()
   for (const r of rows) {
     const { fingerprint, title, sample } = fingerprintError(r.error)
-    const at = new Date(r.startedAt).toISOString()
     let c = byFingerprint.get(fingerprint)
     if (!c) {
       // Rows come newest first, so the first one seen is the freshest wording of the error.
-      c = { fingerprint, title, sample, occurrences: 0, tests: new Set(), projects: new Set(), firstSeen: at, lastSeen: at, examples: [] }
+      c = { fingerprint, title, sample, occurrences: 0, tests: new Set(), projects: new Set(), perRun: new Map(), first: r, lastSeen: r.startedAt, branches: new Tally(), browsers: new Tally(), shards: new Tally(), baseUrls: new Tally(), locations: new Map(), examples: [] }
       byFingerprint.set(fingerprint, c)
     }
     c.occurrences++
     c.tests.add(`${r.projectId}\0${r.testKey}`)
     c.projects.add(slugOf.get(r.projectId)!)
-    c.firstSeen = at
-    if (c.examples.length < CAUSE_EXAMPLES && !c.examples.some(e => e.testKey === r.testKey && e.projectId === r.projectId))
+    c.perRun.set(r.runId, (c.perRun.get(r.runId) ?? 0) + 1)
+    c.first = r
+    c.branches.add(r.git?.branch)
+    c.browsers.add(r.browser)
+    c.shards.add(r.shard == null ? null : String(r.shard))
+    for (const url of r.baseUrls ?? [])
+      c.baseUrls.add(url)
+    const at = r.error.location
+    const where = at ? `${at.file}:${at.line}` : undefined
+    if (at && where) {
+      const l = c.locations.get(where) ?? { file: at.file, line: at.line, count: 0, inTestFile: at.file.endsWith(r.file) }
+      l.count++
+      c.locations.set(where, l)
+    }
+    if (c.examples.length < ERROR_EXAMPLES && !c.examples.some(e => e.testKey === r.testKey && e.projectId === r.projectId))
       c.examples.push(r)
   }
   const top = [...byFingerprint.values()].sort((a, b) => b.occurrences - a.occurrences).slice(0, limit)
-  const traces = await traceUrls(top.flatMap(c => c.examples.map(e => e.id)))
+  const [traces, lastPasses] = await Promise.all([
+    traceUrls(top.flatMap(c => c.examples.map(e => e.id))),
+    lastPassBefore(top.map(c => c.first)),
+  ])
+  const iso = (d: Date) => new Date(d).toISOString()
   return {
-    causes: top.map(c => ({
-      ...c,
+    errors: top.map((c, i): ErrorCluster => ({
+      fingerprint: c.fingerprint,
+      category: errorCategory(c.sample),
+      title: c.title,
+      sample: c.sample,
+      occurrences: c.occurrences,
+      runs: c.perRun.size,
       tests: c.tests.size,
       projects: [...c.projects],
-      examples: c.examples.map(e => ({ project: slugOf.get(e.projectId)!, testKey: e.testKey, title: e.title, runId: e.runId, startedAt: new Date(e.startedAt).toISOString(), traceUrl: traces.get(e.id) ?? null })),
+      firstSeen: {
+        at: iso(c.first.startedAt),
+        project: slugOf.get(c.first.projectId)!,
+        testKey: c.first.testKey,
+        runId: c.first.runId,
+        ...(c.first.git?.branch && { branch: c.first.git.branch }),
+        ...(c.first.git?.sha && { sha: c.first.git.sha }),
+        lastPass: lastPasses[i],
+      },
+      lastSeen: iso(c.lastSeen),
+      breakdown: { branches: c.branches.top(), browsers: c.browsers.top(), shards: c.shards.top(), baseUrls: c.baseUrls.top() },
+      locations: [...c.locations.values()].sort((a, b) => b.count - a.count).slice(0, TALLY_SIZE),
+      testsPerRun: median([...c.perRun.values()]),
+      failuresPerRun: median([...c.perRun.keys()].map(id => failuresInRun.get(id)!)),
+      examples: c.examples.map(e => ({ project: slugOf.get(e.projectId)!, testKey: e.testKey, title: e.title, runId: e.runId, startedAt: iso(e.startedAt), traceUrl: traces.get(e.id) ?? null })),
     })),
     incidents: incidents.rows.map(i => ({ project: slugOf.get(i.projectId)!, runs: i.runs, reason: i.reason })),
-    ...(failures.rows.length > MAX_CAUSE_ROWS && { sampled: MAX_CAUSE_ROWS }),
+    ...(failures.rows.length > MAX_ERROR_ROWS && { sampled: MAX_ERROR_ROWS }),
   }
+}
+
+// For each failure, the newest earlier run its test passed in.
+async function lastPassBefore(failures: ErrorRow[]): Promise<ErrorCluster['firstSeen']['lastPass'][]> {
+  if (!failures.length)
+    return []
+  const values = sql.join(failures.map((f, i) => sql`(${i}, ${f.projectId}, ${f.testKey}, ${new Date(f.startedAt)}::timestamp)`), sql`, `)
+  const rows = await db.execute<{ i: number, runId: string, startedAt: Date, sha: string | null }>(sql`
+    select x.i, p.run_id as "runId", p.started_at as "startedAt", p.sha
+    from (values ${values}) as x(i, project_id, test_key, before)
+    cross join lateral (
+      select r.id as run_id, r.started_at, r.git->>'sha' as sha
+      from test t join run r on r.id = t.run_id
+      where t.project_id = x.project_id and t.test_key = x.test_key and t.status = 'expected' and r.started_at < x.before and r.incident is null
+      order by r.started_at desc
+      limit 1
+    ) p`)
+  const byIndex = new Map(rows.rows.map(r => [Number(r.i), r]))
+  return failures.map((_, i) => {
+    const r = byIndex.get(i)
+    return r ? { at: new Date(r.startedAt).toISOString(), runId: r.runId, ...(r.sha && { sha: r.sha }) } : null
+  })
 }
 
 // One test in the window: its failures newest first with their traces, and the newest run it

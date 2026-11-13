@@ -1,7 +1,7 @@
-import type { InsightStatus, RootCauses, TestInsight, TestOccurrences } from '../contracts/insights'
+import type { CommonErrors, InsightStatus, TestInsight, TestOccurrences } from '../contracts/insights'
 import type { NormTest, RunIncident, RunReport, RunSummary, TestHistory } from '../contracts/kinora'
 import { z } from 'zod'
-import { rootCausesResponseSchema, testInsightsResponseSchema, testOccurrencesSchema } from '../contracts/insights'
+import { commonErrorsResponseSchema, testInsightsResponseSchema, testOccurrencesSchema } from '../contracts/insights'
 import { countsSchema, normTestSchema, runIncidentSchema, runReportSchema, runSummarySchema, SCHEMA_VERSION, testHistorySchema } from '../contracts/kinora'
 import { IngestError, toIngestError } from './ingest-client'
 
@@ -121,8 +121,8 @@ export function createReadClient(opts: ReadClientOptions) {
       return get(`/insights/tests${queryString({ ...query })}`, testInsightsResponseSchema)
     },
 
-    getRootCauses(query: InsightQuery = {}): Promise<RootCauses> {
-      return get(`/insights/root-causes${queryString({ ...query })}`, rootCausesResponseSchema)
+    getCommonErrors(query: InsightQuery = {}): Promise<CommonErrors> {
+      return get(`/insights/errors${queryString({ ...query })}`, commonErrorsResponseSchema)
     },
 
     getTestOccurrences(slug: string, testKey: string, window: InsightWindow = {}): Promise<TestOccurrences> {

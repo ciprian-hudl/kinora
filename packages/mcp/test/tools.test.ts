@@ -204,13 +204,13 @@ describe('insight tools', () => {
     expect(getTestInsights).toHaveBeenCalledWith({ projects: 'watch/*', sort: 'flakeRate', status: 'any' })
   })
 
-  it('root_causes and test_occurrences pass the window through', async () => {
-    const getRootCauses = vi.fn().mockResolvedValue({ since: 's', causes: [], incidents: [] })
+  it('common_errors and test_occurrences pass the window through', async () => {
+    const getCommonErrors = vi.fn().mockResolvedValue({ since: 's', errors: [], incidents: [] })
     const getTestOccurrences = vi.fn().mockResolvedValue({ since: 's', project: 'watch/e2e', testKey: 'k1', runs: 1, fails: 1, flakes: 0, occurrences: [occurrence], lastPass: null })
-    const call = harness({ getRootCauses, getTestOccurrences })
+    const call = harness({ getCommonErrors, getTestOccurrences })
 
-    await call('root_causes', { view: 'hudl-frontends', branch: 'default' })
-    expect(getRootCauses).toHaveBeenCalledWith({ projects: '!hudl/hudl-* !canary-tests/*', branch: 'default' })
+    await call('common_errors', { view: 'hudl-frontends', branch: 'default' })
+    expect(getCommonErrors).toHaveBeenCalledWith({ projects: '!hudl/hudl-* !canary-tests/*', branch: 'default' })
     const { data } = await call('test_occurrences', { project: 'watch/e2e', testKey: 'k1', since: '2d' })
     expect(getTestOccurrences).toHaveBeenCalledWith('watch/e2e', 'k1', { since: '2d' })
     expect(data.occurrences[0].traceUrl).toBe('https://x/t.zip')

@@ -1,4 +1,4 @@
-import type { IngestRun, NormTest, RootCauses, TestInsight, TestOccurrences } from '@kinora/core'
+import type { CommonErrors, IngestRun, NormTest, TestInsight, TestOccurrences } from '@kinora/core'
 import { randomUUID } from 'node:crypto'
 import { makeTestKey } from '@kinora/core'
 import { and, eq, sql } from 'drizzle-orm'
@@ -48,7 +48,7 @@ async function seed() {
   const key = await createApiKey(a.id)
   const post = (payload: IngestRun) => ingest(key, payload)
   // watch/e2e: "pays" fails 3 times and flakes once; "logs in" flakes in 2 of 3 runs.
-  await post(runOf('watch/e2e', 1, [testOf('pays', 'unexpected'), testOf('logs in', 'flaky', 'Error: timeout 5000ms'), testOf('searches', 'expected')]))
+  await post(runOf('watch/e2e', 1, [{ ...testOf('pays', 'unexpected'), errors: [{ message: 'Error: connection refused', location: { file: `/repo/${FILE}`, line: 9, column: 5 } }] }, testOf('logs in', 'flaky', 'Error: timeout 5000ms'), testOf('searches', 'expected')]))
   await post(runOf('watch/e2e', 2, [testOf('pays', 'unexpected'), testOf('logs in', 'flaky', 'Error: timeout 3000ms'), testOf('searches', 'expected')]))
   await post(runOf('watch/e2e', 3, [testOf('pays', 'unexpected'), testOf('logs in', 'expected'), testOf('searches', 'expected')], 'thor/feature'))
   await post(runOf('watch/e2e', 4, [testOf('pays', 'flaky'), testOf('logs in', 'expected'), testOf('searches', 'expected')]))
@@ -97,16 +97,24 @@ describe('insights: tests', () => {
   })
 })
 
-describe('insights: root causes', () => {
-  it('groups the failures by their normalized error across projects, incidents apart', async () => {
+describe('insights: common errors', () => {
+  it('groups the failures by their normalized error across projects, with the signals of each, incidents apart', async () => {
     const key = await seed()
-    await db.update(run).set({ incident: { rule: 'host-unreachable', reason: 'Staging was down.' } }).where(sql`${run.git}->>'sha' = 'sha5'`)
-    const r = await get<RootCauses>('/insights/root-causes?since=24h', key)
-    expect(r.causes.map(c => [c.title, c.occurrences, c.tests, c.projects.sort()])).toEqual([
-      ['Error: connection refused', 5, 2, ['hudl/hudl-ui', 'watch/e2e']],
-      ['Error: timeout 5000ms', 2, 1, ['watch/e2e']],
+    await ingest(key, runOf('watch/e2e', 6, [testOf('searches', 'unexpected', 'Error: staging is down')]))
+    await db.update(run).set({ incident: { rule: 'host-unreachable', reason: 'Staging was down.' } }).where(sql`${run.git}->>'sha' = 'sha6'`)
+    const r = await get<CommonErrors>('/insights/errors?since=24h', key)
+
+    expect(r.errors.map(e => [e.title, e.category, e.occurrences, e.runs, e.tests, e.projects.sort()])).toEqual([
+      ['Error: connection refused', 'network', 5, 5, 2, ['hudl/hudl-ui', 'watch/e2e']],
+      ['Error: timeout 5000ms', 'timeout', 2, 2, 1, ['watch/e2e']],
     ])
-    expect(r.causes[0].examples.map(e => e.title).sort()).toEqual(['pays', 'renders'])
+    const [refused] = r.errors
+    expect(refused.firstSeen).toMatchObject({ project: 'watch/e2e', testKey: keyOf('pays'), sha: 'sha4', branch: 'main', lastPass: { sha: 'sha5' } })
+    expect(refused.breakdown.branches).toEqual([{ value: 'main', count: 4 }, { value: 'thor/feature', count: 1 }])
+    expect(refused.breakdown.browsers).toEqual([{ value: 'chromium', count: 5 }])
+    expect(refused.locations).toEqual([{ file: `/repo/${FILE}`, line: 9, count: 1, inTestFile: true }])
+    expect([refused.testsPerRun, refused.failuresPerRun]).toEqual([1, 1])
+    expect(refused.examples.map(e => e.title).sort()).toEqual(['pays', 'renders'])
     expect(r.incidents).toEqual([{ project: 'watch/e2e', runs: 1, reason: 'Staging was down.' }])
   })
 })

@@ -203,24 +203,24 @@ export function registerTools(server: McpServer, client: ReadClient): void {
     r => ok({ since: r.since, tests: r.tests.map(formatTestInsight) }),
   ))
 
-  server.registerTool('root_causes', {
-    title: 'Most common failure causes',
-    description: 'Failures and flakes over a time window grouped by their normalized error (numbers, ids, paths and urls stripped), most frequent first: the error title and a sample, occurrences, how many tests and which projects it hits, first and last seen, and example failures with trace.zip URLs. Runs flagged as environment incidents (the app or browser was down) are listed apart under incidents, not as causes. Answers "what are the most common root causes of flakes and failures".',
+  server.registerTool('common_errors', {
+    title: 'Most common errors',
+    description: 'Failures and flakes over a time window grouped by their normalized error (numbers, ids, paths and urls stripped), most frequent first. A group is a symptom many failures share, not a diagnosis; each comes with the signals that narrow down its cause: category (locator-timeout, timeout, assertion, network, navigation, browser-closed, auth, other), occurrences, runs, tests and projects hit; firstSeen in the window with its commit and the newest earlier run that test passed in (the commits between them are where the error came in); breakdown by branch, browser, shard and base URL (one value only points at it); the file:line the errors point at and whether that is the test file or code it calls; testsPerRun and failuresPerRun (many tests failing together points at shared infrastructure or the environment); and example failures with trace.zip URLs. Runs flagged as environment incidents are listed apart. Read the traces (test_occurrences) to find the actual cause.',
     inputSchema: z.object({
       ...scopeInput,
       status: z.enum(['failed', 'flaky', 'any']).optional().describe('failed, flaky, or any (default).'),
     }),
   }, ({ view, projects, ...query }) => guard(
-    () => client.getRootCauses({ ...query, projects: projectsOf(view, projects) }),
+    () => client.getCommonErrors({ ...query, projects: projectsOf(view, projects) }),
     r => ok(r),
   ))
 
   server.registerTool('test_occurrences', {
     title: 'A test\'s failures and traces',
-    description: 'Every failure or flake of one test over a time window, newest first, each with its run, time, branch, commit, CI run link, retries, error and trace.zip URL, plus the newest run it passed in with that trace to compare against. Use after top_failing_tests, flakiest_tests or root_causes to collect the traces to debug.',
+    description: 'Every failure or flake of one test over a time window, newest first, each with its run, time, branch, commit, CI run link, retries, error and trace.zip URL, plus the newest run it passed in with that trace to compare against. Use after top_failing_tests, flakiest_tests or common_errors to collect the traces to debug.',
     inputSchema: z.object({
       project: z.string().describe('Project slug.'),
-      testKey: z.string().describe('Test key (from top_failing_tests, flakiest_tests, root_causes or list_failures).'),
+      testKey: z.string().describe('Test key (from top_failing_tests, flakiest_tests, common_errors or list_failures).'),
       ...windowInput,
       status: z.enum(['failed', 'flaky', 'any']).optional().describe('failed, flaky, or any (default).'),
     }),

@@ -2,7 +2,7 @@ import type { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { insightStatusSchema, parseSince, projectMatcher } from '@kinora/core'
 import { z } from 'zod'
-import { loadRootCauses, loadTestInsights, loadTestOccurrences } from '../reports/insights'
+import { loadCommonErrors, loadTestInsights, loadTestOccurrences } from '../reports/insights'
 import { findProject, listProjects, loadLatestRun, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries, loadTestHistory } from '../reports/queries'
 
 type ReadApi = Hono<{ Variables: { orgId: string } }>
@@ -94,11 +94,11 @@ export function registerReadRoutes(api: ReadApi): void {
     return c.json({ since: since.toISOString(), tests: await loadTestInsights(scope, sort, limit) })
   })
 
-  api.get('/insights/root-causes', zValidator('query', insightsQuery), async (c) => {
+  api.get('/insights/errors', zValidator('query', insightsQuery), async (c) => {
     const { projects, since, branch, status, limit } = c.req.valid('query')
     const matches = projectMatcher(projects)
     const scope = { projects: (await listProjects(c.get('orgId'))).filter(p => matches(p.slug)), since, branch, status }
-    return c.json({ since: since.toISOString(), ...(await loadRootCauses(scope, limit)) })
+    return c.json({ since: since.toISOString(), ...(await loadCommonErrors(scope, limit)) })
   })
 
   api.get('/projects/:slug/occurrences', zValidator('query', windowQuery.extend({ testKey: z.string().min(1) })), async (c) => {
