@@ -10,17 +10,29 @@ import { Separator } from '@kinora/ui/separator'
 import { Skeleton } from '@kinora/ui/skeleton'
 import { StatBlock } from '@kinora/ui/stat-block'
 import { Loader2 } from '@lucide/vue'
-import { useRouteQuery } from '@vueuse/router'
 import { computed } from 'vue'
 import ErrorState from '@/components/app/ErrorState.vue'
+import SearchInput from '@/components/app/SearchInput.vue'
 import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import FilterCombobox from '@/components/FilterCombobox.vue'
 import OverviewEmpty from '@/components/project/OverviewEmpty.vue'
+import OverviewViews from '@/components/project/OverviewViews.vue'
 import ProjectCard from '@/components/project/ProjectCard.vue'
 import { useOverview } from '@/composables/queries'
+import { useOverviewFilters } from '@/composables/useOverviewFilters'
+import { NO_FILTERS, projectMatcher, sameFilters } from '@/lib/overview-filters'
 
-const branch = useRouteQuery('branch', 'all')
-const tag = useRouteQuery('tag', 'all')
+const { filters, apply, views, activeView, selectView, saveView, deleteView } = useOverviewFilters()
+
+function filterModel<K extends keyof typeof filters.value>(key: K) {
+  return computed({
+    get: () => filters.value[key],
+    set: v => apply({ ...filters.value, [key]: v }),
+  })
+}
+const project = filterModel('project')
+const branch = filterModel('branch')
+const tag = filterModel('tag')
 
 const { state: overview, isLoading, error, execute: retry } = useOverview(
   () => (branch.value === 'all' ? undefined : branch.value),
@@ -32,14 +44,16 @@ const projects = computed(() => overview.value?.projects ?? [])
 const branches = computed(() => overview.value?.branches ?? [])
 const tags = computed(() => overview.value?.tags ?? [])
 
-const hasFilters = computed(() => branch.value !== 'all' || tag.value !== 'all')
+const hasFilters = computed(() => !sameFilters(filters.value, NO_FILTERS))
 
 function clearFilters() {
-  branch.value = 'all'
-  tag.value = 'all'
+  apply(NO_FILTERS)
 }
 
-const displayProjects = computed(() => projects.value.filter(p => p.runCount > 0))
+const displayProjects = computed(() => {
+  const matches = projectMatcher(project.value)
+  return projects.value.filter(p => p.runCount > 0 && matches(p.id))
+})
 
 const stats = computed(() => {
   const latest = displayProjects.value.map(latestRun).filter(r => r != null)
@@ -87,6 +101,8 @@ const stats = computed(() => {
             Clear
           </Button>
 
+          <SearchInput v-model="project" placeholder="hudl/hudl-*, !fan/*" label="Filter projects" />
+
           <FilterCombobox
             v-if="branches.length > 1"
             v-model="branch"
@@ -106,6 +122,17 @@ const stats = computed(() => {
           />
         </div>
       </div>
+
+      <OverviewViews
+        v-if="!loading && (views.length || hasFilters)"
+        :views="views"
+        :filters="filters"
+        :active="activeView"
+        @clear="clearFilters"
+        @select="selectView"
+        @save="saveView"
+        @delete="deleteView"
+      />
 
       <StatStripSkeleton v-if="loading && !error" :count="5" />
       <div

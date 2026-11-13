@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { login, scanPage } from './helpers'
+import { createApiToken, login, postRun, runOf, scanPage, testOf } from './helpers'
 
 test.beforeEach(async ({ page }) => {
   await login(page)
@@ -35,4 +35,41 @@ test('a failed filter change keeps the filters', async ({ page }) => {
   await alert.getByRole('button', { name: 'Retry' }).click()
 
   await expect(page.getByRole('link', { name: 'API Gateway' })).toBeVisible()
+})
+
+test('a saved view filters by project, links, and comes back next visit', async ({ page, context }) => {
+  const stamp = Date.now()
+  const token = await createApiToken(page)
+  const tests = [testOf('a.spec.ts', 'works', 'expected')]
+  await postRun(page, token, runOf(`views-${stamp}/hfe-app`, new Date(), tests))
+  await postRun(page, token, runOf(`views-${stamp}/hudl-ui`, new Date(), tests))
+  const hfe = page.getByRole('link', { name: `views-${stamp}/hfe-app` })
+  const marvel = page.getByRole('link', { name: `views-${stamp}/hudl-ui` })
+
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Filter projects' }).fill(`views-${stamp}/hudl-*`)
+  await expect(marvel).toBeVisible()
+  await expect(hfe).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Save view' }).click()
+  await page.getByRole('textbox', { name: 'View name' }).fill('Marvel')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page).toHaveURL(/[?&]view=marvel/)
+  await expect(page.getByRole('radio', { name: 'marvel' })).toBeChecked()
+  const link = page.url()
+
+  await page.goto('/')
+  await expect(page).toHaveURL(/[?&]view=marvel/)
+  await expect(hfe).toHaveCount(0)
+  await page.getByRole('radio', { name: 'All' }).click()
+  await expect(hfe).toBeVisible()
+  await scanPage(page)
+
+  const other = await context.browser()!.newContext({ storageState: { cookies: (await context.storageState()).cookies, origins: [] } })
+  const peer = await other.newPage()
+  await peer.goto(link)
+  await expect(peer.getByRole('radio', { name: 'marvel' })).toBeChecked()
+  await expect(peer.getByRole('link', { name: `views-${stamp}/hfe-app` })).toHaveCount(0)
+  await expect(peer.getByRole('link', { name: `views-${stamp}/hudl-ui` })).toBeVisible()
+  await other.close()
 })
