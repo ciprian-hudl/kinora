@@ -156,7 +156,7 @@ function runWindowOptions(scope: SQL) {
   const w = runWindow(db.select({ git: run.git, countsByTag: run.countsByTag }).from(run).$dynamic())
   const runs = db.select({ ...w._.selectedFields }).from(project).innerJoinLateral(w, sql`true`).where(scope)
   return db.execute<{ branches: string[], tags: string[] }>(sql`with w as (${runs})
-    select array(select distinct git->>'branch' from w where git->>'branch' is not null) as branches, array(select distinct jsonb_object_keys(counts_by_tag) from w) as tags`)
+    select array(select git->>'branch' from w where git->>'branch' is not null group by 1 order by count(*) desc, 1) as branches, array(select distinct jsonb_object_keys(counts_by_tag) from w) as tags`)
 }
 
 function groupByProject<T extends { projectId: string }>(rows: T[]): Map<string, T[]> {
@@ -268,7 +268,11 @@ export async function loadRunPage(p: ProjectRow, query: RunPageQuery = {}, limit
   const [found, [{ n }], branches] = await Promise.all([
     runPage(p, query, limit),
     db.select({ n: count() }).from(run).where(and(eq(run.projectId, p.id), onBranch(view.branch))),
-    db.selectDistinct({ branch: sql<string>`${run.git}->>'branch'` }).from(run).where(and(eq(run.projectId, p.id), sql`${run.git}->>'branch' is not null`)).orderBy(sql`${run.git}->>'branch'`),
+    db.select({ branch: sql<string>`${run.git}->>'branch'` })
+      .from(run)
+      .where(and(eq(run.projectId, p.id), sql`${run.git}->>'branch' is not null`))
+      .groupBy(sql`${run.git}->>'branch'`)
+      .orderBy(desc(count()), sql`${run.git}->>'branch'`),
   ])
   const startOver = after ? !found.newer : before && !found.runs.length
   const page = startOver ? await runPage(p, view, limit) : found

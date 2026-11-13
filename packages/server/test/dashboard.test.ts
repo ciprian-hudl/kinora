@@ -236,15 +236,14 @@ describe('dashboard project runs', () => {
     }
   })
 
-  it('filters the runs by branch and counts the matches', async () => {
-    const { a } = await seed(20, undefined, i => (i % 2 ? 'thor/fix' : 'main'))
+  it('filters the runs by branch, counts the matches, and lists the branches with the most runs first', async () => {
+    const { a } = await seed(20, undefined, i => (i % 4 ? 'thor/fix' : 'a-feature'))
     const projectRuns = (await caller(a)).dashboard.projectRuns
 
-    const page = await projectRuns({ projectId: 'web-app', branch: 'thor/fix' })
-    expect(page.runs.map(r => r.git?.branch)).toEqual(Array.from({ length: 10 }).fill('thor/fix'))
-    expect(page.total).toBe(10)
-    expect(page.branches).toContain('main')
-    expect(page.branches).toContain('thor/fix')
+    const page = await projectRuns({ projectId: 'web-app', branch: 'a-feature' })
+    expect(page.runs.map(r => r.git?.branch)).toEqual(Array.from({ length: 5 }).fill('a-feature'))
+    expect(page.total).toBe(5)
+    expect(page.branches).toEqual(['thor/fix', 'a-feature'])
     expect((await projectRuns({ projectId: 'web-app' })).total).toBe(21)
   })
 

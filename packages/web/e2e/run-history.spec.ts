@@ -69,6 +69,11 @@ test('filters and sorts the run table by branch', async ({ page }) => {
   await expect(branchCells).toHaveText(['thor/a', 'main', 'thor/b', 'main'])
 
   await page.getByRole('combobox', { name: 'Filter by branch' }).click()
+  const search = page.getByPlaceholder('Search branch...')
+  await search.fill('main')
+  await expect(page.getByRole('option').first()).toHaveText('main')
+  await search.fill('thor/a')
+  await expect(page.getByRole('option')).toHaveText(['thor/a'])
   await page.getByRole('option', { name: 'thor/a' }).click()
   await expect(branchCells).toHaveText(['thor/a'])
   await expect(page).toHaveURL(/[?&]branch=thor\/a/)

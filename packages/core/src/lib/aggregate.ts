@@ -96,7 +96,7 @@ export interface ProjectRunsPage {
   runs: RunSummary[]
   newer?: string
   older?: string
-  // Runs matching the page's filter, and every branch to filter by.
+  // Runs matching the page's filter, and every branch to filter by, most runs first.
   total: number
   branches: string[]
 }

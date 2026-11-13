@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Button } from '@kinora/ui/button'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@kinora/ui/command'
+import { Command, CommandInput, CommandList } from '@kinora/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@kinora/ui/popover'
 import { cn } from '@kinora/ui/utils'
-import { Check, ChevronsUpDown } from '@lucide/vue'
+import { ChevronsUpDown } from '@lucide/vue'
 import { ref } from 'vue'
+import FilterComboboxOptions from './FilterComboboxOptions.vue'
 
 const props = defineProps<{
   options: string[]
@@ -40,28 +41,11 @@ function select(value: string) {
       </slot>
     </PopoverTrigger>
     <PopoverContent class="w-72 p-0" :align="props.align ?? 'end'">
-      <Command>
+      <!-- Ranked here, not by the command's own filter: an exact match leads, then the given order. -->
+      <Command :should-filter="false">
         <CommandInput :placeholder="props.searchPlaceholder" class="font-mono text-xs" />
         <CommandList class="max-h-72">
-          <CommandEmpty class="py-4 text-center font-mono text-xs text-muted-foreground">
-            No match.
-          </CommandEmpty>
-          <CommandGroup>
-            <CommandItem value="all" class="font-mono text-xs" @select="() => select('all')">
-              <Check :class="cn('size-3.5 shrink-0', model === 'all' ? 'opacity-100' : 'opacity-0')" />
-              {{ props.allLabel }}
-            </CommandItem>
-            <CommandItem
-              v-for="o in props.options"
-              :key="o"
-              :value="o"
-              class="font-mono text-xs"
-              @select="() => select(o)"
-            >
-              <Check :class="cn('size-3.5 shrink-0', model === o ? 'opacity-100' : 'opacity-0')" />
-              <span class="truncate">{{ o }}</span>
-            </CommandItem>
-          </CommandGroup>
+          <FilterComboboxOptions :options="props.options" :all-label="props.allLabel" :selected="model" @select="select" />
         </CommandList>
       </Command>
     </PopoverContent>
