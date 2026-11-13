@@ -1,4 +1,4 @@
-import type { A11yReport, ComponentHealth, NormTest, StoryHealth, TestHistory, TestPoint } from '@kinora/core'
+import type { A11yReport, ComponentHealth, NormTest, StoryHealth, TestHistory, TestInsight, TestOccurrence, TestOccurrences, TestPoint } from '@kinora/core'
 import { byImpact, describeHealth, diagnose, windowStats } from '@kinora/core'
 
 const MAX_ERROR_CHARS = 4000
@@ -97,4 +97,23 @@ export function formatComponent(c: ComponentHealth, stories: StoryHealth[] = c.s
     lastStatus: c.lastStatus,
     stories: stories.map(formatStory),
   }
+}
+
+function occurrence(o: TestOccurrence) {
+  return {
+    ...o,
+    ...(o.error && { error: { message: truncate(o.error.message, MAX_ERROR_CHARS), ...(o.error.stack && { stack: truncate(o.error.stack, MAX_ERROR_CHARS) }) } }),
+  }
+}
+
+export function formatTestInsight(t: TestInsight) {
+  return { ...t, failRate: round(t.failRate), flakeRate: round(t.flakeRate), latest: occurrence(t.latest) }
+}
+
+export function formatOccurrences(r: TestOccurrences) {
+  return { ...r, occurrences: r.occurrences.map(occurrence), lastPass: r.lastPass && occurrence(r.lastPass) }
+}
+
+function round(n: number): number {
+  return Math.round(n * 1000) / 1000
 }

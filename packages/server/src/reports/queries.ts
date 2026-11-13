@@ -9,7 +9,7 @@ import { artifact, project, run, test } from '../db/schemas/index'
 import { matchCodeowners, parseCodeowners } from '../lib/codeowners'
 import { storage } from '../lib/storage'
 
-type ProjectRow = typeof project.$inferSelect
+export type ProjectRow = typeof project.$inferSelect
 type RunRow = typeof run.$inferSelect
 type TestRow = typeof test.$inferSelect
 

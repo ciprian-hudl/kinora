@@ -185,3 +185,34 @@ describe('test_history stories', () => {
     expect(data.histories[1]).not.toHaveProperty('stories')
   })
 })
+
+describe('insight tools', () => {
+  const occurrence = { runId: 'r1', startedAt: 's', status: 'unexpected' as const, retries: 0, error: { message: 'x'.repeat(5000) }, traceUrl: 'https://x/t.zip' }
+  const insight = { project: 'watch/e2e', testKey: 'k1', title: 'pays', titlePath: [], location: 'a.ts:1', runs: 3, fails: 2, flakes: 0, failRate: 2 / 3, flakeRate: 0, firstSeen: 's', lastSeen: 's', latest: occurrence }
+
+  it('top_failing_tests turns a view into its project globs and ranks by count', async () => {
+    const getTestInsights = vi.fn().mockResolvedValue({ since: 's', tests: [insight] })
+    const { data } = await harness({ getTestInsights })('top_failing_tests', { view: 'marvel', since: '24h', status: 'flaky' })
+    expect(getTestInsights).toHaveBeenCalledWith({ projects: 'hudl/hudl-*', since: '24h', status: 'flaky', sort: 'count' })
+    expect(data.tests[0].failRate).toBe(0.667)
+    expect(data.tests[0].latest.error.message).toContain('(truncated)')
+  })
+
+  it('flakiest_tests ranks by flake rate, and globs win over a view', async () => {
+    const getTestInsights = vi.fn().mockResolvedValue({ since: 's', tests: [] })
+    await harness({ getTestInsights })('flakiest_tests', { view: 'marvel', projects: 'watch/*' })
+    expect(getTestInsights).toHaveBeenCalledWith({ projects: 'watch/*', sort: 'flakeRate', status: 'any' })
+  })
+
+  it('root_causes and test_occurrences pass the window through', async () => {
+    const getRootCauses = vi.fn().mockResolvedValue({ since: 's', causes: [], incidents: [] })
+    const getTestOccurrences = vi.fn().mockResolvedValue({ since: 's', project: 'watch/e2e', testKey: 'k1', runs: 1, fails: 1, flakes: 0, occurrences: [occurrence], lastPass: null })
+    const call = harness({ getRootCauses, getTestOccurrences })
+
+    await call('root_causes', { view: 'hudl-frontends', branch: 'default' })
+    expect(getRootCauses).toHaveBeenCalledWith({ projects: '!hudl/hudl-* !canary-tests/*', branch: 'default' })
+    const { data } = await call('test_occurrences', { project: 'watch/e2e', testKey: 'k1', since: '2d' })
+    expect(getTestOccurrences).toHaveBeenCalledWith('watch/e2e', 'k1', { since: '2d' })
+    expect(data.occurrences[0].traceUrl).toBe('https://x/t.zip')
+  })
+})

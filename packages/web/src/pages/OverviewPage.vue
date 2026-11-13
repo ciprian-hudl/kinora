@@ -3,7 +3,9 @@ import {
   denom,
   formatPct,
   latestRun,
+  PROJECT_VIEWS,
   runHealth,
+  viewMatcher,
 } from '@kinora/core'
 import { Button } from '@kinora/ui/button'
 import { Separator } from '@kinora/ui/separator'
@@ -19,7 +21,7 @@ import OverviewEmpty from '@/components/project/OverviewEmpty.vue'
 import ProjectCard from '@/components/project/ProjectCard.vue'
 import { useOverview } from '@/composables/queries'
 import { useOverviewFilters } from '@/composables/useOverviewFilters'
-import { NO_FILTERS, OVERVIEW_VIEWS, sameFilters, viewMatcher } from '@/lib/overview-filters'
+import { NO_FILTERS, sameFilters } from '@/lib/overview-filters'
 
 const { filters, apply } = useOverviewFilters()
 
@@ -105,7 +107,7 @@ const stats = computed(() => {
               <TabsTrigger value="all" class="text-xs data-[state=active]:text-signal dark:data-[state=active]:text-signal">
                 all
               </TabsTrigger>
-              <TabsTrigger v-for="v in OVERVIEW_VIEWS" :key="v.id" :value="v.id" class="text-xs data-[state=active]:text-signal dark:data-[state=active]:text-signal">
+              <TabsTrigger v-for="v in PROJECT_VIEWS" :key="v.id" :value="v.id" class="text-xs data-[state=active]:text-signal dark:data-[state=active]:text-signal">
                 {{ v.id }}
               </TabsTrigger>
             </TabsList>

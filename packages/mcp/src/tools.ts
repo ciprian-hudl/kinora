@@ -1,8 +1,8 @@
 import type { createReadClient } from '@kinora/core'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { buildComponents, byInstability, diagnose, IngestError } from '@kinora/core'
+import { buildComponents, byInstability, diagnose, IngestError, PROJECT_VIEWS } from '@kinora/core'
 import { z } from 'zod'
-import { formatComponent, formatFailure, formatHistory, traceUrlOf } from './format'
+import { formatComponent, formatFailure, formatHistory, formatOccurrences, formatTestInsight, traceUrlOf } from './format'
 
 type ReadClient = ReturnType<typeof createReadClient>
 
@@ -37,6 +37,24 @@ function matchesHealth(kind: 'stable' | 'flaky' | 'broken', health?: 'flaky' | '
   if (health)
     return kind === health
   return !unstableOnly || kind !== 'stable'
+}
+
+const VIEWS = PROJECT_VIEWS.map(v => v.id) as [string, ...string[]]
+
+// The time window and project scope every insight tool takes.
+const windowInput = {
+  since: z.string().optional().describe('How far back: a span like 24h, 2d, 1w, or an ISO date. Default 7d, at most 90d.'),
+  branch: z.string().optional().describe('Only runs on this branch; `default` for main / master (leaves out PR and feature-branch runs). Omit for every branch.'),
+  limit: z.number().int().min(1).max(100).optional().describe('Results to return, default 25.'),
+}
+const scopeInput = {
+  view: z.enum(VIEWS).optional().describe(`A group of projects: ${PROJECT_VIEWS.map(v => `${v.id} (${v.projects})`).join(', ')}.`),
+  projects: z.string().optional().describe('Globs on the project id (from list_projects), space-separated; `!` drops, e.g. "watch/*" or "hudl/hudl-* !hudl/hudl-ui". Overrides view. Omit both for every project.'),
+  ...windowInput,
+}
+
+function projectsOf(view?: string, projects?: string): string | undefined {
+  return projects ?? PROJECT_VIEWS.find(v => v.id === view)?.projects
 }
 
 export function registerTools(server: McpServer, client: ReadClient): void {
@@ -162,5 +180,52 @@ export function registerTools(server: McpServer, client: ReadClient): void {
         return fail(`kinora: no trace attached for ${testKey} in run ${report.runId}`)
       return ok({ runId: report.runId, testKey, traceUrl: url })
     },
+  ))
+
+  server.registerTool('top_failing_tests', {
+    title: 'Tests that failed or flaked most',
+    description: 'The tests that failed or flaked most over a time window, across every project or a group of them (view, or globs on the project id), most occurrences first. Per test: its project, test key, title, file:line, fails, flakes, runs in the window, fail and flake rates, first and last seen, and its newest failure with the error, branch, commit and a trace.zip URL. Environment-incident runs are left out. Answers "which tests failed in watch in the last 24h" or "what failed most across marvel this week"; follow with test_occurrences for a test\'s other failures and traces.',
+    inputSchema: z.object({
+      ...scopeInput,
+      status: z.enum(['failed', 'flaky', 'any']).optional().describe('failed: hard failures; flaky: passed on a retry; any (default): both.'),
+    }),
+  }, ({ view, projects, ...query }) => guard(
+    () => client.getTestInsights({ ...query, projects: projectsOf(view, projects), sort: 'count' }),
+    r => ok({ since: r.since, tests: r.tests.map(formatTestInsight) }),
+  ))
+
+  server.registerTool('flakiest_tests', {
+    title: 'Flakiest tests',
+    description: 'The tests with the highest share of flaky runs (failed, then passed on a retry) over a time window, across every project or a group of them, so a test that ran 3 times and flaked twice outranks one that flaked twice in 200 runs. Needs 3 runs in the window. Same fields as top_failing_tests. Answers "which are the flakiest tests across hudl-frontends".',
+    inputSchema: z.object(scopeInput),
+  }, ({ view, projects, ...query }) => guard(
+    () => client.getTestInsights({ ...query, projects: projectsOf(view, projects), sort: 'flakeRate', status: 'any' }),
+    r => ok({ since: r.since, tests: r.tests.map(formatTestInsight) }),
+  ))
+
+  server.registerTool('root_causes', {
+    title: 'Most common failure causes',
+    description: 'Failures and flakes over a time window grouped by their normalized error (numbers, ids, paths and urls stripped), most frequent first: the error title and a sample, occurrences, how many tests and which projects it hits, first and last seen, and example failures with trace.zip URLs. Runs flagged as environment incidents (the app or browser was down) are listed apart under incidents, not as causes. Answers "what are the most common root causes of flakes and failures".',
+    inputSchema: z.object({
+      ...scopeInput,
+      status: z.enum(['failed', 'flaky', 'any']).optional().describe('failed, flaky, or any (default).'),
+    }),
+  }, ({ view, projects, ...query }) => guard(
+    () => client.getRootCauses({ ...query, projects: projectsOf(view, projects) }),
+    r => ok(r),
+  ))
+
+  server.registerTool('test_occurrences', {
+    title: 'A test\'s failures and traces',
+    description: 'Every failure or flake of one test over a time window, newest first, each with its run, time, branch, commit, CI run link, retries, error and trace.zip URL, plus the newest run it passed in with that trace to compare against. Use after top_failing_tests, flakiest_tests or root_causes to collect the traces to debug.',
+    inputSchema: z.object({
+      project: z.string().describe('Project slug.'),
+      testKey: z.string().describe('Test key (from top_failing_tests, flakiest_tests, root_causes or list_failures).'),
+      ...windowInput,
+      status: z.enum(['failed', 'flaky', 'any']).optional().describe('failed, flaky, or any (default).'),
+    }),
+  }, ({ project, testKey, ...window }) => guard(
+    () => client.getTestOccurrences(project, testKey, window),
+    r => ok(formatOccurrences(r)),
   ))
 }

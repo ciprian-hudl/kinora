@@ -1,10 +1,24 @@
 import type { Hono } from 'hono'
+import { zValidator } from '@hono/zod-validator'
+import { insightStatusSchema, parseSince, projectMatcher } from '@kinora/core'
+import { z } from 'zod'
+import { loadRootCauses, loadTestInsights, loadTestOccurrences } from '../reports/insights'
 import { findProject, listProjects, loadLatestRun, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries, loadTestHistory } from '../reports/queries'
 
 type ReadApi = Hono<{ Variables: { orgId: string } }>
 
 const DEFAULT_RUNS_LIMIT = 50
 const MAX_RUNS_LIMIT = 200
+
+// The time window every insight reads: `since` is a span back from now (`24h`, `2d`) or a date.
+const windowQuery = z.object({
+  since: z.string().optional().transform((v, ctx) => parseSince(v) ?? (ctx.addIssue({ code: 'custom', message: 'since must be a span like 24h, 2d, 1w or an ISO date' }), z.NEVER)),
+  branch: z.string().min(1).max(255).optional(),
+  status: insightStatusSchema.default('any'),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+})
+// Globs on the project id, e.g. `hudl/hudl-*` or `!hudl/hudl-*`; none reads every project.
+const insightsQuery = windowQuery.extend({ projects: z.string().max(1000).default('') })
 
 // Registered on publicApi so these inherit its Bearer auth, org scope, and rate limit.
 export function registerReadRoutes(api: ReadApi): void {
@@ -71,5 +85,27 @@ export function registerReadRoutes(api: ReadApi): void {
     }
     const { histories } = await loadProjectHistory(p)
     return c.json({ histories })
+  })
+
+  api.get('/insights/tests', zValidator('query', insightsQuery.extend({ sort: z.enum(['count', 'flakeRate']).default('count') })), async (c) => {
+    const { projects, since, branch, status, limit, sort } = c.req.valid('query')
+    const matches = projectMatcher(projects)
+    const scope = { projects: (await listProjects(c.get('orgId'))).filter(p => matches(p.slug)), since, branch, status }
+    return c.json({ since: since.toISOString(), tests: await loadTestInsights(scope, sort, limit) })
+  })
+
+  api.get('/insights/root-causes', zValidator('query', insightsQuery), async (c) => {
+    const { projects, since, branch, status, limit } = c.req.valid('query')
+    const matches = projectMatcher(projects)
+    const scope = { projects: (await listProjects(c.get('orgId'))).filter(p => matches(p.slug)), since, branch, status }
+    return c.json({ since: since.toISOString(), ...(await loadRootCauses(scope, limit)) })
+  })
+
+  api.get('/projects/:slug/occurrences', zValidator('query', windowQuery.extend({ testKey: z.string().min(1) })), async (c) => {
+    const p = await findProject(c.get('orgId'), c.req.param('slug'))
+    if (!p)
+      return c.json({ error: 'Project not found' }, 404)
+    const { testKey, since, branch, status, limit } = c.req.valid('query')
+    return c.json({ since: since.toISOString(), ...(await loadTestOccurrences(p, testKey, { since, branch, status }, limit)) })
   })
 }

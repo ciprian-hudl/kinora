@@ -1,5 +1,7 @@
+import type { InsightStatus, RootCauses, TestInsight, TestOccurrences } from '../contracts/insights'
 import type { NormTest, RunIncident, RunReport, RunSummary, TestHistory } from '../contracts/kinora'
 import { z } from 'zod'
+import { rootCausesResponseSchema, testInsightsResponseSchema, testOccurrencesSchema } from '../contracts/insights'
 import { countsSchema, normTestSchema, runIncidentSchema, runReportSchema, runSummarySchema, SCHEMA_VERSION, testHistorySchema } from '../contracts/kinora'
 import { IngestError, toIngestError } from './ingest-client'
 
@@ -45,6 +47,23 @@ const failuresResponseSchema = z.object({
 })
 
 const historyResponseSchema = z.object({ histories: z.array(testHistorySchema) })
+
+export interface InsightWindow {
+  since?: string
+  branch?: string
+  status?: InsightStatus
+  limit?: number
+}
+
+export interface InsightQuery extends InsightWindow {
+  // Globs on the project id, e.g. `hudl/hudl-*`; none reads every project.
+  projects?: string
+}
+
+function queryString(params: Record<string, string | number | undefined>): string {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]))
+  return q.size ? `?${q}` : ''
+}
 
 // Typed client over the API-key read API (`GET /api/v1/*`). Same auth as the ingest client; used by
 // the MCP server so agents can pull last-run failures, run reports, and per-test history.
@@ -96,6 +115,18 @@ export function createReadClient(opts: ReadClientOptions) {
     async getHistory(slug: string, testKey?: string): Promise<TestHistory[]> {
       const q = testKey ? `?testKey=${encodeURIComponent(testKey)}` : ''
       return (await get(`${project(slug)}/history${q}`, historyResponseSchema)).histories
+    },
+
+    getTestInsights(query: InsightQuery & { sort?: 'count' | 'flakeRate' } = {}): Promise<{ since: string, tests: TestInsight[] }> {
+      return get(`/insights/tests${queryString({ ...query })}`, testInsightsResponseSchema)
+    },
+
+    getRootCauses(query: InsightQuery = {}): Promise<RootCauses> {
+      return get(`/insights/root-causes${queryString({ ...query })}`, rootCausesResponseSchema)
+    },
+
+    getTestOccurrences(slug: string, testKey: string, window: InsightWindow = {}): Promise<TestOccurrences> {
+      return get(`${project(slug)}/occurrences${queryString({ testKey, ...window })}`, testOccurrencesSchema)
     },
   }
 }
