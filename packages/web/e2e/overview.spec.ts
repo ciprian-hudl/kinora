@@ -29,7 +29,7 @@ test('a failed filter change keeps the filters', async ({ page }) => {
 
   const alert = page.getByRole('alert')
   await expect(alert.getByText('Can\'t reach the kinora server.')).toBeVisible()
-  await expect(page.getByRole('combobox').filter({ hasText: 'All branches' })).toBeVisible()
+  await expect(page.getByRole('combobox').filter({ hasText: 'all branches' })).toBeVisible()
 
   await page.unroute('**/trpc/dashboard.overview**')
   await alert.getByRole('button', { name: 'Retry' }).click()
@@ -37,39 +37,35 @@ test('a failed filter change keeps the filters', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'API Gateway' })).toBeVisible()
 })
 
-test('a saved view filters by project, links, and comes back next visit', async ({ page, context }) => {
+test('the marvel and hudl-frontends tabs split the projects, link, and come back next visit', async ({ page, context }) => {
   const stamp = Date.now()
   const token = await createApiToken(page)
   const tests = [testOf('a.spec.ts', 'works', 'expected')]
-  await postRun(page, token, runOf(`views-${stamp}/hfe-app`, new Date(), tests))
-  await postRun(page, token, runOf(`views-${stamp}/hudl-ui`, new Date(), tests))
-  const hfe = page.getByRole('link', { name: `views-${stamp}/hfe-app` })
-  const marvel = page.getByRole('link', { name: `views-${stamp}/hudl-ui` })
+  await postRun(page, token, runOf(`fan-${stamp}/e2e`, new Date(), tests))
+  await postRun(page, token, runOf(`hudl/hudl-${stamp}`, new Date(), tests))
+  const hfe = page.getByRole('link', { name: `fan-${stamp}/e2e` })
+  const marvel = page.getByRole('link', { name: `hudl/hudl-${stamp}` })
 
   await page.goto('/')
-  await page.getByRole('textbox', { name: 'Filter projects' }).fill(`views-${stamp}/hudl-*`)
+  await page.getByRole('tab', { name: 'marvel' }).click()
+  await expect(page).toHaveURL(/[?&]view=marvel/)
   await expect(marvel).toBeVisible()
   await expect(hfe).toHaveCount(0)
-
-  await page.getByRole('button', { name: 'Save view' }).click()
-  await page.getByRole('textbox', { name: 'View name' }).fill('Marvel')
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(page).toHaveURL(/[?&]view=marvel/)
-  await expect(page.getByRole('radio', { name: 'marvel' })).toBeChecked()
-  const link = page.url()
+  await scanPage(page)
 
   await page.goto('/')
   await expect(page).toHaveURL(/[?&]view=marvel/)
-  await expect(hfe).toHaveCount(0)
-  await page.getByRole('radio', { name: 'All' }).click()
+  await expect(page.getByRole('tab', { name: 'marvel' })).toHaveAttribute('aria-selected', 'true')
+
+  await page.getByRole('tab', { name: 'hudl-frontends' }).click()
   await expect(hfe).toBeVisible()
-  await scanPage(page)
+  await expect(marvel).toHaveCount(0)
 
   const other = await context.browser()!.newContext({ storageState: { cookies: (await context.storageState()).cookies, origins: [] } })
   const peer = await other.newPage()
-  await peer.goto(link)
-  await expect(peer.getByRole('radio', { name: 'marvel' })).toBeChecked()
-  await expect(peer.getByRole('link', { name: `views-${stamp}/hfe-app` })).toHaveCount(0)
-  await expect(peer.getByRole('link', { name: `views-${stamp}/hudl-ui` })).toBeVisible()
+  await peer.goto('/?view=marvel')
+  await expect(peer.getByRole('link', { name: `hudl/hudl-${stamp}` })).toBeVisible()
+  await peer.goto('/')
+  await expect(peer).toHaveURL(/[?&]view=marvel/)
   await other.close()
 })

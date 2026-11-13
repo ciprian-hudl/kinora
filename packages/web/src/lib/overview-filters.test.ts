@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filtersFromQuery, filtersToQuery, NO_FILTERS, projectMatcher, sameFilters, viewSlug } from './overview-filters'
+import { filtersFromQuery, filtersToQuery, NO_FILTERS, projectMatcher, sameFilters, viewMatcher } from './overview-filters'
 
 describe('projectMatcher', () => {
   const ids = ['hudl/hudl-ui', 'hudl/hudl-users', 'fan/e2e', 'watch/integration']
@@ -25,32 +25,37 @@ describe('projectMatcher', () => {
   })
 })
 
-describe('viewSlug', () => {
-  it('lowercases a name into its link slug', () => {
-    expect(viewSlug(' Marvel ')).toBe('marvel')
-    expect(viewSlug('HFE Smoke & e2e')).toBe('hfe-smoke-e2e')
+describe('viewMatcher', () => {
+  const ids = ['hudl/hudl-ui', 'fan/e2e', 'canary-tests/prod']
+
+  it('splits marvel from hudl-frontends, and all keeps every project', () => {
+    expect(ids.filter(viewMatcher('marvel'))).toEqual(['hudl/hudl-ui'])
+    expect(ids.filter(viewMatcher('hudl-frontends'))).toEqual(['fan/e2e'])
+    expect(ids.filter(viewMatcher('all'))).toEqual(ids)
   })
 })
 
 describe('sameFilters', () => {
-  it('compares every filter, ignoring surrounding space', () => {
-    const a = { project: 'hudl/hudl-*', branch: 'main', tag: 'all' }
-    expect(sameFilters(a, { ...a, project: ' hudl/hudl-* ' })).toBe(true)
-    expect(sameFilters(a, { ...a, project: '!hudl/hudl-*' })).toBe(false)
+  it('compares every filter', () => {
+    const a = { view: 'marvel', branch: 'main', tag: 'all' }
+    expect(sameFilters(a, { ...a })).toBe(true)
+    expect(sameFilters(a, { ...a, view: 'all' })).toBe(false)
     expect(sameFilters(a, { ...a, branch: 'all' })).toBe(false)
   })
 })
 
 describe('filtersFromQuery / filtersToQuery', () => {
   it('round-trips through the url, leaving the defaults out', () => {
-    const f = { project: 'hudl/hudl-*', branch: 'main', tag: '@smoke' }
+    const f = { view: 'marvel', branch: 'main', tag: '@smoke' }
     const query = filtersToQuery(f)
-    expect(query).toEqual({ view: undefined, project: 'hudl/hudl-*', branch: 'main', tag: '@smoke' })
+    expect(query).toEqual({ view: 'marvel', branch: 'main', tag: '@smoke' })
     expect(filtersFromQuery(query as never)).toEqual(f)
-    expect(filtersToQuery(NO_FILTERS, 'marvel')).toEqual({ view: 'marvel', project: undefined, branch: undefined, tag: undefined })
+    expect(filtersToQuery(NO_FILTERS)).toEqual({ view: undefined, branch: undefined, tag: undefined })
   })
 
-  it('falls back to no filters', () => {
+  it('reads a view case-insensitively and drops an unknown one', () => {
+    expect(filtersFromQuery({ view: 'Marvel' }).view).toBe('marvel')
+    expect(filtersFromQuery({ view: 'nope' })).toEqual(NO_FILTERS)
     expect(filtersFromQuery({})).toEqual(NO_FILTERS)
   })
 })

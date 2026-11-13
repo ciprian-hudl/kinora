@@ -9,20 +9,19 @@ import { Button } from '@kinora/ui/button'
 import { Separator } from '@kinora/ui/separator'
 import { Skeleton } from '@kinora/ui/skeleton'
 import { StatBlock } from '@kinora/ui/stat-block'
+import { Tabs, TabsList, TabsTrigger } from '@kinora/ui/tabs'
 import { Loader2 } from '@lucide/vue'
 import { computed } from 'vue'
 import ErrorState from '@/components/app/ErrorState.vue'
-import SearchInput from '@/components/app/SearchInput.vue'
 import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import FilterCombobox from '@/components/FilterCombobox.vue'
 import OverviewEmpty from '@/components/project/OverviewEmpty.vue'
-import OverviewViews from '@/components/project/OverviewViews.vue'
 import ProjectCard from '@/components/project/ProjectCard.vue'
 import { useOverview } from '@/composables/queries'
 import { useOverviewFilters } from '@/composables/useOverviewFilters'
-import { NO_FILTERS, projectMatcher, sameFilters } from '@/lib/overview-filters'
+import { NO_FILTERS, OVERVIEW_VIEWS, sameFilters, viewMatcher } from '@/lib/overview-filters'
 
-const { filters, apply, views, activeView, selectView, saveView, deleteView } = useOverviewFilters()
+const { filters, apply } = useOverviewFilters()
 
 function filterModel<K extends keyof typeof filters.value>(key: K) {
   return computed({
@@ -30,7 +29,7 @@ function filterModel<K extends keyof typeof filters.value>(key: K) {
     set: v => apply({ ...filters.value, [key]: v }),
   })
 }
-const project = filterModel('project')
+const view = filterModel('view')
 const branch = filterModel('branch')
 const tag = filterModel('tag')
 
@@ -44,14 +43,14 @@ const projects = computed(() => overview.value?.projects ?? [])
 const branches = computed(() => overview.value?.branches ?? [])
 const tags = computed(() => overview.value?.tags ?? [])
 
-const hasFilters = computed(() => !sameFilters(filters.value, NO_FILTERS))
+const hasFilters = computed(() => !sameFilters({ ...filters.value, view: 'all' }, NO_FILTERS))
 
 function clearFilters() {
-  apply(NO_FILTERS)
+  apply({ ...NO_FILTERS, view: view.value })
 }
 
 const displayProjects = computed(() => {
-  const matches = projectMatcher(project.value)
+  const matches = viewMatcher(view.value)
   return projects.value.filter(p => p.runCount > 0 && matches(p.id))
 })
 
@@ -101,13 +100,22 @@ const stats = computed(() => {
             Clear
           </Button>
 
-          <SearchInput v-model="project" placeholder="hudl/hudl-*, !fan/*" label="Filter projects" />
+          <Tabs v-model="view">
+            <TabsList class="border bg-background font-mono shadow-xs dark:border-input dark:bg-input/30" aria-label="Projects">
+              <TabsTrigger value="all" class="text-xs data-[state=active]:text-signal dark:data-[state=active]:text-signal">
+                all
+              </TabsTrigger>
+              <TabsTrigger v-for="v in OVERVIEW_VIEWS" :key="v.id" :value="v.id" class="text-xs data-[state=active]:text-signal dark:data-[state=active]:text-signal">
+                {{ v.id }}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
           <FilterCombobox
             v-if="branches.length > 1"
             v-model="branch"
             :options="branches"
-            all-label="All branches"
+            all-label="all branches"
             search-placeholder="Search branch..."
             trigger-class="w-44"
           />
@@ -116,23 +124,12 @@ const stats = computed(() => {
             v-if="tags.length > 1"
             v-model="tag"
             :options="tags"
-            all-label="All tags"
+            all-label="all tags"
             search-placeholder="Search tag..."
             trigger-class="w-40"
           />
         </div>
       </div>
-
-      <OverviewViews
-        v-if="!loading && (views.length || hasFilters)"
-        :views="views"
-        :filters="filters"
-        :active="activeView"
-        @clear="clearFilters"
-        @select="selectView"
-        @save="saveView"
-        @delete="deleteView"
-      />
 
       <StatStripSkeleton v-if="loading && !error" :count="5" />
       <div
