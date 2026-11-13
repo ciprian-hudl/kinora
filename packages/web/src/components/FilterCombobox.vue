@@ -11,6 +11,7 @@ const props = defineProps<{
   allLabel: string
   searchPlaceholder: string
   triggerClass?: string
+  align?: 'start' | 'end'
 }>()
 
 // 'all' or a concrete option.
@@ -26,17 +27,19 @@ function select(value: string) {
 <template>
   <Popover v-model:open="open">
     <PopoverTrigger as-child>
-      <Button
-        variant="outline"
-        role="combobox"
-        :aria-expanded="open"
-        :class="cn('h-9 justify-between gap-2 font-mono text-xs font-normal', props.triggerClass)"
-      >
-        <span class="truncate">{{ model === 'all' ? props.allLabel : model }}</span>
-        <ChevronsUpDown class="size-3.5 shrink-0 opacity-50" />
-      </Button>
+      <slot name="trigger" :open="open">
+        <Button
+          variant="outline"
+          role="combobox"
+          :aria-expanded="open"
+          :class="cn('h-9 justify-between gap-2 font-mono text-xs font-normal', props.triggerClass)"
+        >
+          <span class="truncate">{{ model === 'all' ? props.allLabel : model }}</span>
+          <ChevronsUpDown class="size-3.5 shrink-0 opacity-50" />
+        </Button>
+      </slot>
     </PopoverTrigger>
-    <PopoverContent class="w-72 p-0" align="end">
+    <PopoverContent class="w-72 p-0" :align="props.align ?? 'end'">
       <Command>
         <CommandInput :placeholder="props.searchPlaceholder" class="font-mono text-xs" />
         <CommandList class="max-h-72">

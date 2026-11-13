@@ -69,6 +69,9 @@ export const dashboardRouter = router({
       projectId: z.string().min(1),
       before: z.string().min(1).max(255).optional(),
       after: z.string().min(1).max(255).optional(),
+      branch: z.string().min(1).max(255).optional(),
+      sort: z.enum(['started', 'branch']).optional(),
+      dir: z.enum(['asc', 'desc']).optional(),
     }).refine(i => !(i.before && i.after), 'Pass before or after, not both'))
     .query(async ({ ctx, input }): Promise<ProjectRunsPage> => {
       const p = await ownedProject(ctx.organizationId, input.projectId)

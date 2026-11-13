@@ -42,3 +42,34 @@ test('shows each run\'s branch next to its sha', async ({ page }) => {
   await expect(row.getByRole('cell', { name: 'feature/thor-run' })).toBeVisible()
   await expect(row.getByRole('cell', { name: 'abcdef1' })).toBeVisible()
 })
+
+test('filters and sorts the run table by branch', async ({ page }) => {
+  const slug = `branches-${Date.now()}`
+  const token = await createApiToken(page)
+  const now = Date.now()
+  const tests = [testOf('a.spec.ts', 'works', 'expected')]
+  for (const [i, branch] of ['main', 'thor/b', 'main', 'thor/a'].entries())
+    await postRun(page, token, runOf(slug, new Date(now - i * 60_000), tests, { branch }))
+
+  await page.goto(`/projects/${slug}`)
+  const branchCells = page.getByRole('row').locator('td:nth-child(7)')
+  await expect(branchCells).toHaveText(['main', 'thor/b', 'main', 'thor/a'])
+
+  const sortByBranch = page.getByRole('button', { name: 'Branch' })
+  await sortByBranch.click()
+  await expect(page).toHaveURL(/[?&]sort=branch/)
+  await expect(branchCells).toHaveText(['main', 'main', 'thor/a', 'thor/b'])
+  await sortByBranch.click()
+  await expect(branchCells).toHaveText(['thor/b', 'thor/a', 'main', 'main'])
+  await sortByBranch.click()
+  await expect(page).not.toHaveURL(/[?&]sort=/)
+  await expect(branchCells).toHaveText(['main', 'thor/b', 'main', 'thor/a'])
+
+  await page.getByRole('button', { name: 'Run' }).click()
+  await expect(branchCells).toHaveText(['thor/a', 'main', 'thor/b', 'main'])
+
+  await page.getByRole('combobox', { name: 'Filter by branch' }).click()
+  await page.getByRole('option', { name: 'thor/a' }).click()
+  await expect(branchCells).toHaveText(['thor/a'])
+  await expect(page).toHaveURL(/[?&]branch=thor\/a/)
+})

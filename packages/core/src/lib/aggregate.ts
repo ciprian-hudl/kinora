@@ -88,10 +88,17 @@ export interface DashboardOverview {
   projects: OverviewProject[]
 }
 
+// The project's run table: by start time, or by branch with the newest first within one.
+export type RunSort = 'started' | 'branch'
+export type SortDir = 'asc' | 'desc'
+
 export interface ProjectRunsPage {
   runs: RunSummary[]
   newer?: string
   older?: string
+  // Runs matching the page's filter, and every branch to filter by.
+  total: number
+  branches: string[]
 }
 
 export const OVERVIEW_TREND_POINTS = 50

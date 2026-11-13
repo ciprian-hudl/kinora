@@ -1,4 +1,4 @@
-import type { Counts, DashboardOverview, FailureCluster, NormError, NormTest, OverviewProject, ProjectEntry, ProjectHistory, ProjectListing, ProjectRunsPage, RunReport, RunSummary, StatusCounts, TestHistory } from '@kinora/core'
+import type { Counts, DashboardOverview, FailureCluster, NormError, NormTest, OverviewProject, ProjectEntry, ProjectHistory, ProjectListing, ProjectRunsPage, RunReport, RunSort, RunSummary, SortDir, StatusCounts, TestHistory } from '@kinora/core'
 import type { SQL } from 'drizzle-orm'
 import type { PgSelect } from 'drizzle-orm/pg-core'
 import type { CodeownersRule } from '../lib/codeowners'
@@ -249,25 +249,54 @@ async function summarizeProjects(projectRows: ProjectRow[] | Promise<ProjectRow[
 
 export const RUN_PAGE_SIZE = 25
 
-export async function loadRunPage(p: ProjectRow, cursor: { before?: string, after?: string } = {}, limit = RUN_PAGE_SIZE): Promise<ProjectRunsPage> {
-  const page = await runPage(p, cursor, limit)
-  const startOver = cursor.after ? !page.newer : cursor.before && !page.runs.length
-  return startOver ? runPage(p, {}, limit) : page
+export interface RunPageQuery {
+  before?: string
+  after?: string
+  branch?: string
+  sort?: RunSort
+  dir?: SortDir
+}
+
+const runBranch = sql`coalesce(${run.git}->>'branch', '')`
+
+function onBranch(branch?: string) {
+  return branch ? sql`${run.git}->>'branch' = ${branch}` : undefined
+}
+
+export async function loadRunPage(p: ProjectRow, query: RunPageQuery = {}, limit = RUN_PAGE_SIZE): Promise<ProjectRunsPage> {
+  const { before, after, ...view } = query
+  const [found, [{ n }], branches] = await Promise.all([
+    runPage(p, query, limit),
+    db.select({ n: count() }).from(run).where(and(eq(run.projectId, p.id), onBranch(view.branch))),
+    db.selectDistinct({ branch: sql<string>`${run.git}->>'branch'` }).from(run).where(and(eq(run.projectId, p.id), sql`${run.git}->>'branch' is not null`)).orderBy(sql`${run.git}->>'branch'`),
+  ])
+  const startOver = after ? !found.newer : before && !found.runs.length
+  const page = startOver ? await runPage(p, view, limit) : found
+  return { ...page, total: n, branches: branches.map(b => b.branch) }
 }
 
 export async function loadPreviousRunId(p: ProjectRow, runId: string): Promise<string | undefined> {
   return (await runPage(p, { before: runId }, 1)).runs[0]?.runId
 }
 
-async function runPage(p: ProjectRow, { before, after }: { before?: string, after?: string }, limit: number): Promise<ProjectRunsPage> {
+async function runPage(p: ProjectRow, { before, after, branch, sort = 'started', dir = sort === 'branch' ? 'asc' : 'desc' }: RunPageQuery, limit: number): Promise<Omit<ProjectRunsPage, 'total' | 'branches'>> {
   const anchorId = after ?? before
-  const key = sql`(${run.startedAt}, ${run.id})`
-  const anchorKey = sql`(select ${run.startedAt}, ${run.id} from ${run} where ${run.id} = ${anchorId} and ${run.projectId} = ${p.id})`
+  const anchor = (col: SQL) => sql`(select ${col} from ${run} where ${run.id} = ${anchorId} and ${run.projectId} = ${p.id})`
+  // `before` pages on in display order, `after` pages back, so `after` flips every comparison and order.
+  const ascending = (d: SortDir) => (d === 'asc') !== Boolean(after)
+  const timeDir = sort === 'branch' ? 'desc' : dir
+  const time = sql`(${run.startedAt}, ${run.id}) ${sql.raw(ascending(timeDir) ? '>' : '<')} ${anchor(sql`${run.startedAt}, ${run.id}`)}`
+  const aBranch = anchor(runBranch)
+  const past = sort === 'branch'
+    ? sql`(${runBranch} ${sql.raw(ascending(dir) ? '>' : '<')} ${aBranch} or (${runBranch} = ${aBranch} and ${time}))`
+    : time
+  const by = (d: SortDir) => (ascending(d) ? asc : desc)
+  const order = [...(sort === 'branch' ? [by(dir)(runBranch)] : []), by(timeDir)(run.startedAt), by(timeDir)(run.id)]
   const rows = await db
     .select()
     .from(run)
-    .where(and(eq(run.projectId, p.id), anchorId ? (after ? sql`${key} > ${anchorKey}` : sql`${key} < ${anchorKey}`) : undefined))
-    .orderBy(...(after ? [asc(run.startedAt), asc(run.id)] : [desc(run.startedAt), desc(run.id)]))
+    .where(and(eq(run.projectId, p.id), onBranch(branch), anchorId ? past : undefined))
+    .orderBy(...order)
     .limit(limit + 1)
   const more = rows.length > limit
   const page = rows.slice(0, limit)

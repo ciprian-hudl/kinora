@@ -1,7 +1,7 @@
 import type { Counts, IngestRun } from '@kinora/core'
 import { randomUUID } from 'node:crypto'
 import { diagnose, makeTestKey, STORY_ANNOTATION } from '@kinora/core'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { db } from '../src/db'
 import { artifact, project, run, test, testQuarantine } from '../src/db/schemas/index'
@@ -178,7 +178,7 @@ describe('dashboard overview', () => {
 describe('dashboard project runs', () => {
   const MINUTE = 60_000
 
-  async function seed(n: number, startedAt = (i: number, now: number) => new Date(now - (i + 1) * MINUTE)) {
+  async function seed(n: number, startedAt = (i: number, now: number) => new Date(now - (i + 1) * MINUTE), branch = (_i: number): string | undefined => undefined) {
     const a = await createUser('a@test.dev')
     await ingest(await createApiKey(a.id), runPayload('web-app', '@smoke', 'expected'))
     const p = await db.query.project.findFirst({ where: eq(project.slug, 'web-app') })
@@ -188,6 +188,7 @@ describe('dashboard project runs', () => {
       projectId: p!.id,
       startedAt: startedAt(i, now),
       duration: 0,
+      ...(branch(i) && { git: { branch: branch(i) } }),
       counts: { total: 1, expected: 1, unexpected: 0, flaky: 0, skipped: 0 },
     })))
     const all = await db.select({ id: run.id }).from(run).where(eq(run.projectId, p!.id)).orderBy(desc(run.startedAt), desc(run.id))
@@ -233,6 +234,48 @@ describe('dashboard project runs', () => {
       expect(page.runs.map(r => r.runId)).toEqual(ids.slice(0, RUN_PAGE_SIZE))
       expect(page.newer).toBeUndefined()
     }
+  })
+
+  it('filters the runs by branch and counts the matches', async () => {
+    const { a } = await seed(20, undefined, i => (i % 2 ? 'thor/fix' : 'main'))
+    const projectRuns = (await caller(a)).dashboard.projectRuns
+
+    const page = await projectRuns({ projectId: 'web-app', branch: 'thor/fix' })
+    expect(page.runs.map(r => r.git?.branch)).toEqual(Array.from({ length: 10 }).fill('thor/fix'))
+    expect(page.total).toBe(10)
+    expect(page.branches).toContain('main')
+    expect(page.branches).toContain('thor/fix')
+    expect((await projectRuns({ projectId: 'web-app' })).total).toBe(21)
+  })
+
+  it('pages the runs by branch A to Z, newest first within one, and back', async () => {
+    const { a } = await seed(RUN_PAGE_SIZE + 10, undefined, i => ['b', 'a', 'c'][i % 3])
+    const projectRuns = (await caller(a)).dashboard.projectRuns
+    const all = await db.select({ id: run.id, branch: sql<string>`coalesce(${run.git}->>'branch', '')`, startedAt: run.startedAt }).from(run)
+    const expected = all
+      .sort((x, y) => x.branch.localeCompare(y.branch) || +y.startedAt - +x.startedAt || (y.id < x.id ? -1 : 1))
+      .map(r => r.id)
+
+    const first = await projectRuns({ projectId: 'web-app', sort: 'branch' })
+    const second = await projectRuns({ projectId: 'web-app', sort: 'branch', before: first.older! })
+    expect([...first.runs, ...second.runs].map(r => r.runId)).toEqual(expected)
+    expect((await projectRuns({ projectId: 'web-app', sort: 'branch', after: second.newer! })).runs).toEqual(first.runs)
+
+    const desc = await projectRuns({ projectId: 'web-app', sort: 'branch', dir: 'desc' })
+    const descNext = await projectRuns({ projectId: 'web-app', sort: 'branch', dir: 'desc', before: desc.older! })
+    const branches = [...desc.runs, ...descNext.runs].map(r => r.git?.branch ?? '')
+    expect(branches).toEqual([...branches].sort().reverse())
+    expect(branches).toHaveLength(expected.length)
+  })
+
+  it('pages the runs oldest first', async () => {
+    const { a, ids } = await seed(RUN_PAGE_SIZE + 5)
+    const projectRuns = (await caller(a)).dashboard.projectRuns
+
+    const first = await projectRuns({ projectId: 'web-app', dir: 'asc' })
+    const second = await projectRuns({ projectId: 'web-app', dir: 'asc', before: first.older! })
+    expect([...first.runs, ...second.runs].map(r => r.runId)).toEqual([...ids].reverse())
+    expect((await projectRuns({ projectId: 'web-app', dir: 'asc', after: second.newer! })).runs).toEqual(first.runs)
   })
 
   it('summarizes the project with its full run count', async () => {

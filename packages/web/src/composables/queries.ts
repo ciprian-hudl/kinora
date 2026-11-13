@@ -1,3 +1,4 @@
+import type { RunSort } from '@kinora/core'
 import type { MaybeRefOrGetter } from 'vue'
 import { useAsyncState } from '@vueuse/core'
 import { computed, toValue, watch } from 'vue'
@@ -41,13 +42,13 @@ export function useProjectSummary(projectId: string) {
   return useAsyncState(() => trpc.dashboard.projectSummary.query({ projectId }), null, QUERY_OPTIONS)
 }
 
-export function useProjectRuns(projectId: string, before: MaybeRefOrGetter<string | undefined>, after: MaybeRefOrGetter<string | undefined>) {
+export function useProjectRuns(projectId: string, page: MaybeRefOrGetter<{ before?: string, after?: string, branch?: string, sort?: RunSort }>) {
   const query = useAsyncState(
-    () => trpc.dashboard.projectRuns.query({ projectId, before: toValue(before), after: toValue(after) }),
+    () => trpc.dashboard.projectRuns.query({ projectId, ...toValue(page) }),
     null,
     { ...QUERY_OPTIONS, resetOnExecute: false },
   )
-  watch(() => [toValue(before), toValue(after)], () => void query.execute())
+  watch(() => JSON.stringify(toValue(page)), () => void query.execute())
   return query
 }
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { RunSort, SortDir } from '@kinora/core'
 import {
   formatPct,
   HEALTH_WINDOW,
@@ -33,11 +34,25 @@ const { state: project, isLoading, error, execute: retrySummary } = useProjectSu
 
 const before = useRouteQuery<string | null>('before', null)
 const after = useRouteQuery<string | null>('after', null)
-const { state: runPage, isLoading: runsLoading, error: runsError, execute: retryRuns } = useProjectRuns(
-  props.projectId,
-  () => before.value ?? undefined,
-  () => after.value ?? undefined,
-)
+const branch = useRouteQuery<string>('branch', 'all')
+const sort = useRouteQuery<string, RunSort>('sort', 'started', { transform: { get: v => (v === 'branch' ? 'branch' : 'started'), set: v => v } })
+const dir = useRouteQuery<string, SortDir>('dir', 'desc', { transform: { get: v => (v === 'asc' ? 'asc' : 'desc'), set: v => v } })
+const { state: runPage, isLoading: runsLoading, error: runsError, execute: retryRuns } = useProjectRuns(props.projectId, () => ({
+  before: before.value ?? undefined,
+  after: after.value ?? undefined,
+  branch: branch.value === 'all' ? undefined : branch.value,
+  sort: sort.value,
+  dir: dir.value,
+}))
+
+// A new filter or order starts back on its first page.
+function showRuns(view: { branch?: string, sort?: RunSort, dir?: SortDir }) {
+  before.value = null
+  after.value = null
+  branch.value = view.branch ?? branch.value
+  sort.value = view.sort ?? sort.value
+  dir.value = view.dir ?? dir.value
+}
 
 const latest = computed(() => (project.value ? latestRun(project.value) : undefined))
 const rate = computed(() => recentPassRate(project.value?.runs ?? [], HEALTH_WINDOW))
@@ -170,11 +185,17 @@ function showOlder() {
       <RunHistoryTable
         v-else
         :runs="runPage.runs"
-        :total="project.runCount"
+        :branch="branch"
+        :sort="sort"
+        :dir="dir"
+        :branches="runPage.branches"
+        :total="runPage.total"
         :project-id="project.id"
         :has-newer="Boolean(runPage.newer)"
         :has-older="Boolean(runPage.older)"
         :loading="runsLoading"
+        @update:branch="b => showRuns({ branch: b })"
+        @sort="showRuns"
         @newer="showNewer"
         @older="showOlder"
       />
