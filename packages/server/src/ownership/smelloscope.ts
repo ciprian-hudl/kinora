@@ -62,8 +62,10 @@ export function createSmelloscope(baseUrl: string, fetchImpl: typeof fetch = fet
       const r = await get<{ ownerTeam: string | null, slackChannel: string | null, slackChannelId: string | null, members: DirectoryUser[] }>(`/service/${encodeURIComponent(service)}/owners`)
       if (!r?.ownerTeam)
         return null
-      // OpsLevel names the team by alias (fan_team_6); its members carry the squad's display name.
-      const squad = r.members.flatMap(m => m.squads).find(s => squadKey(s) === squadKey(r.ownerTeam!)) ?? r.ownerTeam
+      // OpsLevel names the team by alias (fan_team_6), its members by the squad's display name. A
+      // secondary alias (agave_2 for Agave) matches no name, so the squad most members share stands in.
+      const squads = r.members.flatMap(m => m.squads)
+      const squad = squads.find(s => squadKey(s) === squadKey(r.ownerTeam!)) ?? mostCommon(squads) ?? r.ownerTeam
       return { squad, slackChannel: r.slackChannel, slackChannelId: r.slackChannelId, memberEmails: emails(r.members) }
     },
 
@@ -86,6 +88,13 @@ export function createSmelloscope(baseUrl: string, fetchImpl: typeof fetch = fet
 }
 
 export type Smelloscope = ReturnType<typeof createSmelloscope>
+
+function mostCommon(values: string[]): string | undefined {
+  const counts = new Map<string, number>()
+  for (const v of values)
+    counts.set(v, (counts.get(v) ?? 0) + 1)
+  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0]
+}
 
 // Squads are spelled differently across sources ("Fan Team 6", "fan_team_6"): compare on this.
 export function squadKey(squad: string): string {

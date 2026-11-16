@@ -50,6 +50,20 @@ describe('serviceOf', () => {
   })
 })
 
+describe('serviceOwner', () => {
+  it('names a team owning by a secondary alias after the squad its members share', async () => {
+    const owners = { ownerTeam: 'agave_2', slackChannel: '#agave', slackChannelId: 'C3', members: [
+      { githubLogin: 'a', email: 'a@hudl.com', squads: ['Agave', 'Youth, Club & High School'] },
+      { githubLogin: 'b', email: 'b@hudl.com', squads: ['Agave'] },
+    ] }
+    const dir = createSmelloscope('https://smelloscope.test', (async () => Response.json(owners)) as typeof fetch)
+    expect((await dir.serviceOwner('calendar'))?.squad).toBe('Agave')
+
+    const nobody = createSmelloscope('https://smelloscope.test', (async () => Response.json({ ...owners, members: [] })) as typeof fetch)
+    expect((await nobody.serviceOwner('calendar'))?.squad).toBe('agave_2')
+  })
+})
+
 describe('project ownership', () => {
   it('resolves a monorepo app by its service and a single-project repo by its repo, leaving the rest unknown', async () => {
     const ids = await seed()
