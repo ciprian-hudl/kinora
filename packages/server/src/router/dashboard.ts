@@ -111,8 +111,7 @@ export const dashboardRouter = router({
       return loadProjectHistory(p, { componentsOnly: true })
     }),
 
-  // The test history page: one test with every point (the project history trims them), and the
-  // clusters it shares with other tests.
+  // The test history page: one test with every point (the project history trims them).
   testHistory: orgProcedure
     .input(z.object({ projectId: z.string().min(1), testKey: z.string().min(1) }))
     .query(async ({ ctx, input }): Promise<TestHistoryPage> => {

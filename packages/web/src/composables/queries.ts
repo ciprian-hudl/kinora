@@ -76,10 +76,11 @@ export function useTestHistory(projectId: string, testKey: MaybeRefOrGetter<stri
   return query
 }
 
-// The failure clusters the test shares, fetched beside the history so the slower read never holds it up.
+// The failure clusters the test shares, fetched in a request of their own so the slower read never
+// holds up the history.
 export function useTestClusters(projectId: string, testKey: MaybeRefOrGetter<string>) {
   const query = useAsyncState(
-    async () => (toValue(testKey) ? trpc.dashboard.testClusters.query({ projectId, testKey: toValue(testKey) }) : null),
+    async () => (toValue(testKey) ? trpc.dashboard.testClusters.query({ projectId, testKey: toValue(testKey) }, { context: { skipBatch: true } }) : null),
     null,
     QUERY_OPTIONS,
   )

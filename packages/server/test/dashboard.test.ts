@@ -762,6 +762,33 @@ describe('dashboard reads', () => {
     expect(await (await caller(a)).dashboard.testClusters({ projectId: 'web-app', testKey: 'nope' })).toEqual({ clusters: [], titles: {} })
   })
 
+  it('testClusters lists the first shared tests and rebuilds the clusters once a run lands', async () => {
+    const a = await createUser('a@test.dev')
+    const key = await createApiKey(a.id)
+    const payload = runPayload('web-app', '@smoke', 'unexpected')
+    const [base] = payload.tests
+    const failing = (title: string, message: string) => {
+      const titlePath = [base.file, title]
+      return { ...base, title, titlePath, testKey: makeTestKey(base.file, titlePath, 'chromium'), errors: [{ message, stack: 'at x (a.ts:1:1)'.repeat(5000) }] }
+    }
+    payload.tests = Array.from({ length: 15 }, (_, i) => failing(`test ${i}`, 'Error: i18n mock'))
+    payload.run.counts = { total: 15, expected: 0, unexpected: 15, flaky: 0, skipped: 0 }
+    await ingest(key, payload)
+    const testKey = payload.tests[0].testKey
+
+    const page = await (await caller(a)).dashboard.testClusters({ projectId: 'web-app', testKey })
+    expect(page.clusters[0]).toMatchObject({ tests: 15, title: 'Error: i18n mock' })
+    expect(page.clusters[0].testKeys).toHaveLength(11)
+    expect(page.clusters[0].testKeys[0]).toBe(testKey)
+    expect(Object.keys(page.titles)).toHaveLength(11)
+
+    payload.tests = [failing('test 0', 'Error: timeout')]
+    payload.run.counts = { total: 1, expected: 0, unexpected: 1, flaky: 0, skipped: 0 }
+    await ingest(key, payload)
+    const again = await (await caller(a)).dashboard.testClusters({ projectId: 'web-app', testKey })
+    expect(again.clusters.map(c => c.title).sort()).toEqual(['Error: i18n mock', 'Error: timeout'])
+  })
+
   it('componentHistory only reads the tests that mount stories', async () => {
     const a = await createUser('a@test.dev')
     const key = await createApiKey(a.id)

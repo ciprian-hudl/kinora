@@ -410,11 +410,19 @@ function pointReports(slug: string, runs: RunRow[], rows: PointRow[], codeowners
 // Failure clusters read the failing occurrences only, with their first error.
 interface FailureRow { runId: string, testKey: string, file: string, status: NormTest['status'], error: NormError }
 
+// The grouping reads only an error's start (its message, or the stack when there is none), so the
+// rest of each error, stack traces and snippets mostly, stays in Postgres.
+const CLUSTER_ERROR_CHARS = 8000
+
 async function windowFailures(runs: RunRow[]): Promise<FailureRow[]> {
   if (!runs.length)
     return []
   const rows = await db.execute<FailureRow & Record<string, unknown>>(sql`
-    select t.run_id as "runId", t.test_key as "testKey", t.file, t.status, t.errors->0 as error
+    select t.run_id as "runId", t.test_key as "testKey", t.file, t.status,
+      jsonb_build_object(
+        'message', left(t.errors->0->>'message', ${CLUSTER_ERROR_CHARS}),
+        'stack', case when coalesce(t.errors->0->>'message', '') = '' then left(t.errors->0->>'stack', ${CLUSTER_ERROR_CHARS}) end
+      ) as error
     from test t
     where t.run_id in (${sql.join(runs.map(r => sql`${r.id}`), sql`, `)})
       and t.status in ('unexpected', 'flaky') and jsonb_array_length(t.errors) > 0`)
@@ -431,8 +439,45 @@ function clustersOf(slug: string, runs: RunRow[], rows: FailureRow[]) {
   return buildFailureClusters(runs.filter(r => byRun.has(r.id)).map(r => ({ ...runReport(slug, r, []), tests: byRun.get(r.id)! })))
 }
 
-async function windowClusters(slug: string, runs: RunRow[]) {
-  return clustersOf(slug, runs, await windowFailures(runs))
+interface WindowClusters {
+  clusters: FailureCluster[]
+  // Each failing test's newest failing run in the window.
+  newestFailure: Map<string, string>
+}
+
+const CLUSTER_CACHE_SIZE = 50
+const clusterCache = new Map<string, { signature: string, value: Promise<WindowClusters> }>()
+
+// What the clusters depend on: the counted runs, and the shards landed in each.
+function windowSignature(runs: RunRow[]): string {
+  return runs.map(r => `${r.id}:${r.status}:${Object.values(r.shardsLanded).map(s => s.landedAt).join(',')}`).join('|')
+}
+
+// A project's clusters, built once per window: every test page of a project groups the same failures.
+function windowClusters(p: ProjectRow, runs: RunRow[]): Promise<WindowClusters> {
+  const signature = windowSignature(runs)
+  const hit = clusterCache.get(p.id)
+  if (hit?.signature === signature)
+    return hit.value
+  const value = windowFailures(runs).then((failures) => {
+    const order = new Map(runs.map((r, i) => [r.id, i]))
+    const newestFailure = new Map<string, string>()
+    for (const f of failures) {
+      const seen = newestFailure.get(f.testKey)
+      if (!seen || order.get(f.runId)! < order.get(seen)!)
+        newestFailure.set(f.testKey, f.runId)
+    }
+    return { clusters: clustersOf(p.slug, runs, failures), newestFailure }
+  })
+  value.catch(() => {
+    if (clusterCache.get(p.id)?.value === value)
+      clusterCache.delete(p.id)
+  })
+  clusterCache.delete(p.id)
+  clusterCache.set(p.id, { signature, value })
+  if (clusterCache.size > CLUSTER_CACHE_SIZE)
+    clusterCache.delete(clusterCache.keys().next().value!)
+  return value
 }
 
 function projectEntry(p: ProjectRow, runs: RunRow[]): ProjectEntry {
@@ -501,7 +546,7 @@ export async function loadProjectHistory(p: ProjectRow, opts: { componentsOnly?:
     if (s?.length)
       h.stories = s
   }
-  const clusters = opts.componentsOnly ? [] : await windowClusters(p.slug, runs)
+  const clusters = opts.componentsOnly ? [] : (await windowClusters(p, runs)).clusters
   return { project: entry, histories, clusters }
 }
 
@@ -539,30 +584,25 @@ export interface TestClusters {
   titles: Record<string, Pick<TestHistory, 'title' | 'titlePath'>>
 }
 
+// The other tests a cluster lists; its count still covers them all.
+export const SHARED_TESTS_SHOWN = 10
+
 // Loaded after the history: building the clusters reads every failure in the window.
 export async function loadTestClusters(p: ProjectRow, testKey: string): Promise<TestClusters> {
   const runs = countedRuns(await windowRuns(p.id))
-  const failures = await windowFailures(runs)
-  if (!failures.some(f => f.testKey === testKey))
+  const { clusters: all, newestFailure } = await windowClusters(p, runs)
+  if (!newestFailure.has(testKey))
     return { clusters: [], titles: {} }
-  const clusters = clustersOf(p.slug, runs, failures).filter(c => c.testKeys.includes(testKey))
-  const keys = new Set(clusters.flatMap(c => c.testKeys))
+  const clusters = all
+    .filter(c => c.testKeys.includes(testKey))
+    .map(c => ({ ...c, testKeys: [testKey, ...c.testKeys.filter(k => k !== testKey).slice(0, SHARED_TESTS_SHOWN)] }))
   // Each title from the test's newest failure in the window, one row per test.
-  const order = new Map(runs.map((r, i) => [r.id, i]))
-  const newest = new Map<string, string>()
-  for (const f of failures) {
-    const seen = newest.get(f.testKey)
-    if (keys.has(f.testKey) && (!seen || order.get(f.runId)! < order.get(seen)!))
-      newest.set(f.testKey, f.runId)
-  }
-  const pairs = [...newest]
-  const titleRows = pairs.length
-    ? await db.execute<{ testKey: string, title: string, titlePath: string[] }>(sql`
-        select t.test_key as "testKey", t.title, t.title_path as "titlePath"
-        from test t
-        join unnest(array[${sql.join(pairs.map(([, runId]) => sql`${runId}`), sql`, `)}]::text[], array[${sql.join(pairs.map(([key]) => sql`${key}`), sql`, `)}]::text[]) as k(run_id, test_key)
-          on t.run_id = k.run_id and t.test_key = k.test_key`)
-    : { rows: [] }
+  const pairs = [...new Set(clusters.flatMap(c => c.testKeys))].map(key => [key, newestFailure.get(key)!] as const)
+  const titleRows = await db.execute<{ testKey: string, title: string, titlePath: string[] }>(sql`
+    select t.test_key as "testKey", t.title, t.title_path as "titlePath"
+    from test t
+    join unnest(array[${sql.join(pairs.map(([, runId]) => sql`${runId}`), sql`, `)}]::text[], array[${sql.join(pairs.map(([key]) => sql`${key}`), sql`, `)}]::text[]) as k(run_id, test_key)
+      on t.run_id = k.run_id and t.test_key = k.test_key`)
   return {
     clusters,
     titles: Object.fromEntries(titleRows.rows.map(r => [r.testKey, { title: r.title, titlePath: r.titlePath }])),

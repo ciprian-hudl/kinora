@@ -282,6 +282,9 @@ function toggleQuarantine() {
             >
               {{ labels.get(key) ?? key }}
             </RouterLink>
+            <span v-if="c.tests > c.testKeys.length" class="font-mono text-[11px] text-muted-foreground">
+              and {{ c.tests - c.testKeys.length }} more
+            </span>
           </div>
         </div>
         <!-- A card, not a link: the screenshot comparison inside it has its own buttons. -->
