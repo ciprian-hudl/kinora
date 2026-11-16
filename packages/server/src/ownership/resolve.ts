@@ -11,7 +11,7 @@ export const directory: Smelloscope | null = env.SMELLOSCOPE_URL ? createSmellos
 export const OWNERSHIP_REFRESH_MS = 15 * 60 * 1000
 const OWNER_MAX_AGE_MS = 60 * 60 * 1000
 const CONCURRENCY = 5
-const PEOPLE_MAX_AGE_MS = 60 * 60 * 1000
+const PEOPLE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 // After a failed sync, how long the directory is left alone before it is asked again.
 const PEOPLE_RETRY_MS = 5 * 60 * 1000
 const PEOPLE_INSERT_BATCH = 500
