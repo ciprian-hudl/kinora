@@ -9,7 +9,7 @@ import { createSmelloscope, squadKey } from './smelloscope'
 export const directory: Smelloscope | null = env.SMELLOSCOPE_URL ? createSmelloscope(env.SMELLOSCOPE_URL) : null
 
 export const OWNERSHIP_REFRESH_MS = 15 * 60 * 1000
-const OWNER_MAX_AGE_MS = 60 * 60 * 1000
+const OWNER_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const CONCURRENCY = 5
 const PEOPLE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 // After a failed sync, how long the directory is left alone before it is asked again.
@@ -49,7 +49,7 @@ async function resolveOne(dir: Smelloscope, slug: string, repo: { owner: string,
   return { squad: null, slackChannel: null, slackChannelId: null, memberEmails: [], source: null }
 }
 
-// Resolves the projects whose owner is missing or older than an hour. A lookup that fails keeps
+// Resolves the projects whose owner is missing or older than a day. A lookup that fails keeps
 // the project's previous owner and is tried again on the next pass.
 export async function refreshOwnership(dir: Smelloscope, now = new Date()): Promise<{ resolved: number, unknown: number, failed: number }> {
   const rows = await db.execute<{ id: string, slug: string, repoUrl: string | null, resolvedAt: Date | null }>(sql`

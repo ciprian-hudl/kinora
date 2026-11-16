@@ -6,7 +6,7 @@ import { loadOwnership, refreshOwnership, serviceOf, syncPeople } from '../src/o
 import { createSmelloscope } from '../src/ownership/smelloscope'
 import { createApiKey, createUser, ingest, runPayload } from './helpers'
 
-const HOUR = 3_600_000
+const DAY = 86_400_000
 
 // A smelloscope that knows the fan service and the hudl-ui repo, and records what was asked.
 function fakeDirectory(fail = false) {
@@ -90,16 +90,16 @@ describe('project ownership', () => {
     expect((await loadOwnership([ids['fan/e2e']], 'fan@hudl.com', dir)).get(ids['fan/e2e'])?.mine).toBe(true)
   })
 
-  it('only looks owners up again once they are an hour old, and keeps them when the directory fails', async () => {
+  it('only looks owners up again once they are a day old, and keeps them when the directory fails', async () => {
     const ids = await seed()
     const now = new Date()
     await refreshOwnership(fakeDirectory().dir, now)
 
     const again = fakeDirectory()
-    expect(await refreshOwnership(again.dir, new Date(now.getTime() + 10 * 60_000))).toEqual({ resolved: 0, unknown: 0, failed: 0 })
+    expect(await refreshOwnership(again.dir, new Date(now.getTime() + 20 * 3_600_000))).toEqual({ resolved: 0, unknown: 0, failed: 0 })
     expect(again.asked.filter(path => path.endsWith('/owners'))).toEqual([])
 
-    expect(await refreshOwnership(fakeDirectory(true).dir, new Date(now.getTime() + 2 * HOUR))).toEqual({ resolved: 0, unknown: 0, failed: 3 })
+    expect(await refreshOwnership(fakeDirectory(true).dir, new Date(now.getTime() + 2 * DAY))).toEqual({ resolved: 0, unknown: 0, failed: 3 })
     const [kept] = await db.select().from(projectOwner).where(eq(projectOwner.projectId, ids['hudl/hudl-ui']))
     expect(kept).toMatchObject({ squad: 'Mandalorians', source: 'repo' })
   })
