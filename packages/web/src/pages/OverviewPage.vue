@@ -12,15 +12,16 @@ import { Skeleton } from '@kinora/ui/skeleton'
 import { StatBlock } from '@kinora/ui/stat-block'
 import { Tabs, TabsList, TabsTrigger } from '@kinora/ui/tabs'
 import { Loader2 } from '@lucide/vue'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import ErrorState from '@/components/app/ErrorState.vue'
 import StatStripSkeleton from '@/components/app/StatStripSkeleton.vue'
 import FilterCombobox from '@/components/FilterCombobox.vue'
 import OverviewEmpty from '@/components/project/OverviewEmpty.vue'
 import ProjectCard from '@/components/project/ProjectCard.vue'
+import ProjectSection from '@/components/project/ProjectSection.vue'
 import { useOverview } from '@/composables/queries'
 import { useOverviewFilters } from '@/composables/useOverviewFilters'
-import { inView, MINE, NO_FILTERS, sameFilters, squadOptions } from '@/lib/overview-filters'
+import { inView, NO_FILTERS, sameFilters, squadOptions } from '@/lib/overview-filters'
 
 const { filters, apply } = useOverviewFilters()
 
@@ -54,9 +55,18 @@ function clearFilters() {
 const reporting = computed(() => projects.value.filter(p => p.runCount > 0))
 // Known squads lead, and projects with no known owner sit under "other".
 const squads = computed(() => (overview.value?.ownership ? squadOptions(reporting.value) : []))
-const hasMine = computed(() => view.value === MINE || reporting.value.some(p => p.owner?.mine))
-
 const displayProjects = computed(() => reporting.value.filter(inView(view.value, squad.value)))
+
+// Once the viewer owns any project, each view leads with theirs and folds the rest away.
+const splitByOwner = computed(() => reporting.value.some(p => p.owner?.mine))
+const myProjects = computed(() => displayProjects.value.filter(p => p.owner?.mine))
+const otherProjects = computed(() => displayProjects.value.filter(p => !p.owner?.mine))
+const myOpen = ref(true)
+const othersOpen = ref(false)
+// A view without any of the viewer's projects would show nothing until opened.
+watch(() => myProjects.value.length === 0, (none) => {
+  othersOpen.value = none
+}, { immediate: true })
 
 const stats = computed(() => {
   const latest = displayProjects.value.map(latestRun).filter(r => r != null)
@@ -106,9 +116,6 @@ const stats = computed(() => {
 
           <Tabs v-model="view">
             <TabsList class="border bg-background font-mono shadow-xs dark:border-input dark:bg-input/30" aria-label="Projects">
-              <TabsTrigger v-if="hasMine" :value="MINE" class="text-xs text-foreground data-[state=active]:text-signal dark:text-foreground dark:data-[state=active]:text-signal">
-                mine
-              </TabsTrigger>
               <TabsTrigger value="all" class="text-xs text-foreground data-[state=active]:text-signal dark:text-foreground dark:data-[state=active]:text-signal">
                 all
               </TabsTrigger>
@@ -184,6 +191,11 @@ const stats = computed(() => {
       class="py-16 text-center font-mono text-sm text-muted-foreground"
     >
       No runs match these filters.
+    </div>
+
+    <div v-else-if="splitByOwner" class="flex flex-col gap-8">
+      <ProjectSection v-if="myProjects.length" v-model:open="myOpen" title="my projects" highlight :projects="myProjects" />
+      <ProjectSection v-if="otherProjects.length" v-model:open="othersOpen" title="other projects" :projects="otherProjects" />
     </div>
 
     <!-- Grid -->

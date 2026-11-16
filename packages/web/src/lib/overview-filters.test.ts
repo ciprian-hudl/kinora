@@ -13,9 +13,9 @@ describe('sameFilters', () => {
 
 describe('filtersFromQuery / filtersToQuery', () => {
   it('round-trips through the url, leaving the defaults out', () => {
-    const f = { view: 'mine', squad: 'Mandalorians', branch: 'main', tag: '@smoke' }
+    const f = { view: 'marvel', squad: 'Mandalorians', branch: 'main', tag: '@smoke' }
     const query = filtersToQuery(f)
-    expect(query).toEqual({ view: 'mine', squad: 'Mandalorians', branch: 'main', tag: '@smoke' })
+    expect(query).toEqual({ view: 'marvel', squad: 'Mandalorians', branch: 'main', tag: '@smoke' })
     expect(filtersFromQuery(query as never)).toEqual(f)
     expect(filtersToQuery(NO_FILTERS)).toEqual({ view: undefined, squad: undefined, branch: undefined, tag: undefined })
   })
@@ -23,6 +23,7 @@ describe('filtersFromQuery / filtersToQuery', () => {
   it('reads a view case-insensitively and drops an unknown one', () => {
     expect(filtersFromQuery({ view: 'Marvel' }).view).toBe('marvel')
     expect(filtersFromQuery({ view: 'nope' })).toEqual(NO_FILTERS)
+    expect(filtersFromQuery({ view: 'mine' })).toEqual(NO_FILTERS)
     expect(filtersFromQuery({})).toEqual(NO_FILTERS)
   })
 })
@@ -34,10 +35,6 @@ describe('inView', () => {
     { id: 'watch/e2e' },
   ]
   const ids = (view: string, squad = 'all') => projects.filter(inView(view, squad)).map(p => p.id)
-
-  it('keeps the viewer\'s projects under mine', () => {
-    expect(ids('mine')).toEqual(['hudl/hudl-ui'])
-  })
 
   it('narrows a view to one squad, or to the projects with no known owner', () => {
     expect(ids('all', 'Fan Team 6')).toEqual(['fan/e2e'])

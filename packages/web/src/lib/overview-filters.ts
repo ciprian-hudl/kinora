@@ -13,12 +13,10 @@ export const NO_FILTERS: OverviewFilters = { view: 'all', squad: 'all', branch: 
 
 export const FILTER_KEYS = ['view', 'squad', 'branch', 'tag'] as const
 
-// The projects of the viewer's own squads; the other views group projects by repo.
-export const MINE = 'mine'
 // The squad filter's bucket for projects with no known owner.
 export const OTHER_SQUAD = 'other'
 
-const VIEWS: string[] = [MINE, ...PROJECT_VIEWS.map(v => v.id)]
+const VIEWS: string[] = PROJECT_VIEWS.map(v => v.id)
 
 export function sameFilters(a: OverviewFilters, b: OverviewFilters): boolean {
   return a.view === b.view && a.squad === b.squad && a.branch === b.branch && a.tag === b.tag
@@ -49,7 +47,7 @@ export function filtersToQuery(f: OverviewFilters): LocationQueryRaw {
 
 export function inView(view: string, squad: string): (p: Pick<OverviewProject, 'id' | 'owner'>) => boolean {
   const inRepos = viewMatcher(view)
-  return p => (view === MINE ? !!p.owner?.mine : inRepos(p.id))
+  return p => inRepos(p.id)
     && (squad === 'all' || (squad === OTHER_SQUAD ? !p.owner : p.owner?.squad === squad))
 }
 
