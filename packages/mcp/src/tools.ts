@@ -50,6 +50,7 @@ const windowInput = {
 const scopeInput = {
   view: z.enum(VIEWS).optional().describe(`A group of projects: ${PROJECT_VIEWS.map(v => `${v.id} (${v.projects})`).join(', ')}.`),
   projects: z.string().optional().describe('Globs on the project id (from list_projects), space-separated; `!` drops, e.g. "watch/*" or "hudl/hudl-* !hudl/hudl-ui". Overrides view. Omit both for every project.'),
+  squad: z.string().optional().describe('Only the projects this squad owns (the owner.squad list_projects shows, e.g. "Mandalorians"), or "other" for projects with no known owner. Combines with view / projects.'),
   ...windowInput,
 }
 
@@ -60,7 +61,7 @@ function projectsOf(view?: string, projects?: string): string | undefined {
 export function registerTools(server: McpServer, client: ReadClient): void {
   server.registerTool('list_projects', {
     title: 'List kinora projects',
-    description: 'List every project on the kinora server with its latest run summary (pass/fail counts, git branch, started time).',
+    description: 'List every project on the kinora server with its owning squad and Slack channel when known, and its latest run summary (pass/fail counts, git branch, started time).',
     inputSchema: z.object({}),
   }, () => guard(() => client.listProjects(), ps => ok({ projects: ps })))
 

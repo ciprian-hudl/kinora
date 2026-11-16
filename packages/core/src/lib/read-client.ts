@@ -15,6 +15,7 @@ export interface ProjectOverview {
   id: string
   name: string
   description?: string
+  owner?: { squad: string, slackChannel?: string }
   latestRun: RunSummary | null
 }
 
@@ -32,6 +33,7 @@ const projectsResponseSchema = z.object({
     id: z.string(),
     name: z.string(),
     description: z.string().optional(),
+    owner: z.object({ squad: z.string(), slackChannel: z.string().optional() }).optional(),
     latestRun: runSummarySchema.nullable(),
   })),
 })
@@ -58,6 +60,8 @@ export interface InsightWindow {
 export interface InsightQuery extends InsightWindow {
   // Globs on the project id, e.g. `hudl/hudl-*`; none reads every project.
   projects?: string
+  // The projects a squad owns, or `other` for those with no known owner.
+  squad?: string
 }
 
 function queryString(params: Record<string, string | number | undefined>): string {

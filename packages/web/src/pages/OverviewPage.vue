@@ -5,7 +5,6 @@ import {
   latestRun,
   PROJECT_VIEWS,
   runHealth,
-  viewMatcher,
 } from '@kinora/core'
 import { Button } from '@kinora/ui/button'
 import { Separator } from '@kinora/ui/separator'
@@ -21,7 +20,7 @@ import OverviewEmpty from '@/components/project/OverviewEmpty.vue'
 import ProjectCard from '@/components/project/ProjectCard.vue'
 import { useOverview } from '@/composables/queries'
 import { useOverviewFilters } from '@/composables/useOverviewFilters'
-import { NO_FILTERS, sameFilters } from '@/lib/overview-filters'
+import { inView, MINE, NO_FILTERS, sameFilters, squadOptions } from '@/lib/overview-filters'
 
 const { filters, apply } = useOverviewFilters()
 
@@ -32,6 +31,7 @@ function filterModel<K extends keyof typeof filters.value>(key: K) {
   })
 }
 const view = filterModel('view')
+const squad = filterModel('squad')
 const branch = filterModel('branch')
 const tag = filterModel('tag')
 
@@ -51,10 +51,12 @@ function clearFilters() {
   apply({ ...NO_FILTERS, view: view.value })
 }
 
-const displayProjects = computed(() => {
-  const matches = viewMatcher(view.value)
-  return projects.value.filter(p => p.runCount > 0 && matches(p.id))
-})
+const reporting = computed(() => projects.value.filter(p => p.runCount > 0))
+// Known squads lead, and projects with no known owner sit under "other".
+const squads = computed(() => (overview.value?.ownership ? squadOptions(reporting.value) : []))
+const hasMine = computed(() => view.value === MINE || reporting.value.some(p => p.owner?.mine))
+
+const displayProjects = computed(() => reporting.value.filter(inView(view.value, squad.value)))
 
 const stats = computed(() => {
   const latest = displayProjects.value.map(latestRun).filter(r => r != null)
@@ -104,14 +106,26 @@ const stats = computed(() => {
 
           <Tabs v-model="view">
             <TabsList class="border bg-background font-mono shadow-xs dark:border-input dark:bg-input/30" aria-label="Projects">
-              <TabsTrigger value="all" class="text-xs data-[state=active]:text-signal dark:data-[state=active]:text-signal">
+              <TabsTrigger v-if="hasMine" :value="MINE" class="text-xs text-foreground data-[state=active]:text-signal dark:text-foreground dark:data-[state=active]:text-signal">
+                mine
+              </TabsTrigger>
+              <TabsTrigger value="all" class="text-xs text-foreground data-[state=active]:text-signal dark:text-foreground dark:data-[state=active]:text-signal">
                 all
               </TabsTrigger>
-              <TabsTrigger v-for="v in PROJECT_VIEWS" :key="v.id" :value="v.id" class="text-xs data-[state=active]:text-signal dark:data-[state=active]:text-signal">
+              <TabsTrigger v-for="v in PROJECT_VIEWS" :key="v.id" :value="v.id" class="text-xs text-foreground data-[state=active]:text-signal dark:text-foreground dark:data-[state=active]:text-signal">
                 {{ v.id }}
               </TabsTrigger>
             </TabsList>
           </Tabs>
+
+          <FilterCombobox
+            v-if="squads.length > 1"
+            v-model="squad"
+            :options="squads"
+            all-label="all squads"
+            search-placeholder="Search squad..."
+            trigger-class="w-44"
+          />
 
           <FilterCombobox
             v-if="branches.length > 1"

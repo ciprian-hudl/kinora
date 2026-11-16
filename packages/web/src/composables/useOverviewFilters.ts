@@ -11,8 +11,8 @@ export function useOverviewFilters() {
   const last = useLocalStorage<OverviewFilters>('kinora:overview:filters', NO_FILTERS, { mergeDefaults: true })
 
   function apply(f: OverviewFilters) {
-    last.value = { view: f.view, branch: f.branch, tag: f.tag }
-    const { view: _view, branch: _branch, tag: _tag, ...rest } = route.query
+    last.value = { view: f.view, squad: f.squad, branch: f.branch, tag: f.tag }
+    const { view: _view, squad: _squad, branch: _branch, tag: _tag, ...rest } = route.query
     void router.replace({ query: { ...rest, ...filtersToQuery(f) } })
   }
 

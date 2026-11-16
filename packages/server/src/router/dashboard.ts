@@ -58,11 +58,11 @@ export const dashboardRouter = router({
       branch: z.string().min(1).max(255).optional(),
       tag: z.string().min(1).max(255).optional(),
     }).default({}))
-    .query(({ ctx, input }): Promise<DashboardOverview> => loadOverview(ctx.organizationId, input)),
+    .query(({ ctx, input }): Promise<DashboardOverview> => loadOverview(ctx.organizationId, { ...input, viewerEmail: ctx.user.email })),
 
   projectSummary: orgProcedure
     .input(z.object({ projectId: z.string().min(1) }))
-    .query(async ({ ctx, input }): Promise<OverviewProject> => loadProjectSummary(await ownedProject(ctx.organizationId, input.projectId))),
+    .query(async ({ ctx, input }): Promise<OverviewProject> => loadProjectSummary(await ownedProject(ctx.organizationId, input.projectId), ctx.user.email)),
 
   projectRuns: orgProcedure
     .input(z.object({

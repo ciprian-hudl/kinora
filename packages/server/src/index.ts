@@ -7,6 +7,7 @@ import { purgeExpiredRuns } from './billing/retention'
 import { db } from './db'
 import { demo, env, retentionPolicy } from './lib/env'
 import { logger } from './lib/logger'
+import { directory, OWNERSHIP_REFRESH_MS, refreshOwnership } from './ownership/resolve'
 import { closeStaleOpenRuns, SHARD_SWEEP_INTERVAL_MS } from './public-api/shard-sweep'
 
 // Log stray rejections instead of letting one crash the whole server; uncaught exceptions leave the
@@ -39,6 +40,17 @@ function shardSweep(): void {
     .catch(error => logger.error({ error }, 'shard sweep failed'))
 }
 setInterval(shardSweep, SHARD_SWEEP_INTERVAL_MS).unref()
+
+// Owners come from the ownership directory: refresh the cached ones before they go stale.
+if (directory) {
+  const ownership = directory
+  const refresh = (): void => void refreshOwnership(ownership)
+    .then(result => logger.info(result, 'project owners refreshed'))
+    .catch(error => logger.error({ error }, 'project owner refresh failed'))
+
+  refresh()
+  setInterval(refresh, OWNERSHIP_REFRESH_MS).unref()
+}
 
 let shuttingDown = false
 async function shutdown(signal: string): Promise<void> {

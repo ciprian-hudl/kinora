@@ -52,4 +52,5 @@ export const TEST_ENV: Record<keyof Env, string> = {
   SENTRY_DSN: '',
   FEEDBACK_INBOX_URL: '',
   FEEDBACK_INBOX_KEY: '',
+  SMELLOSCOPE_URL: '',
 }

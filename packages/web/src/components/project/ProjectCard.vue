@@ -47,6 +47,9 @@ const rel = computed(() => {
         <p v-if="project.description" class="mt-0.5 truncate text-xs text-muted-foreground">
           {{ project.description }}
         </p>
+        <p v-if="project.owner" class="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" :title="`Owned by ${project.owner.squad}`">
+          {{ project.owner.squad }}
+        </p>
       </div>
       <RunHealthBadge v-if="latest" :run="latest" />
       <HealthBadge v-else health="empty" />

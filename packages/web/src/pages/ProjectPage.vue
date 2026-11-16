@@ -119,6 +119,11 @@ function showOlder() {
               <p v-if="project.description" class="mt-1 text-sm text-muted-foreground">
                 {{ project.description }}
               </p>
+              <p v-if="project.owner" class="mt-1 font-mono text-xs text-muted-foreground">
+                Owned by <span class="text-foreground">{{ project.owner.squad }}</span><template v-if="project.owner.slackChannel">
+                  · {{ project.owner.slackChannel }}
+                </template>
+              </p>
             </div>
             <RunHealthBadge v-if="latest" :run="latest" />
             <HealthBadge v-else health="empty" />

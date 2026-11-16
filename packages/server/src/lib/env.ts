@@ -63,6 +63,8 @@ const envSchema = z.object({
   SENTRY_DSN: z.string().optional(),
   FEEDBACK_INBOX_URL: z.union([z.literal(''), z.url()]).optional(),
   FEEDBACK_INBOX_KEY: z.string().optional(),
+  // Smelloscope's API (https://api.smelloscope.hudltools.com) for project ownership; unset turns ownership off.
+  SMELLOSCOPE_URL: z.union([z.literal(''), z.url()]).optional(),
 }).refine(
   e => !e.KINORA_CLOUD || Boolean(e.POLAR_ACCESS_TOKEN && e.POLAR_WEBHOOK_SECRET && e.POLAR_PRODUCT_TEAM_ID && e.POLAR_PRODUCT_PRO_ID),
   { message: 'KINORA_CLOUD=true requires POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET, POLAR_PRODUCT_TEAM_ID and POLAR_PRODUCT_PRO_ID' },

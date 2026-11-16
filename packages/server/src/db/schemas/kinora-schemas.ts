@@ -33,6 +33,18 @@ export const project = pgTable('project', {
   unique('project_org_slug_uniq').on(table.organizationId, table.slug),
 ])
 
+// The project's owning squad, resolved from the ownership directory. No row, or a null squad,
+// means unknown.
+export const projectOwner = pgTable('project_owner', {
+  projectId: text('project_id').primaryKey().references(() => project.id, { onDelete: 'cascade' }),
+  squad: text('squad'),
+  slackChannel: text('slack_channel'),
+  slackChannelId: text('slack_channel_id'),
+  memberEmails: jsonb('member_emails').$type<string[]>().notNull().default([]),
+  source: text('source').$type<'service' | 'repo'>(),
+  resolvedAt: timestamp('resolved_at').notNull(),
+})
+
 export const run = pgTable('run', {
   id: text('id').primaryKey(),
   projectId: text('project_id').notNull().references(() => project.id, { onDelete: 'cascade' }),

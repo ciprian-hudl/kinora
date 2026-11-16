@@ -8,6 +8,7 @@ import { db } from '../db'
 import { artifact, project, run, test } from '../db/schemas/index'
 import { matchCodeowners, parseCodeowners } from '../lib/codeowners'
 import { storage } from '../lib/storage'
+import { directory, loadOwnership } from '../ownership/resolve'
 
 export type ProjectRow = typeof project.$inferSelect
 type RunRow = typeof run.$inferSelect
@@ -184,16 +185,16 @@ export async function loadProjectListings(organizationId: string): Promise<Proje
   })
 }
 
-export function loadOverview(organizationId: string, filter: { branch?: string, tag?: string } = {}): Promise<DashboardOverview> {
+export function loadOverview(organizationId: string, filter: { branch?: string, tag?: string, viewerEmail?: string } = {}): Promise<DashboardOverview> {
   return summarizeProjects(listProjects(organizationId), eq(project.organizationId, organizationId), { ...filter, withOptions: true })
 }
 
-export async function loadProjectSummary(p: ProjectRow): Promise<OverviewProject> {
-  const { projects: [summary] } = await summarizeProjects([p], eq(project.id, p.id))
+export async function loadProjectSummary(p: ProjectRow, viewerEmail?: string): Promise<OverviewProject> {
+  const { projects: [summary] } = await summarizeProjects([p], eq(project.id, p.id), { viewerEmail })
   return summary
 }
 
-async function summarizeProjects(projectRows: ProjectRow[] | Promise<ProjectRow[]>, scope: SQL, filter: { branch?: string, tag?: string, withOptions?: boolean } = {}): Promise<DashboardOverview> {
+async function summarizeProjects(projectRows: ProjectRow[] | Promise<ProjectRow[]>, scope: SQL, filter: { branch?: string, tag?: string, withOptions?: boolean, viewerEmail?: string } = {}): Promise<DashboardOverview> {
   const generatedAt = new Date().toISOString()
   const { branch, tag } = filter
   const inProjects = sql`${run.projectId} in (select ${project.id} from ${project} where ${scope})`
@@ -222,11 +223,13 @@ async function summarizeProjects(projectRows: ProjectRow[] | Promise<ProjectRow[
   const runCount = new Map(totals.map(t => [t.projectId, t.n]))
   const windowByProject = groupByProject(windowRows)
   const latestByProject = groupByProject(latestRows)
+  const owners = await loadOwnership(projects.map(p => p.id), filter.viewerEmail)
 
   return {
     generatedAt,
     branches: (options?.branches ?? []).sort(),
     tags: (options?.tags ?? []).sort(),
+    ...(directory && { ownership: true as const }),
     projects: projects.map((p) => {
       const points = trendOf((windowByProject.get(p.id) ?? []).map(r => ({
         runId: r.id,
@@ -242,6 +245,7 @@ async function summarizeProjects(projectRows: ProjectRow[] | Promise<ProjectRow[
         runCount: runCount.get(p.id) ?? 0,
         runs: (latestByProject.get(p.id) ?? []).map(r => ({ ...runSummary(p.slug, r), counts: tag ? r.countsByTag[tag] : r.counts, countsByTag: {} })),
         trend: downsampleTrend(points).map(t => ({ passRate: t.passRate, ...(t.incident && { incident: t.incident }) })),
+        ...(owners.has(p.id) && { owner: owners.get(p.id) }),
       }
     }),
   }

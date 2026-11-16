@@ -64,6 +64,13 @@ export interface TrendPoint {
   incident?: string
 }
 
+// The squad that owns a project, from the org's ownership directory; `mine` when the viewer is in it.
+export interface ProjectOwner {
+  squad: string
+  slackChannel?: string
+  mine: boolean
+}
+
 export interface OverviewProject {
   id: string
   name: string
@@ -71,6 +78,8 @@ export interface OverviewProject {
   runCount: number
   runs: RunSummary[]
   trend: Pick<TrendPoint, 'passRate' | 'incident'>[]
+  // Absent when the owner is unknown, or ownership is off.
+  owner?: ProjectOwner
 }
 
 // A project as listed to pick from: its newest run only, never its history.
@@ -86,6 +95,8 @@ export interface DashboardOverview {
   branches: string[]
   tags: string[]
   projects: OverviewProject[]
+  // Set when the server resolves owners, so the page can offer the squads.
+  ownership?: true
 }
 
 // The project's run table: by start time, or by branch with the newest first within one.

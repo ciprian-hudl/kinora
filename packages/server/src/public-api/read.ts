@@ -2,6 +2,8 @@ import type { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { insightStatusSchema, parseSince, projectMatcher } from '@kinora/core'
 import { z } from 'zod'
+import { loadOwnership } from '../ownership/resolve'
+import { squadKey } from '../ownership/smelloscope'
 import { loadCommonErrors, loadTestInsights, loadTestOccurrences } from '../reports/insights'
 import { findProject, listProjects, loadLatestRun, loadProjectHistory, loadRun, loadRunReport, loadRunSummaries, loadTestHistory } from '../reports/queries'
 
@@ -26,18 +28,35 @@ function validQuery<T extends z.ZodType>(schema: T) {
 }
 
 // Globs on the project id, e.g. `hudl/hudl-*` or `!hudl/hudl-*`; none reads every project.
-const insightsQuery = windowQuery.extend({ projects: z.string().max(1000).default('') })
+// `squad` keeps the projects that squad owns; `other` keeps the ones with no known owner.
+const insightsQuery = windowQuery.extend({ projects: z.string().max(1000).default(''), squad: z.string().min(1).max(255).optional() })
+
+async function scopedProjects(orgId: string, projects: string, squad?: string) {
+  const matches = projectMatcher(projects)
+  const inScope = (await listProjects(orgId)).filter(p => matches(p.slug))
+  if (!squad)
+    return inScope
+  const owners = await loadOwnership(inScope.map(p => p.id))
+  const wanted = squadKey(squad)
+  return inScope.filter((p) => {
+    const owner = owners.get(p.id)
+    return squad === 'other' ? !owner : !!owner && squadKey(owner.squad) === wanted
+  })
+}
 
 // Registered on publicApi so these inherit its Bearer auth, org scope, and rate limit.
 export function registerReadRoutes(api: ReadApi): void {
   api.get('/projects', async (c) => {
     const projects = await listProjects(c.get('orgId'))
+    const owners = await loadOwnership(projects.map(p => p.id))
     const out = await Promise.all(projects.map(async (p) => {
       const [latest] = await loadRunSummaries(p, 1)
+      const owner = owners.get(p.id)
       return {
         id: p.slug,
         name: p.name,
         description: p.description ?? undefined,
+        ...(owner && { owner: { squad: owner.squad, ...(owner.slackChannel && { slackChannel: owner.slackChannel }) } }),
         latestRun: latest ?? null,
       }
     }))
@@ -96,16 +115,14 @@ export function registerReadRoutes(api: ReadApi): void {
   })
 
   api.get('/insights/tests', validQuery(insightsQuery.extend({ sort: z.enum(['count', 'flakeRate']).default('count') })), async (c) => {
-    const { projects, since, branch, status, limit, sort } = c.req.valid('query')
-    const matches = projectMatcher(projects)
-    const scope = { projects: (await listProjects(c.get('orgId'))).filter(p => matches(p.slug)), since, branch, status }
+    const { projects, squad, since, branch, status, limit, sort } = c.req.valid('query')
+    const scope = { projects: await scopedProjects(c.get('orgId'), projects, squad), since, branch, status }
     return c.json({ since: since.toISOString(), tests: await loadTestInsights(scope, sort, limit) })
   })
 
   api.get('/insights/errors', validQuery(insightsQuery), async (c) => {
-    const { projects, since, branch, status, limit } = c.req.valid('query')
-    const matches = projectMatcher(projects)
-    const scope = { projects: (await listProjects(c.get('orgId'))).filter(p => matches(p.slug)), since, branch, status }
+    const { projects, squad, since, branch, status, limit } = c.req.valid('query')
+    const scope = { projects: await scopedProjects(c.get('orgId'), projects, squad), since, branch, status }
     return c.json({ since: since.toISOString(), ...(await loadCommonErrors(scope, limit)) })
   })
 
