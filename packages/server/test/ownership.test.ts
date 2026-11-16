@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { db } from '../src/db'
-import { project, projectOwner } from '../src/db/schemas/index'
-import { loadOwnership, refreshOwnership, serviceOf } from '../src/ownership/resolve'
+import { directoryPerson, project, projectOwner } from '../src/db/schemas/index'
+import { loadOwnership, refreshOwnership, serviceOf, syncPeople } from '../src/ownership/resolve'
 import { createSmelloscope } from '../src/ownership/smelloscope'
 import { createApiKey, createUser, ingest, runPayload } from './helpers'
 
@@ -74,6 +74,9 @@ describe('project ownership', () => {
     expect(asked).not.toContain('/directory/repo/hudl/hudl-frontends/owners')
     expect(asked).toContain('/directory/service/@local/admin-clips/owners')
 
+    // The first page finds no people stored yet and syncs them for the next one.
+    expect((await loadOwnership(Object.values(ids), 'ME@hudl.com', dir)).get(ids['hudl/hudl-ui'])?.mine).toBe(false)
+    await syncPeople(dir)
     const owners = await loadOwnership(Object.values(ids), 'ME@hudl.com', dir)
     expect(owners.get(ids['fan/e2e'])).toEqual({ squad: 'Fan Team 6', slackChannel: '#fan-team-6', mine: false })
     expect(owners.get(ids['hudl/hudl-ui'])).toEqual({ squad: 'Mandalorians', slackChannel: '#mandos', mine: true })
@@ -110,5 +113,17 @@ describe('project ownership', () => {
     const hanging = createSmelloscope('https://smelloscope.test', (() => new Promise(() => {})) as typeof fetch)
     const owners = await loadOwnership(Object.values(ids), 'me@hudl.com', hanging)
     expect(owners.get(ids['hudl/hudl-ui'])).toEqual({ squad: 'Mandalorians', slackChannel: '#mandos', mine: false })
+  })
+
+  it('replaces the stored people on each sync, and keeps them when the directory fails', async () => {
+    const people = (users: Record<string, string[]>) => createSmelloscope('https://smelloscope.test', (async () => Response.json({
+      users: Object.fromEntries(Object.entries(users).map(([email, squads]) => [email, { githubLogin: email, email, squads }])),
+    })) as typeof fetch)
+    await syncPeople(people({ 'A@hudl.com': ['Agave'], 'b@hudl.com': ['Kaizen'] }))
+    await syncPeople(people({ 'a@hudl.com': ['Chefs'] }))
+    expect(await db.select({ email: directoryPerson.email, squads: directoryPerson.squads }).from(directoryPerson)).toEqual([{ email: 'a@hudl.com', squads: ['Chefs'] }])
+
+    await syncPeople(createSmelloscope('https://smelloscope.test', (() => Promise.reject(new TypeError('fetch failed'))) as typeof fetch))
+    expect(await db.select({ email: directoryPerson.email }).from(directoryPerson)).toEqual([{ email: 'a@hudl.com' }])
   })
 })

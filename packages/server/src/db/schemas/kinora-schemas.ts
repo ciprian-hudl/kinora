@@ -45,6 +45,14 @@ export const projectOwner = pgTable('project_owner', {
   resolvedAt: timestamp('resolved_at').notNull(),
 })
 
+export const directoryPerson = pgTable('directory_person', {
+  email: text('email').primaryKey(),
+  squads: jsonb('squads').$type<string[]>().notNull().default([]),
+  syncedAt: timestamp('synced_at').notNull(),
+}, table => [
+  index('directory_person_synced_idx').on(table.syncedAt),
+])
+
 export const run = pgTable('run', {
   id: text('id').primaryKey(),
   projectId: text('project_id').notNull().references(() => project.id, { onDelete: 'cascade' }),

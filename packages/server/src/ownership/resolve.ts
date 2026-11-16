@@ -1,7 +1,7 @@
 import type { Owner, Smelloscope } from './smelloscope'
-import { inArray, sql } from 'drizzle-orm'
+import { inArray, lt, sql } from 'drizzle-orm'
 import { db } from '../db'
-import { projectOwner } from '../db/schemas/index'
+import { directoryPerson, projectOwner } from '../db/schemas/index'
 import { env } from '../lib/env'
 import { logger } from '../lib/logger'
 import { createSmelloscope, squadKey } from './smelloscope'
@@ -11,6 +11,10 @@ export const directory: Smelloscope | null = env.SMELLOSCOPE_URL ? createSmellos
 export const OWNERSHIP_REFRESH_MS = 15 * 60 * 1000
 const OWNER_MAX_AGE_MS = 60 * 60 * 1000
 const CONCURRENCY = 5
+const PEOPLE_MAX_AGE_MS = 60 * 60 * 1000
+// After a failed sync, how long the directory is left alone before it is asked again.
+const PEOPLE_RETRY_MS = 5 * 60 * 1000
+const PEOPLE_INSERT_BATCH = 500
 
 function repoOf(repoUrl: string | null): { owner: string, repo: string } | null {
   if (!repoUrl)
@@ -61,9 +65,6 @@ export async function refreshOwnership(dir: Smelloscope, now = new Date()): Prom
 
   const result = { resolved: 0, unknown: 0, failed: 0 }
   let firstError: unknown
-  await dir.loadUsers().catch((error: unknown) => {
-    firstError = error
-  })
   for (let i = 0; i < stale.length; i += CONCURRENCY) {
     const batch = stale.slice(i, i + CONCURRENCY)
     let batchFailed = 0
@@ -91,6 +92,50 @@ export async function refreshOwnership(dir: Smelloscope, now = new Date()): Prom
   return result
 }
 
+const peopleSyncs = new WeakMap<Smelloscope, { running?: Promise<void>, retryAt: number }>()
+
+// Replaces the stored directory of people with the directory's current one. One sync runs at a
+// time per server, and a failed one keeps the stored people and is not retried for a few minutes.
+export function syncPeople(dir: Smelloscope): Promise<void> {
+  const state = peopleSyncs.get(dir) ?? { retryAt: 0 }
+  peopleSyncs.set(dir, state)
+  if (Date.now() < state.retryAt)
+    return Promise.resolve()
+  state.running ??= (async () => {
+    const people = new Map((await dir.people()).map(p => [p.email, p.squads]))
+    const syncedAt = new Date()
+    const rows = [...people].map(([email, squads]) => ({ email, squads, syncedAt }))
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < rows.length; i += PEOPLE_INSERT_BATCH) {
+        await tx.insert(directoryPerson).values(rows.slice(i, i + PEOPLE_INSERT_BATCH)).onConflictDoUpdate({
+          target: directoryPerson.email,
+          set: { squads: sql`excluded.squads`, syncedAt: sql`excluded.synced_at` },
+        })
+      }
+      await tx.delete(directoryPerson).where(lt(directoryPerson.syncedAt, syncedAt))
+    })
+  })()
+    .catch((error: unknown) => {
+      state.retryAt = Date.now() + PEOPLE_RETRY_MS
+      logger.warn({ error }, 'ownership directory people sync failed')
+    })
+    .finally(() => {
+      state.running = undefined
+    })
+  return state.running
+}
+
+// The viewer's squads from the stored directory, in one key lookup. A stale or empty directory is
+// synced in the background for the next page, never while this one waits.
+async function viewerSquads(dir: Smelloscope, email: string): Promise<string[]> {
+  const { rows: [row] } = await db.execute<{ squads: string[] | null, syncedAt: Date | null }>(sql`
+    select (select squads from directory_person where email = ${email}) as squads,
+      (select max(synced_at) from directory_person) as "syncedAt"`)
+  if (!row?.syncedAt || Date.now() - new Date(row.syncedAt).getTime() > PEOPLE_MAX_AGE_MS)
+    void syncPeople(dir)
+  return row?.squads ?? []
+}
+
 export interface ProjectOwnership {
   squad: string
   slackChannel?: string
@@ -101,10 +146,12 @@ export interface ProjectOwnership {
 export async function loadOwnership(projectIds: string[], viewerEmail?: string, dir: Smelloscope | null = directory): Promise<Map<string, ProjectOwnership>> {
   if (!dir || !projectIds.length)
     return new Map()
-  const owners = await db.select().from(projectOwner).where(inArray(projectOwner.projectId, projectIds))
-  const mySquads = viewerEmail ? dir.squadsOf(viewerEmail) : []
-  const mine = new Set(mySquads.map(squadKey))
   const email = viewerEmail?.toLowerCase()
+  const [owners, mySquads] = await Promise.all([
+    db.select().from(projectOwner).where(inArray(projectOwner.projectId, projectIds)),
+    email ? viewerSquads(dir, email) : [],
+  ])
+  const mine = new Set(mySquads.map(squadKey))
   return new Map(owners.filter(o => o.squad).map(o => [o.projectId, {
     squad: o.squad!,
     ...(o.slackChannel && { slackChannel: o.slackChannel }),
