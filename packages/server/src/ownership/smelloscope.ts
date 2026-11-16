@@ -15,6 +15,8 @@ export interface Owner {
 }
 
 const USERS_TTL_MS = 60 * 60 * 1000
+// After a failed load, how long the directory is left alone before it is asked again.
+const USERS_RETRY_MS = 5 * 60 * 1000
 const TIMEOUT_MS = 10_000
 
 export function createSmelloscope(baseUrl: string, fetchImpl: typeof fetch = fetch) {
@@ -34,6 +36,26 @@ export function createSmelloscope(baseUrl: string, fetchImpl: typeof fetch = fet
   const emails = (members: DirectoryUser[]) => members.map(m => m.email?.toLowerCase()).filter((e): e is string => !!e)
 
   let users: { at: number, byEmail: Map<string, DirectoryUser> } | undefined
+  let usersLoad: Promise<void> | undefined
+
+  // Reloads the bulk directory of people once it is an hour old. A failed load keeps the last one
+  // and is retried a few minutes later.
+  function loadUsers(): Promise<void> {
+    if (users && Date.now() - users.at <= USERS_TTL_MS)
+      return Promise.resolve()
+    usersLoad ??= get<{ users: Record<string, DirectoryUser> }>('/users')
+      .then((r) => {
+        users = { at: Date.now(), byEmail: new Map(Object.values(r?.users ?? {}).filter(u => u.email).map(u => [u.email!.toLowerCase(), u])) }
+      })
+      .catch((error: unknown) => {
+        users = { at: Date.now() - USERS_TTL_MS + USERS_RETRY_MS, byEmail: users?.byEmail ?? new Map() }
+        throw error
+      })
+      .finally(() => {
+        usersLoad = undefined
+      })
+    return usersLoad
+  }
 
   return {
     async serviceOwner(service: string): Promise<Owner | null> {
@@ -52,13 +74,13 @@ export function createSmelloscope(baseUrl: string, fetchImpl: typeof fetch = fet
       return { squad: r.squad, slackChannel: r.slackChannel, slackChannelId: r.slackChannelId, memberEmails: emails(r.members) }
     },
 
-    // The squads of the person with this email, from the bulk directory, cached for an hour.
-    async squadsOf(email: string): Promise<string[]> {
-      if (!users || Date.now() - users.at > USERS_TTL_MS) {
-        const r = await get<{ users: Record<string, DirectoryUser> }>('/users')
-        users = { at: Date.now(), byEmail: new Map(Object.values(r?.users ?? {}).filter(u => u.email).map(u => [u.email!.toLowerCase(), u])) }
-      }
-      return users.byEmail.get(email.toLowerCase())?.squads ?? []
+    loadUsers,
+
+    // The squads of the person with this email, from the last directory loaded. Never waits on the
+    // directory: a stale or missing one is reloaded in the background for the next request.
+    squadsOf(email: string): string[] {
+      loadUsers().catch(() => {})
+      return users?.byEmail.get(email.toLowerCase())?.squads ?? []
     },
   }
 }

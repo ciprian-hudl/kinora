@@ -60,8 +60,14 @@ export async function refreshOwnership(dir: Smelloscope, now = new Date()): Prom
   const stale = rows.rows.filter(r => !r.resolvedAt || now.getTime() - new Date(r.resolvedAt).getTime() >= OWNER_MAX_AGE_MS)
 
   const result = { resolved: 0, unknown: 0, failed: 0 }
+  let firstError: unknown
+  await dir.loadUsers().catch((error: unknown) => {
+    firstError = error
+  })
   for (let i = 0; i < stale.length; i += CONCURRENCY) {
-    await Promise.all(stale.slice(i, i + CONCURRENCY).map(async (p) => {
+    const batch = stale.slice(i, i + CONCURRENCY)
+    let batchFailed = 0
+    await Promise.all(batch.map(async (p) => {
       try {
         const owner = await resolveOne(dir, p.slug, repoOf(p.repoUrl), (projectsPerRepo.get(p.repoUrl ?? '') ?? 0) > 1)
         const values = { ...owner, resolvedAt: now }
@@ -69,11 +75,19 @@ export async function refreshOwnership(dir: Smelloscope, now = new Date()): Prom
         result[owner.squad ? 'resolved' : 'unknown']++
       }
       catch (error) {
-        result.failed++
-        logger.warn({ error, project: p.slug }, 'project owner lookup failed')
+        batchFailed++
+        firstError ??= error
       }
     }))
+    result.failed += batchFailed
+    // A whole batch failing means the directory is down: leave the rest for the next pass.
+    if (batchFailed === batch.length) {
+      result.failed += stale.length - i - batch.length
+      break
+    }
   }
+  if (firstError)
+    logger.warn({ error: firstError, failed: result.failed }, 'ownership directory lookups failed')
   return result
 }
 
@@ -87,10 +101,8 @@ export interface ProjectOwnership {
 export async function loadOwnership(projectIds: string[], viewerEmail?: string, dir: Smelloscope | null = directory): Promise<Map<string, ProjectOwnership>> {
   if (!dir || !projectIds.length)
     return new Map()
-  const [owners, mySquads] = await Promise.all([
-    db.select().from(projectOwner).where(inArray(projectOwner.projectId, projectIds)),
-    viewerEmail ? dir.squadsOf(viewerEmail).catch(() => []) : [],
-  ])
+  const owners = await db.select().from(projectOwner).where(inArray(projectOwner.projectId, projectIds))
+  const mySquads = viewerEmail ? dir.squadsOf(viewerEmail) : []
   const mine = new Set(mySquads.map(squadKey))
   const email = viewerEmail?.toLowerCase()
   return new Map(owners.filter(o => o.squad).map(o => [o.projectId, {

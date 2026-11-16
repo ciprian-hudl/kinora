@@ -80,10 +80,21 @@ describe('project ownership', () => {
 
     const again = fakeDirectory()
     expect(await refreshOwnership(again.dir, new Date(now.getTime() + 10 * 60_000))).toEqual({ resolved: 0, unknown: 0, failed: 0 })
-    expect(again.asked).toEqual([])
+    expect(again.asked.filter(path => path.endsWith('/owners'))).toEqual([])
 
     expect(await refreshOwnership(fakeDirectory(true).dir, new Date(now.getTime() + 2 * HOUR))).toEqual({ resolved: 0, unknown: 0, failed: 3 })
     const [kept] = await db.select().from(projectOwner).where(eq(projectOwner.projectId, ids['hudl/hudl-ui']))
     expect(kept).toMatchObject({ squad: 'Mandalorians', source: 'repo' })
+  })
+
+  it('never holds a page up on an unreachable directory', async () => {
+    const ids = await seed()
+    const unreachable = createSmelloscope('https://smelloscope.test', (() => Promise.reject(new TypeError('fetch failed'))) as typeof fetch)
+    expect(await refreshOwnership(unreachable)).toEqual({ resolved: 0, unknown: 0, failed: 3 })
+
+    await refreshOwnership(fakeDirectory().dir)
+    const hanging = createSmelloscope('https://smelloscope.test', (() => new Promise(() => {})) as typeof fetch)
+    const owners = await loadOwnership(Object.values(ids), 'me@hudl.com', hanging)
+    expect(owners.get(ids['hudl/hudl-ui'])).toEqual({ squad: 'Mandalorians', slackChannel: '#mandos', mine: false })
   })
 })
